@@ -18,8 +18,21 @@ uvicorn app.main:app --reload
 pytest
 ```
 
+## CFO endpoints
+
+The API includes mock v0.2 CFO reads:
+
+```bash
+curl "http://localhost:8000/api/v1/cfo/pl-vs-budget?period=2026-Q1&subsidiary_id=NA"
+curl "http://localhost:8000/api/v1/cfo/yoy-comparison?current_year=2026&prior_year=2025"
+curl "http://localhost:8000/api/v1/cfo/subsidiary-drilldown?period=2026-Q1&subsidiary_id=EMEA"
+curl "http://localhost:8000/api/v1/cfo/running-projects?account_manager=Maya%20Rao"
+curl "http://localhost:8000/api/v1/cfo/overdue-projects/by-account-manager?min_days_overdue=20"
+```
+
 ## Safety model
 
 - No real NetSuite credentials are used.
 - No arbitrary SQL or SuiteQL endpoint is exposed.
 - Connector access goes through approved template IDs in `app/connectors/netsuite/query_templates.py`.
+- Application code depends on `app/connectors/netsuite/interface.py` instead of raw query strings.

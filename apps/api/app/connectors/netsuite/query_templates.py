@@ -26,6 +26,31 @@ APPROVED_QUERY_TEMPLATES: dict[str, NetSuiteQueryTemplate] = {
         description="Monthly recognized revenue trend for CFO dashboarding.",
         mock_rows_key="monthly_revenue_trend",
     ),
+    "pl_vs_budget": NetSuiteQueryTemplate(
+        id="pl_vs_budget",
+        description="Profit and loss actuals compared with approved budget by finance line.",
+        mock_rows_key="pl_vs_budget",
+    ),
+    "yoy_comparison": NetSuiteQueryTemplate(
+        id="yoy_comparison",
+        description="Year-over-year comparison for approved CFO reporting lines.",
+        mock_rows_key="yoy_comparison",
+    ),
+    "subsidiary_drilldown": NetSuiteQueryTemplate(
+        id="subsidiary_drilldown",
+        description="Subsidiary-level revenue, expense, and margin drilldown.",
+        mock_rows_key="subsidiary_drilldown",
+    ),
+    "running_projects": NetSuiteQueryTemplate(
+        id="running_projects",
+        description="Active delivery projects with budget consumption and forecast status.",
+        mock_rows_key="running_projects",
+    ),
+    "overdue_projects_by_account_manager": NetSuiteQueryTemplate(
+        id="overdue_projects_by_account_manager",
+        description="Overdue project aging summarized by account manager.",
+        mock_rows_key="overdue_projects_by_account_manager",
+    ),
 }
 
 

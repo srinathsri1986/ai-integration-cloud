@@ -3,7 +3,12 @@ import { z } from "zod";
 export const approvedNetSuiteQueryTemplateIds = [
   "cash_position_summary",
   "ar_aging_summary",
-  "monthly_revenue_trend"
+  "monthly_revenue_trend",
+  "pl_vs_budget",
+  "yoy_comparison",
+  "subsidiary_drilldown",
+  "running_projects",
+  "overdue_projects_by_account_manager"
 ] as const;
 
 export const approvedNetSuiteQueryTemplateIdSchema = z.enum(

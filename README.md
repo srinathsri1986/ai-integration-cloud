@@ -68,6 +68,18 @@ pip install -e ".[dev]"
 uvicorn app.main:app --reload
 ```
 
+## CFO API v0.2
+
+The backend exposes mock NetSuite CFO APIs through approved named templates only:
+
+- `GET /api/v1/cfo/pl-vs-budget?period=2026-Q1&subsidiary_id=NA`
+- `GET /api/v1/cfo/yoy-comparison?current_year=2026&prior_year=2025`
+- `GET /api/v1/cfo/subsidiary-drilldown?period=2026-Q1&subsidiary_id=EMEA`
+- `GET /api/v1/cfo/running-projects?account_manager=Maya%20Rao`
+- `GET /api/v1/cfo/overdue-projects/by-account-manager?min_days_overdue=20`
+
+All data is mock data. The API validates query parameters and never accepts raw SQL or SuiteQL.
+
 ## Tests
 
 Backend:
@@ -90,4 +102,5 @@ pnpm test
 - Do not overwrite local `.env` files.
 - Do not expose arbitrary SQL or SuiteQL execution.
 - Use `apps/api/app/connectors/netsuite/query_templates.py` for named approved query templates.
+- Use `apps/api/app/connectors/netsuite/interface.py` for connector capabilities instead of free-form query execution.
 - Keep NetSuite integration in `mock` mode until real credential handling and authorization are designed.
