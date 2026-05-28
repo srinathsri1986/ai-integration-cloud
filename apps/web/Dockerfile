@@ -1,4 +1,4 @@
-FROM node:20-slim AS deps
+FROM node:22-slim AS deps
 WORKDIR /repo
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml ./
@@ -12,7 +12,7 @@ COPY apps/web apps/web
 RUN pnpm --filter @netsuite-cfo/shared build
 RUN pnpm --filter @netsuite-cfo/web build
 
-FROM node:20-slim AS runtime
+FROM node:22-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 RUN corepack enable
