@@ -80,6 +80,19 @@ The backend exposes mock NetSuite CFO APIs through approved named templates only
 
 All data is mock data. The API validates query parameters and never accepts raw SQL or SuiteQL.
 
+## CFO Dashboard UI v0.3
+
+The web dashboard at `http://localhost:3000` reads the CFO API and shows:
+
+- Executive KPI summary
+- P/L vs budget
+- YoY comparison
+- Subsidiary drilldown
+- Running projects
+- Overdue projects by account manager
+
+When the API is unavailable, the dashboard stays usable with safe mock fallback data and labels affected sections as fallback. It does not accept SQL or SuiteQL input.
+
 ## Tests
 
 Backend:
