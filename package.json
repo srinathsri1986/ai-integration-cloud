@@ -1,0 +1,18 @@
+{
+  "name": "netsuite-cfo-intelligence-orchestrator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Monorepo scaffold for the NetSuite CFO Intelligence Orchestrator MVP.",
+  "packageManager": "pnpm@11.4.0",
+  "scripts": {
+    "build": "pnpm --recursive build",
+    "dev:web": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/web dev",
+    "dev:mcp": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/mcp-server dev",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --filter @netsuite-cfo/shared build && pnpm --recursive test",
+    "typecheck": "pnpm --recursive typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,1 @@
+"""Mock-first NetSuite connector."""
