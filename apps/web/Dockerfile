@@ -13,13 +13,12 @@ RUN pnpm --filter @netsuite-cfo/shared build
 RUN pnpm --filter @netsuite-cfo/web build
 
 FROM node:22-slim AS runtime
-WORKDIR /repo
-ENV NODE_ENV=production
-RUN corepack enable
-COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
-COPY --from=build /repo/packages/shared ./packages/shared
-COPY --from=build /repo/apps/web ./apps/web
-COPY package.json pnpm-workspace.yaml ./
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+COPY --from=build /repo/apps/web/.next/standalone ./
+COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build /repo/apps/web/public ./apps/web/public
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@netsuite-cfo/web", "start"]
+CMD ["node", "apps/web/server.js"]
