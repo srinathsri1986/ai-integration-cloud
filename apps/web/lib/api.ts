@@ -1,6 +1,8 @@
 import type {
   CfoDashboardSummary,
   OverdueProjectsByManagerResponse,
+  OrchestratorQueryRequest,
+  OrchestratorQueryResponse,
   PlVsBudgetResponse,
   RunningProjectsResponse,
   SubsidiaryDrilldownResponse,
@@ -13,6 +15,10 @@ export type ApiResult<T> = {
   data: T;
   error?: string;
   isFallback: boolean;
+};
+
+export type ClientApiResult<T> = ApiResult<T> & {
+  ok: boolean;
 };
 
 const fallbackDashboardSummary: CfoDashboardSummary = {
@@ -194,6 +200,15 @@ const fallbackOverdueProjects: OverdueProjectsByManagerResponse = {
   ]
 };
 
+const fallbackOrchestratorResponse: OrchestratorQueryResponse = {
+  detectedIntent: "UNKNOWN",
+  confidence: 0,
+  toolsUsed: [],
+  data: { message: "The orchestrator API is unavailable." },
+  executiveSummary: "The AI Query Console could not reach the rule-based orchestrator.",
+  fallbackUsed: true
+};
+
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
   return {
     generatedAt: body.generated_at,
@@ -370,4 +385,38 @@ export async function getOverdueProjects(): Promise<ApiResult<OverdueProjectsByM
     fallbackOverdueProjects,
     snakeToOverdueProjects
   );
+}
+
+export async function submitOrchestratorQuery(
+  request: OrchestratorQueryRequest
+): Promise<ClientApiResult<OrchestratorQueryResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/orchestrator/query`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackOrchestratorResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: Boolean(body.fallbackUsed), ok: true };
+  } catch (error) {
+    return {
+      data: fallbackOrchestratorResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
 }

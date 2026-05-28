@@ -132,3 +132,39 @@ export const overdueProjectsByManagerResponseSchema = z.object({
 export type OverdueProjectsByManagerResponse = z.infer<
   typeof overdueProjectsByManagerResponseSchema
 >;
+
+export const orchestratorIntentSchema = z.enum([
+  "CFO_DASHBOARD_SUMMARY",
+  "PL_VS_BUDGET",
+  "YOY_COMPARISON",
+  "SUBSIDIARY_DRILLDOWN",
+  "RUNNING_PROJECTS",
+  "OVERDUE_PROJECTS_BY_ACCOUNT_MANAGER",
+  "UNKNOWN"
+]);
+
+export type OrchestratorIntent = z.infer<typeof orchestratorIntentSchema>;
+
+export const orchestratorQueryRequestSchema = z.object({
+  question: z.string().min(3).max(500),
+  periodRange: z.string().optional(),
+  subsidiary: z.string().optional(),
+  asOfDate: z.string().optional()
+});
+
+export type OrchestratorQueryRequest = z.infer<
+  typeof orchestratorQueryRequestSchema
+>;
+
+export const orchestratorQueryResponseSchema = z.object({
+  detectedIntent: orchestratorIntentSchema,
+  confidence: z.number().min(0).max(1),
+  toolsUsed: z.array(z.string()),
+  data: z.unknown(),
+  executiveSummary: z.string(),
+  fallbackUsed: z.boolean()
+});
+
+export type OrchestratorQueryResponse = z.infer<
+  typeof orchestratorQueryResponseSchema
+>;

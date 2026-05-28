@@ -23,6 +23,7 @@ import {
   getSubsidiaryDrilldown,
   getYoyComparison
 } from "@/lib/api";
+import { AiQueryConsole } from "@/components/ai-query-console";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,8 @@ export default async function Home() {
           </Button>
         </div>
       </header>
+
+      <AiQueryConsole />
 
       <section className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">
         <Card>

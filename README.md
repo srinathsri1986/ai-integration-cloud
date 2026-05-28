@@ -93,6 +93,26 @@ The web dashboard at `http://localhost:3000` reads the CFO API and shows:
 
 When the API is unavailable, the dashboard stays usable with safe mock fallback data and labels affected sections as fallback. It does not accept SQL or SuiteQL input.
 
+## AI Query Console v0.5
+
+The backend includes a deterministic, rule-based orchestrator:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/orchestrator/query" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Show me P/L vs budget for Q1","periodRange":"2026-Q1","subsidiary":"NA"}'
+```
+
+Example questions:
+
+- `Show me P/L vs budget for Q1`
+- `Compare revenue year over year`
+- `Show EMEA subsidiary drilldown`
+- `What running projects are at risk?`
+- `Which projects are overdue by account manager?`
+
+The web dashboard includes an AI Query Console that calls only `/api/v1/orchestrator/query`. The orchestrator does not call an external LLM yet and does not accept SQL, SuiteQL, or raw NetSuite access.
+
 ## Tests
 
 Backend:
