@@ -44,6 +44,10 @@ class AuditService:
                 modelCallAttempted=False,
                 modelCallSucceeded=False,
                 usedFallbackRouter=False,
+                narrativeProvider="none",
+                narrativeModel=None,
+                narrativeGenerated=False,
+                narrativeFallbackUsed=False,
             )
         )
 
@@ -77,6 +81,10 @@ class AuditService:
                 modelCallAttempted=False,
                 modelCallSucceeded=False,
                 usedFallbackRouter=False,
+                narrativeProvider="none",
+                narrativeModel=None,
+                narrativeGenerated=False,
+                narrativeFallbackUsed=False,
             )
         )
 

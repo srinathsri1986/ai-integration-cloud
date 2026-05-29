@@ -28,6 +28,11 @@ def test_orchestrator_query_returns_pl_vs_budget_result() -> None:
     assert body["modelCallAttempted"] is False
     assert body["modelCallSucceeded"] is False
     assert body["usedFallbackRouter"] is False
+    assert body["executiveNarrative"]
+    assert body["narrativeProvider"] == "mock"
+    assert body["narrativeModel"] == "mock-cfo-intent-v0"
+    assert body["narrativeGenerated"] is True
+    assert body["narrativeFallbackUsed"] is False
 
 
 def test_orchestrator_query_returns_unknown_without_tools() -> None:
@@ -41,6 +46,7 @@ def test_orchestrator_query_returns_unknown_without_tools() -> None:
     assert body["detectedIntent"] == "UNKNOWN"
     assert body["toolsUsed"] == []
     assert body["aiMode"] == "mock_llm"
+    assert body["narrativeGenerated"] is True
 
 
 def test_orchestrator_validates_period_range() -> None:

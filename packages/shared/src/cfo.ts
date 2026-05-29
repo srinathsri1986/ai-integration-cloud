@@ -162,13 +162,18 @@ export const orchestratorQueryResponseSchema = z.object({
   toolsUsed: z.array(z.string()),
   data: z.unknown(),
   executiveSummary: z.string(),
+  executiveNarrative: z.string(),
   fallbackUsed: z.boolean(),
   aiProvider: z.string(),
   aiMode: z.enum(["rule_based", "mock_llm", "openai", "ollama", "disabled"]),
   modelName: z.string().nullable(),
   modelCallAttempted: z.boolean(),
   modelCallSucceeded: z.boolean(),
-  usedFallbackRouter: z.boolean()
+  usedFallbackRouter: z.boolean(),
+  narrativeProvider: z.string(),
+  narrativeModel: z.string().nullable(),
+  narrativeGenerated: z.boolean(),
+  narrativeFallbackUsed: z.boolean()
 });
 
 export type OrchestratorQueryResponse = z.infer<
@@ -194,7 +199,11 @@ export const auditLogEntrySchema = z.object({
   modelName: z.string().nullable(),
   modelCallAttempted: z.boolean(),
   modelCallSucceeded: z.boolean(),
-  usedFallbackRouter: z.boolean()
+  usedFallbackRouter: z.boolean(),
+  narrativeProvider: z.string(),
+  narrativeModel: z.string().nullable(),
+  narrativeGenerated: z.boolean(),
+  narrativeFallbackUsed: z.boolean()
 });
 
 export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;

@@ -93,6 +93,11 @@ def test_mock_llm_intent_routing() -> None:
     assert response.model_call_attempted is False
     assert response.model_call_succeeded is False
     assert response.used_fallback_router is False
+    assert response.executive_narrative
+    assert response.narrative_provider == "mock"
+    assert response.narrative_model == "mock-cfo-intent-v0"
+    assert response.narrative_generated is True
+    assert response.narrative_fallback_used is False
 
 
 def test_provider_failure_falls_back_to_rule_based_router() -> None:
@@ -134,14 +139,23 @@ def test_openai_without_key_uses_rule_based_fallback_without_external_call() -> 
 
 
 def test_openai_provider_validates_mocked_structured_response(monkeypatch) -> None:
+    responses = [
+        {"output_text": json.dumps({"intent": "YOY_COMPARISON", "confidence": 0.82})},
+        {
+            "output_text": json.dumps(
+                {
+                    "narrative": (
+                        "Revenue and margin improved year over year based on approved CFO "
+                        "summary data. Finance should review the drivers and confirm the "
+                        "trend before board reporting."
+                    )
+                }
+            )
+        },
+    ]
+
     def fake_urlopen(request, timeout):
-        return FakeHTTPResponse(
-            {
-                "output_text": json.dumps(
-                    {"intent": "YOY_COMPARISON", "confidence": 0.82}
-                )
-            }
-        )
+        return FakeHTTPResponse(responses.pop(0))
 
     monkeypatch.setattr("app.services.llm_provider.urllib_request.urlopen", fake_urlopen)
     provider = OpenAIProvider(api_key="test-key", model_name="gpt-test")
@@ -162,6 +176,11 @@ def test_openai_provider_validates_mocked_structured_response(monkeypatch) -> No
     assert response.model_call_attempted is True
     assert response.model_call_succeeded is True
     assert response.used_fallback_router is False
+    assert response.narrative_provider == "openai"
+    assert response.narrative_model == "gpt-test"
+    assert response.narrative_generated is True
+    assert response.narrative_fallback_used is False
+    assert "approved CFO" in response.executive_narrative
 
 
 def test_openai_invalid_output_falls_back_to_rule_based_router(monkeypatch) -> None:
@@ -219,14 +238,23 @@ def test_openai_request_failure_falls_back_to_rule_based_router(monkeypatch) -> 
 
 
 def test_ollama_provider_validates_raw_json_response(monkeypatch) -> None:
+    responses = [
+        {"response": json.dumps({"intent": "PL_VS_BUDGET", "confidence": 0.95})},
+        {
+            "response": json.dumps(
+                {
+                    "narrative": (
+                        "P/L performance is favorable to budget on approved CFO summary "
+                        "data. The finance team should validate the largest line variances "
+                        "and confirm operating actions."
+                    )
+                }
+            )
+        },
+    ]
+
     def fake_urlopen(request, timeout):
-        return FakeHTTPResponse(
-            {
-                "response": json.dumps(
-                    {"intent": "PL_VS_BUDGET", "confidence": 0.95}
-                )
-            }
-        )
+        return FakeHTTPResponse(responses.pop(0))
 
     monkeypatch.setattr("app.services.llm_provider.urllib_request.urlopen", fake_urlopen)
     provider = OllamaProvider(
@@ -250,6 +278,10 @@ def test_ollama_provider_validates_raw_json_response(monkeypatch) -> None:
     assert response.model_call_attempted is True
     assert response.model_call_succeeded is True
     assert response.used_fallback_router is False
+    assert response.narrative_provider == "ollama"
+    assert response.narrative_model == "qwen3:30b"
+    assert response.narrative_generated is True
+    assert response.narrative_fallback_used is False
 
 
 def test_ollama_provider_validates_fenced_json_response(monkeypatch) -> None:
@@ -316,6 +348,41 @@ def test_ollama_invalid_json_falls_back_to_rule_based_router(monkeypatch) -> Non
     assert response.model_call_attempted is True
     assert response.model_call_succeeded is False
     assert response.used_fallback_router is True
+    assert response.narrative_provider == "ollama"
+    assert response.narrative_generated is True
+    assert response.narrative_fallback_used is True
+
+
+def test_invalid_ollama_narrative_falls_back_to_template(monkeypatch) -> None:
+    responses = [
+        {"response": json.dumps({"intent": "PL_VS_BUDGET", "confidence": 0.95})},
+        {"response": json.dumps({"narrative": "select * from transaction"})},
+    ]
+
+    def fake_urlopen(request, timeout):
+        return FakeHTTPResponse(responses.pop(0))
+
+    monkeypatch.setattr("app.services.llm_provider.urllib_request.urlopen", fake_urlopen)
+    provider = OllamaProvider(
+        base_url="http://localhost:11434",
+        model_name="qwen2.5-coder:7b",
+        timeout_seconds=20,
+    )
+    service = OrchestratorService(
+        ai_provider="ollama",
+        model_name="qwen2.5-coder:7b",
+        llm_provider=provider,
+    )
+
+    response = service.query(OrchestratorQueryRequest(question="Show me P/L vs budget for Q1"))
+
+    assert response.detected_intent == OrchestratorIntent.PL_VS_BUDGET
+    assert response.used_fallback_router is False
+    assert response.narrative_provider == "ollama"
+    assert response.narrative_model == "qwen2.5-coder:7b"
+    assert response.narrative_generated is True
+    assert response.narrative_fallback_used is True
+    assert "select *" not in response.executive_narrative.lower()
 
 
 def test_ollama_unsupported_intent_falls_back_to_rule_based_router(monkeypatch) -> None:

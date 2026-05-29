@@ -32,6 +32,10 @@ function aiModeLabel(result: OrchestratorQueryResponse) {
   return "Rule-based";
 }
 
+function previewStructuredResult(data: unknown) {
+  return JSON.stringify(data, null, 2).slice(0, 900);
+}
+
 export function AiQueryConsole() {
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
@@ -107,6 +111,10 @@ export function AiQueryConsole() {
             </div>
             {result ? (
               <div className="mt-4 space-y-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Executive narrative</p>
+                  <p className="mt-1 leading-6">{result.executiveNarrative}</p>
+                </div>
                 <p className="leading-6 text-muted-foreground">{result.executiveSummary}</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -130,6 +138,19 @@ export function AiQueryConsole() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
+                    <p className="text-muted-foreground">Narrative provider</p>
+                    <p className="font-medium">
+                      {result.narrativeProvider}
+                      {result.narrativeModel ? ` - ${result.narrativeModel}` : ""}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Narrative fallback</p>
+                    <p className="font-medium">{result.narrativeFallbackUsed ? "Yes" : "No"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
                     <p className="text-muted-foreground">Model call</p>
                     <p className="font-medium">{result.modelCallAttempted ? "Attempted" : "No"}</p>
                   </div>
@@ -147,6 +168,12 @@ export function AiQueryConsole() {
                       <Badge>None</Badge>
                     )}
                   </div>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Structured result</p>
+                  <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border bg-white p-3 text-xs leading-5 text-foreground">
+                    {previewStructuredResult(result.data)}
+                  </pre>
                 </div>
               </div>
             ) : (

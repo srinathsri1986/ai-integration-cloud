@@ -14,6 +14,7 @@ from app.models.orchestrator import (
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
 from app.services.llm_provider import LLMProvider, LLMProviderError, make_llm_provider
+from app.services.narrative_service import NarrativeResult, NarrativeService
 
 
 @dataclass(frozen=True)
@@ -150,6 +151,13 @@ class OrchestratorService:
         tools: list[str] = []
         success = False
         failure_reason: str | None = None
+        narrative_result = NarrativeResult(
+            narrative="",
+            provider="none",
+            model=None,
+            generated=False,
+            fallback_used=False,
+        )
 
         try:
             if match.intent == OrchestratorIntent.CFO_DASHBOARD_SUMMARY:
@@ -201,6 +209,16 @@ class OrchestratorService:
                 data = {"message": "No supported CFO intent matched this question."}
                 summary = "I could not confidently map the question to a supported CFO workflow."
 
+            narrative_result = NarrativeService(
+                ai_provider=self.ai_provider,
+                model_name=self.model_name,
+                llm_provider=self.llm_provider,
+            ).generate(
+                intent=match.intent,
+                tools_used=tools,
+                approved_data=data,
+                deterministic_summary=summary,
+            )
             success = True
             return OrchestratorQueryResponse(
                 detectedIntent=match.intent,
@@ -208,6 +226,7 @@ class OrchestratorService:
                 toolsUsed=tools,
                 data=data,
                 executiveSummary=summary,
+                executiveNarrative=narrative_result.narrative,
                 fallbackUsed=False,
                 aiProvider=match.ai_provider,
                 aiMode=match.ai_mode,
@@ -215,6 +234,10 @@ class OrchestratorService:
                 modelCallAttempted=match.model_call_attempted,
                 modelCallSucceeded=match.model_call_succeeded,
                 usedFallbackRouter=match.used_fallback_router,
+                narrativeProvider=narrative_result.provider,
+                narrativeModel=narrative_result.model,
+                narrativeGenerated=narrative_result.generated,
+                narrativeFallbackUsed=narrative_result.fallback_used,
             )
         except Exception as exc:
             failure_reason = exc.__class__.__name__
@@ -242,5 +265,9 @@ class OrchestratorService:
                     modelCallAttempted=match.model_call_attempted,
                     modelCallSucceeded=match.model_call_succeeded,
                     usedFallbackRouter=match.used_fallback_router,
+                    narrativeProvider=narrative_result.provider,
+                    narrativeModel=narrative_result.model,
+                    narrativeGenerated=narrative_result.generated,
+                    narrativeFallbackUsed=narrative_result.fallback_used,
                 )
             )

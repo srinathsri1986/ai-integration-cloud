@@ -277,6 +277,27 @@ curl "http://localhost:8000/api/v1/audit/logs"
 
 Recent audit entries should show `aiProvider` as `ollama`, `aiMode` as `ollama`, `modelName` as `qwen2.5-coder:7b`, and `modelCallAttempted` as `true` when Ollama is reachable. If Ollama fails or returns invalid output, `usedFallbackRouter` becomes `true`.
 
+## Safe CFO Narrative Generation v1.2
+
+The orchestrator now generates a short CFO executive narrative after it retrieves data from an approved CFO service:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/orchestrator/query" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Show me P/L vs budget for Q1","periodRange":"2026-Q1","subsidiary":"NA"}'
+```
+
+Narratives are generated only from compact, approved CFO/orchestrator summaries. The narrative service does not send credentials, raw transactions, arbitrary SQL, SuiteQL, raw NetSuite queries, or raw NetSuite access details to any model.
+
+Provider behavior:
+
+- `AI_PROVIDER=mock`: default; uses the local mock provider for deterministic narrative output.
+- `AI_PROVIDER=ollama`: preferred local LLM mode; sends approved summarized JSON to the local Ollama model.
+- `AI_PROVIDER=openai`: optional hosted mode; sends approved summarized JSON only when `OPENAI_API_KEY` is configured.
+- `AI_PROVIDER=disabled`: uses deterministic template narratives only.
+
+If the selected model is unavailable, times out, returns invalid JSON, returns an overlong narrative, or includes blocked raw-query/sensitive language, the API falls back to deterministic template narrative generation. Orchestrator responses and audit logs include `narrativeProvider`, `narrativeModel`, `narrativeGenerated`, and `narrativeFallbackUsed`.
+
 ## Tests
 
 Backend:

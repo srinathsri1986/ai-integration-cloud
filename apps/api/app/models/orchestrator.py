@@ -35,6 +35,7 @@ class OrchestratorQueryResponse(BaseModel):
     tools_used: list[str] = Field(alias="toolsUsed")
     data: Any
     executive_summary: str = Field(alias="executiveSummary")
+    executive_narrative: str = Field(alias="executiveNarrative")
     fallback_used: bool = Field(alias="fallbackUsed")
     ai_provider: str = Field(alias="aiProvider")
     ai_mode: str = Field(alias="aiMode")
@@ -42,3 +43,7 @@ class OrchestratorQueryResponse(BaseModel):
     model_call_attempted: bool = Field(alias="modelCallAttempted")
     model_call_succeeded: bool = Field(alias="modelCallSucceeded")
     used_fallback_router: bool = Field(alias="usedFallbackRouter")
+    narrative_provider: str = Field(alias="narrativeProvider")
+    narrative_model: str | None = Field(default=None, alias="narrativeModel")
+    narrative_generated: bool = Field(alias="narrativeGenerated")
+    narrative_fallback_used: bool = Field(alias="narrativeFallbackUsed")

@@ -17,6 +17,15 @@ class LLMIntentResult:
     provider_name: str
 
 
+@dataclass(frozen=True)
+class LLMNarrativeResult:
+    narrative: str
+    model_name: str
+    model_call_attempted: bool
+    model_call_succeeded: bool
+    provider_name: str
+
+
 class LLMProviderError(RuntimeError):
     def __init__(
         self,
@@ -36,6 +45,9 @@ class LLMProvider(Protocol):
 
     def extract_intent(self, question: str) -> LLMIntentResult:
         """Return a supported CFO intent without executing tools or raw queries."""
+
+    def generate_narrative(self, context: dict) -> LLMNarrativeResult:
+        """Return a concise executive narrative from approved summarized CFO data only."""
 
 
 class MockLLMProvider:
@@ -75,6 +87,24 @@ class MockLLMProvider:
         return LLMIntentResult(
             confidence=confidence,
             intent=intent,
+            model_name=self.model_name,
+            model_call_attempted=False,
+            model_call_succeeded=False,
+            provider_name=self.provider_name,
+        )
+
+    def generate_narrative(self, context: dict) -> LLMNarrativeResult:
+        intent = context.get("intent", "UNKNOWN")
+        highlights = context.get("highlights", [])
+        lead = highlights[0] if highlights else "Approved CFO data was retrieved successfully."
+        narrative = (
+            f"{intent}: {lead} Finance leadership should review the approved result set, "
+            "confirm material variances, and follow up on any operating risks shown in the "
+            "dashboard."
+        )
+
+        return LLMNarrativeResult(
+            narrative=_validate_narrative_text(narrative),
             model_name=self.model_name,
             model_call_attempted=False,
             model_call_succeeded=False,
@@ -168,6 +198,71 @@ class OpenAIProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_narrative(self, context: dict) -> LLMNarrativeResult:
+        if not self.api_key:
+            raise LLMProviderError(
+                "OPENAI_API_KEY is not configured.",
+                model_call_attempted=False,
+            )
+
+        payload = {
+            "model": self.model_name,
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a concise CFO executive narrative from only the approved "
+                        "summarized JSON provided by the application. Return only JSON with key "
+                        "narrative. Keep it under 900 characters. Do not ask for or include "
+                        "credentials, raw transactions, SQL, SuiteQL, raw NetSuite queries, or "
+                        "tool calls."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(context, separators=(",", ":")),
+                },
+            ],
+            "text": {"format": {"type": "json_object"}},
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            self.endpoint,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=10) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI narrative generation request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            output_text = _extract_output_text(body)
+            parsed = json.loads(output_text)
+            narrative = _validated_narrative_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI narrative generation returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMNarrativeResult(
+            narrative=narrative,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 class OllamaProvider:
     provider_name = "ollama"
@@ -232,6 +327,54 @@ class OllamaProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_narrative(self, context: dict) -> LLMNarrativeResult:
+        prompt = (
+            "You are a safe CFO narrative generator. Generate a concise executive narrative "
+            "from only the approved summarized JSON below. Return only JSON with key narrative. "
+            "Keep it under 900 characters. Do not include credentials, raw transactions, SQL, "
+            "SuiteQL, raw NetSuite queries, or tool calls.\n\n"
+            f"Approved summarized CFO JSON: {json.dumps(context, separators=(',', ':'))}"
+        )
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            f"{self.base_url}/api/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama narrative generation request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(body["response"]))
+            narrative = _validated_narrative_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama narrative generation returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMNarrativeResult(
+            narrative=narrative,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 def _extract_output_text(body: dict) -> str:
     if isinstance(body.get("output_text"), str):
@@ -267,6 +410,29 @@ def _validated_intent_payload(parsed: dict) -> tuple[OrchestratorIntent, float]:
         raise ValueError("confidence must be between 0 and 1")
 
     return intent, confidence
+
+
+def _validated_narrative_payload(parsed: dict) -> str:
+    return _validate_narrative_text(parsed["narrative"])
+
+
+def _validate_narrative_text(text: str) -> str:
+    if not isinstance(text, str):
+        raise ValueError("narrative must be a string")
+
+    normalized = " ".join(text.split())
+
+    if len(normalized) < 20:
+        raise ValueError("narrative is too short")
+
+    if len(normalized) > 900:
+        raise ValueError("narrative is too long")
+
+    blocked_terms = ["select *", "suiteql", "sql query", "password", "token secret"]
+    if any(term in normalized.lower() for term in blocked_terms):
+        raise ValueError("narrative included blocked sensitive or raw-query language")
+
+    return normalized
 
 
 def make_llm_provider(

@@ -21,6 +21,10 @@ class AuditLogEntry(BaseModel):
     model_call_attempted: bool = Field(default=False, alias="modelCallAttempted")
     model_call_succeeded: bool = Field(default=False, alias="modelCallSucceeded")
     used_fallback_router: bool = Field(default=False, alias="usedFallbackRouter")
+    narrative_provider: str = Field(default="none", alias="narrativeProvider")
+    narrative_model: str | None = Field(default=None, alias="narrativeModel")
+    narrative_generated: bool = Field(default=False, alias="narrativeGenerated")
+    narrative_fallback_used: bool = Field(default=False, alias="narrativeFallbackUsed")
 
 
 class AuditLogSummary(BaseModel):

@@ -215,13 +215,18 @@ const fallbackOrchestratorResponse: OrchestratorQueryResponse = {
   toolsUsed: [],
   data: { message: "The orchestrator API is unavailable." },
   executiveSummary: "The AI Query Console could not reach the rule-based orchestrator.",
+  executiveNarrative: "The AI Query Console could not generate an executive narrative.",
   fallbackUsed: true,
   aiProvider: "none",
   aiMode: "rule_based",
   modelName: null,
   modelCallAttempted: false,
   modelCallSucceeded: false,
-  usedFallbackRouter: true
+  usedFallbackRouter: true,
+  narrativeProvider: "none",
+  narrativeModel: null,
+  narrativeGenerated: false,
+  narrativeFallbackUsed: false
 };
 
 const fallbackAuditLogs: AuditLogEntry[] = [];

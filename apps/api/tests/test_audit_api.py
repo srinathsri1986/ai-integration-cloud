@@ -46,6 +46,10 @@ def test_orchestrator_query_creates_audit_log() -> None:
     assert logs[0]["modelCallAttempted"] is False
     assert logs[0]["modelCallSucceeded"] is False
     assert logs[0]["usedFallbackRouter"] is False
+    assert logs[0]["narrativeProvider"] == "mock"
+    assert logs[0]["narrativeModel"] == "mock-cfo-intent-v0"
+    assert logs[0]["narrativeGenerated"] is True
+    assert logs[0]["narrativeFallbackUsed"] is False
 
 
 def test_audit_summary_aggregates_logs() -> None:
