@@ -88,3 +88,55 @@ export const netSuiteConnectionTestResponseSchema = z.object({
 export type NetSuiteConnectionTestResponse = z.infer<
   typeof netSuiteConnectionTestResponseSchema
 >;
+
+export const flowIds = [
+  "netsuite-cfo-dashboard-refresh",
+  "netsuite-project-risk-refresh",
+  "netsuite-subsidiary-drilldown-refresh"
+] as const;
+
+export const flowIdSchema = z.enum(flowIds);
+
+export type FlowId = z.infer<typeof flowIdSchema>;
+
+export const flowStatusSchema = z.enum(["active", "paused"]);
+export const flowRunStatusSchema = z.enum(["never_run", "succeeded", "failed"]);
+
+export type FlowStatus = z.infer<typeof flowStatusSchema>;
+export type FlowRunStatus = z.infer<typeof flowRunStatusSchema>;
+
+export const flowStepSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  approvedTool: z.string()
+});
+
+export type FlowStep = z.infer<typeof flowStepSchema>;
+
+export const flowDefinitionSchema = z.object({
+  flowId: flowIdSchema,
+  name: z.string(),
+  description: z.string(),
+  sourceConnector: z.literal("netsuite"),
+  targetModule: z.string(),
+  status: flowStatusSchema,
+  lastRunAt: z.string().nullable(),
+  lastRunStatus: flowRunStatusSchema,
+  steps: z.array(flowStepSchema)
+});
+
+export type FlowDefinition = z.infer<typeof flowDefinitionSchema>;
+
+export const flowRunResponseSchema = z.object({
+  requestId: z.string(),
+  flowId: flowIdSchema,
+  status: flowRunStatusSchema,
+  startedAt: z.string(),
+  completedAt: z.string(),
+  toolsUsed: z.array(z.string()),
+  message: z.string(),
+  data: z.unknown()
+});
+
+export type FlowRunResponse = z.infer<typeof flowRunResponseSchema>;

@@ -3,6 +3,9 @@ import type {
   AuditLogSummary,
   CfoDashboardSummary,
   ConnectorListItem,
+  FlowDefinition,
+  FlowId,
+  FlowRunResponse,
   NetSuiteConnectionTestResponse,
   NetSuiteConnectorConfig,
   NetSuiteConnectorConfigUpdate,
@@ -252,6 +255,92 @@ const fallbackConnectionTestResponse: NetSuiteConnectionTestResponse = {
   message: "The connector API is unavailable.",
   testedAt: new Date(0).toISOString(),
   mockMode: true
+};
+
+const fallbackFlows: FlowDefinition[] = [
+  {
+    flowId: "netsuite-cfo-dashboard-refresh",
+    name: "NetSuite CFO dashboard refresh",
+    description: "Refreshes executive CFO dashboard metrics from approved mock NetSuite data.",
+    sourceConnector: "netsuite",
+    targetModule: "cfo_dashboard",
+    status: "active",
+    lastRunAt: null,
+    lastRunStatus: "never_run",
+    steps: [
+      {
+        id: "summary",
+        name: "Load CFO summary",
+        description: "Fetch cash, receivables, revenue, and KPI summary.",
+        approvedTool: "cfo.dashboard_summary"
+      },
+      {
+        id: "budget",
+        name: "Load P/L vs budget",
+        description: "Fetch approved P/L vs budget mock data for 2026-Q1.",
+        approvedTool: "cfo.pl_vs_budget"
+      }
+    ]
+  },
+  {
+    flowId: "netsuite-project-risk-refresh",
+    name: "NetSuite project risk refresh",
+    description: "Refreshes running project exposure and overdue project risk views.",
+    sourceConnector: "netsuite",
+    targetModule: "project_risk",
+    status: "active",
+    lastRunAt: null,
+    lastRunStatus: "never_run",
+    steps: [
+      {
+        id: "running-projects",
+        name: "Load running projects",
+        description: "Fetch active project financial exposure from approved mock data.",
+        approvedTool: "cfo.running_projects"
+      },
+      {
+        id: "overdue-projects",
+        name: "Load overdue projects",
+        description: "Summarize overdue projects by account manager.",
+        approvedTool: "cfo.overdue_projects_by_account_manager"
+      }
+    ]
+  },
+  {
+    flowId: "netsuite-subsidiary-drilldown-refresh",
+    name: "NetSuite subsidiary drilldown refresh",
+    description: "Refreshes subsidiary operating performance using approved mock data.",
+    sourceConnector: "netsuite",
+    targetModule: "subsidiary_drilldown",
+    status: "active",
+    lastRunAt: null,
+    lastRunStatus: "never_run",
+    steps: [
+      {
+        id: "subsidiary",
+        name: "Load subsidiary drilldown",
+        description: "Fetch EMEA operating performance for 2026-Q1.",
+        approvedTool: "cfo.subsidiary_drilldown"
+      },
+      {
+        id: "orchestrator-summary",
+        name: "Route CFO summary prompt",
+        description: "Route a deterministic supported CFO summary question.",
+        approvedTool: "orchestrator.query"
+      }
+    ]
+  }
+];
+
+const fallbackFlowRunResponse: FlowRunResponse = {
+  requestId: "unavailable",
+  flowId: "netsuite-cfo-dashboard-refresh",
+  status: "failed",
+  startedAt: new Date(0).toISOString(),
+  completedAt: new Date(0).toISOString(),
+  toolsUsed: [],
+  message: "The flow API is unavailable.",
+  data: {}
 };
 
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
@@ -509,6 +598,38 @@ export async function updateNetSuiteConnectorConfig(
   } catch (error) {
     return {
       data: fallbackNetSuiteConnectorConfig,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function getFlows(): Promise<ApiResult<FlowDefinition[]>> {
+  return getApiResult("/api/v1/flows", fallbackFlows, (body) => body);
+}
+
+export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}/run`, {
+      cache: "no-store",
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: { ...fallbackFlowRunResponse, flowId },
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ...fallbackFlowRunResponse, flowId },
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

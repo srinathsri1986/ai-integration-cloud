@@ -41,6 +41,33 @@ class AuditService:
             )
         )
 
+    def record_flow_action(
+        self,
+        request_id: str,
+        flow_id: str,
+        endpoint_called: str,
+        tools_used: list[str],
+        success: bool,
+        latency_ms: int,
+    ) -> None:
+        self.record(
+            AuditLogEntry(
+                timestamp=datetime.now(UTC).isoformat(),
+                requestId=request_id,
+                user="local-dev-user",
+                channel="web",
+                question=f"Flow run: {flow_id}",
+                detectedIntent="FLOW_RUN",
+                confidence=1,
+                toolsUsed=tools_used,
+                endpointCalled=endpoint_called,
+                fallbackUsed=False,
+                success=success,
+                failureReason=None if success else "FlowRunFailed",
+                latencyMs=latency_ms,
+            )
+        )
+
     def list_logs(self) -> list[AuditLogEntry]:
         with self._lock:
             return list(reversed(self._logs))

@@ -1,0 +1,101 @@
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.services.audit_service import audit_service
+from app.services.flow_service import flow_service
+
+
+client = TestClient(app)
+
+
+def setup_function() -> None:
+    audit_service.clear_for_tests()
+    flow_service.clear_for_tests()
+
+
+def test_list_flows_returns_mock_catalog() -> None:
+    response = client.get("/api/v1/flows")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [flow["flowId"] for flow in body] == [
+        "netsuite-cfo-dashboard-refresh",
+        "netsuite-project-risk-refresh",
+        "netsuite-subsidiary-drilldown-refresh",
+    ]
+    assert all(flow["sourceConnector"] == "netsuite" for flow in body)
+    assert all(flow["status"] == "active" for flow in body)
+    assert all(flow["lastRunAt"] is None for flow in body)
+    assert all(flow["lastRunStatus"] == "never_run" for flow in body)
+
+
+def test_get_flow_returns_steps_without_raw_query_surface() -> None:
+    response = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert body["steps"][0]["approvedTool"] == "cfo.dashboard_summary"
+    assert "sql" not in body
+    assert "suiteql" not in body
+    assert "credential" not in body
+
+
+def test_unknown_flow_returns_422_before_execution() -> None:
+    response = client.get("/api/v1/flows/not-approved")
+
+    assert response.status_code == 422
+
+
+def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
+    response = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requestId"]
+    assert body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert body["status"] == "succeeded"
+    assert body["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
+    assert body["data"]["dashboardSummary"]["mode"] == "mock"
+
+    flow = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh").json()
+    assert flow["lastRunAt"] == body["completedAt"]
+    assert flow["lastRunStatus"] == "succeeded"
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert len(logs) == 1
+    assert logs[0]["requestId"] == body["requestId"]
+    assert logs[0]["detectedIntent"] == "FLOW_RUN"
+    assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
+    assert logs[0]["endpointCalled"] == "/api/v1/flows/netsuite-cfo-dashboard-refresh/run"
+    assert logs[0]["success"] is True
+    assert "password" not in logs[0]
+    assert "token" not in logs[0]
+    assert "secret" not in logs[0]
+
+
+def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
+    response = client.post("/api/v1/flows/netsuite-project-risk-refresh/run")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["toolsUsed"] == [
+        "cfo.running_projects",
+        "cfo.overdue_projects_by_account_manager",
+    ]
+    assert body["data"]["runningProjects"]["source"] == "mock"
+    assert body["data"]["overdueProjects"]["source"] == "mock"
+
+
+def test_run_subsidiary_flow_uses_approved_services_only() -> None:
+    response = client.post("/api/v1/flows/netsuite-subsidiary-drilldown-refresh/run")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["toolsUsed"] == ["cfo.subsidiary_drilldown", "orchestrator.query"]
+    assert body["data"]["subsidiaryDrilldown"]["source"] == "mock"
+    assert body["data"]["orchestratorSummary"]["detected_intent"] == "SUBSIDIARY_DRILLDOWN"
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["detectedIntent"] == "FLOW_RUN"
+    assert logs[1]["detectedIntent"] == "SUBSIDIARY_DRILLDOWN"

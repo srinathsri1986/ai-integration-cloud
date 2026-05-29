@@ -17,9 +17,11 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { AiQueryConsole } from "@/components/ai-query-console";
 import { ConnectorStudio } from "@/components/connector-studio";
+import { FlowCatalog } from "@/components/flow-catalog";
 import {
   type ApiResult,
   getDashboardSummary,
+  getFlows,
   getNetSuiteConnectorConfig,
   getOverdueProjects,
   getPlVsBudget,
@@ -94,7 +96,8 @@ export default async function Home() {
     subsidiaryResult,
     projectsResult,
     overdueResult,
-    connectorResult
+    connectorResult,
+    flowsResult
   ] = await Promise.all([
     getDashboardSummary(),
     getPlVsBudget(),
@@ -102,7 +105,8 @@ export default async function Home() {
     getSubsidiaryDrilldown(),
     getRunningProjects(),
     getOverdueProjects(),
-    getNetSuiteConnectorConfig()
+    getNetSuiteConnectorConfig(),
+    getFlows()
   ]);
   const summary = summaryResult.data;
   const plVsBudget = plResult.data;
@@ -365,6 +369,8 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      <FlowCatalog initialFlows={flowsResult} />
 
       <ConnectorStudio initialConfig={connectorResult} />
 

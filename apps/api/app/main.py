@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import audit, cfo, connectors, health, orchestrator
+from app.api import audit, cfo, connectors, flows, health, orchestrator
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -27,3 +27,4 @@ app.include_router(cfo.router, prefix="/api/v1")
 app.include_router(orchestrator.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(connectors.router, prefix="/api/v1")
+app.include_router(flows.router, prefix="/api/v1")

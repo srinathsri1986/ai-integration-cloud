@@ -143,6 +143,26 @@ Connector configuration is in memory only and resets when the API process restar
 
 The web dashboard includes a Connector Studio section with a NetSuite connector card, mock mode status, placeholder config form, and a mock test connection button. Connector test actions are written to the in-memory audit log.
 
+## Flow Catalog v0.8
+
+The backend exposes a mock integration flow catalog:
+
+```bash
+curl "http://localhost:8000/api/v1/flows"
+curl "http://localhost:8000/api/v1/flows/netsuite-cfo-dashboard-refresh"
+curl -X POST "http://localhost:8000/api/v1/flows/netsuite-cfo-dashboard-refresh/run"
+```
+
+Included mock flows:
+
+- `netsuite-cfo-dashboard-refresh`
+- `netsuite-project-risk-refresh`
+- `netsuite-subsidiary-drilldown-refresh`
+
+Flow definitions and last run state are stored in memory only and reset when the API process restarts. Mock flow runs generate a `requestId`, update last run metadata, call existing approved CFO/orchestrator services only, and write an audit log event. V0.8 does not add real credentials, SQL, SuiteQL, or raw NetSuite access.
+
+The web dashboard includes a Flow Catalog section with flow cards, step views, run buttons, status, and last run result messaging.
+
 ## Tests
 
 Backend:
