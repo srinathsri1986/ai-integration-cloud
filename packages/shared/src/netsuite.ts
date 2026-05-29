@@ -151,3 +151,29 @@ export const flowRunResponseSchema = z.object({
 });
 
 export type FlowRunResponse = z.infer<typeof flowRunResponseSchema>;
+
+export const userRoleSchema = z.enum([
+  "CFO",
+  "Finance Controller",
+  "Integration Admin",
+  "Viewer",
+  "Developer"
+]);
+
+export type UserRole = z.infer<typeof userRoleSchema>;
+
+export const authUserSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  role: userRoleSchema
+});
+
+export type AuthUser = z.infer<typeof authUserSchema>;
+
+export const loginResponseSchema = z.object({
+  accessToken: z.string(),
+  tokenType: z.literal("bearer"),
+  user: authUserSchema
+});
+
+export type LoginResponse = z.infer<typeof loginResponseSchema>;

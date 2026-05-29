@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditLogPanel } from "@/components/audit-log-panel";
+import { AccessControlPanel } from "@/components/access-control-panel";
 import { AiQueryConsole } from "@/components/ai-query-console";
 import { ConnectorStudio } from "@/components/connector-studio";
 import { FlowCatalog } from "@/components/flow-catalog";
@@ -130,6 +131,7 @@ export default async function Home() {
         </div>
       </header>
 
+      <AccessControlPanel />
       <AiQueryConsole />
 
       <section className="mx-auto grid max-w-7xl gap-5 px-6 py-8 lg:grid-cols-3">

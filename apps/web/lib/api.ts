@@ -1,6 +1,7 @@
 import type {
   AuditLogEntry,
   AuditLogSummary,
+  LoginResponse,
   CfoDashboardSummary,
   ConnectorListItem,
   FlowDefinition,
@@ -19,6 +20,7 @@ import type {
 } from "@netsuite-cfo/shared";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const LOCAL_AUTH_STORAGE_KEY = "netsuite-cfo-placeholder-token";
 
 export type ApiResult<T> = {
   data: T;
@@ -491,6 +493,15 @@ async function getApiResult<T>(
   }
 }
 
+function authHeaders(): HeadersInit {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const token = window.localStorage.getItem(LOCAL_AUTH_STORAGE_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function getDashboardSummary(): Promise<ApiResult<CfoDashboardSummary>> {
   return getApiResult(
     "/api/v1/cfo/dashboard-summary",
@@ -565,6 +576,7 @@ export async function testNetSuiteConnection(): Promise<
   try {
     const response = await fetch(`${API_BASE_URL}/api/v1/connectors/netsuite/test`, {
       cache: "no-store",
+      headers: authHeaders(),
       method: "POST"
     });
 
@@ -597,6 +609,7 @@ export async function updateNetSuiteConnectorConfig(
       body: JSON.stringify({ ...request, mockMode: true, authMode: "placeholder" }),
       cache: "no-store",
       headers: {
+        ...authHeaders(),
         "Content-Type": "application/json"
       },
       method: "PUT"
@@ -631,6 +644,7 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
   try {
     const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}/run`, {
       cache: "no-store",
+      headers: authHeaders(),
       method: "POST"
     });
 
@@ -663,6 +677,7 @@ export async function submitOrchestratorQuery(
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
+        ...authHeaders(),
         "Content-Type": "application/json"
       },
       method: "POST"
@@ -682,6 +697,51 @@ export async function submitOrchestratorQuery(
   } catch (error) {
     return {
       data: fallbackOrchestratorResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function loginWithRole(role: LoginResponse["user"]["role"]): Promise<ClientApiResult<LoginResponse>> {
+  const fallback: LoginResponse = {
+    accessToken: "",
+    tokenType: "bearer",
+    user: {
+      email: "local-dev@example.com",
+      role,
+      userId: "local-dev-user"
+    }
+  };
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      body: JSON.stringify({ email: "local-dev@example.com", role }),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallback,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, body.accessToken);
+    }
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallback,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

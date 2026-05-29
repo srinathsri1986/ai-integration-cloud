@@ -84,6 +84,26 @@ curl "http://localhost:8000/api/v1/flows/runs?flow_id=netsuite-project-risk-refr
 
 PostgreSQL uses JSONB for flexible metadata. Tests use SQLite through `tests/conftest.py` to keep local test runs isolated from Docker.
 
+## Placeholder auth and RBAC
+
+Local placeholder JWT auth is available for MVP role testing:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","role":"Integration Admin"}'
+```
+
+Protected endpoint groups use role permissions:
+
+- `connector:admin` for connector config and test actions.
+- `audit:read` for audit logs and summaries.
+- `flow:run` for flow execution.
+- `flow:read` for flow catalog/history.
+- `cfo:read` and `orchestrator:query` for finance workflows.
+
+This is placeholder local auth only. Production SSO/OIDC/SAML and tenant-aware policy enforcement are future work.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

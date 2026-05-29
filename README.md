@@ -383,6 +383,35 @@ curl "http://localhost:8000/api/v1/flows/runs?flow_id=netsuite-cfo-dashboard-ref
 
 The service keeps queryable operational fields as indexed columns and stores full redacted event metadata as JSON/JSONB for future governance views. This keeps V1.5 simple for the MVP while leaving room for monthly partitioning, retention policies, async write buffering, and analytics stores later.
 
+## Placeholder Auth and RBAC v1.6
+
+The API includes local placeholder JWT authentication for MVP governance testing. This is not production SSO; it is a local role boundary for protected connector, audit, flow, and orchestrator actions.
+
+Create a local placeholder token:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","role":"Integration Admin"}'
+```
+
+Supported roles:
+
+- `CFO`
+- `Finance Controller`
+- `Integration Admin`
+- `Viewer`
+- `Developer`
+
+Role boundaries:
+
+- CFO and Finance Controller can read CFO data and use the AI Query Console.
+- Integration Admin and Developer can manage connectors and run flows.
+- Viewer can read audit/flow/CFO views but cannot run flows or test connectors.
+- Audit logs are readable by Integration Admin, Developer, and Viewer.
+
+The web app includes a local role selector that stores the placeholder token in browser local storage for client-side actions. Missing auth defaults to a local Integration Admin only for this local MVP workflow.
+
 ## Tests
 
 Backend:

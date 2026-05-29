@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.auth import require_permissions
 from app.models.flows import FlowDefinition, FlowId, FlowRunResponse
 from app.services.flow_service import flow_service
 
@@ -7,7 +8,7 @@ router = APIRouter(prefix="/flows", tags=["flows"])
 
 
 @router.get("", response_model=list[FlowDefinition])
-def list_flows() -> list[FlowDefinition]:
+def list_flows(user=Depends(require_permissions("flow:read"))) -> list[FlowDefinition]:
     return flow_service.list_flows()
 
 
@@ -17,6 +18,7 @@ def list_flow_runs(
     run_status: str | None = None,
     limit: int = 100,
     offset: int = 0,
+    user=Depends(require_permissions("flow:read")),
 ) -> list[FlowRunResponse]:
     return flow_service.list_runs(
         flow_id=flow_id,
@@ -27,7 +29,7 @@ def list_flow_runs(
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)
-def get_flow(flow_id: FlowId) -> FlowDefinition:
+def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) -> FlowDefinition:
     try:
         return flow_service.get_flow(flow_id)
     except KeyError as exc:
@@ -38,7 +40,7 @@ def get_flow(flow_id: FlowId) -> FlowDefinition:
 
 
 @router.post("/{flow_id}/run", response_model=FlowRunResponse)
-def run_flow(flow_id: FlowId) -> FlowRunResponse:
+def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> FlowRunResponse:
     try:
         return flow_service.run_flow(flow_id)
     except KeyError as exc:

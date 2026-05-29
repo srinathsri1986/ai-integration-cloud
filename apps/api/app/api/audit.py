@@ -1,7 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from app.core.auth import require_permissions
 from app.models.audit import AuditLogEntry, AuditLogSummary
 from app.services.audit_service import audit_service
 
@@ -16,6 +17,7 @@ def logs(
     success: bool | None = None,
     limit: int = 100,
     offset: int = 0,
+    user=Depends(require_permissions("audit:read")),
 ) -> list[AuditLogEntry]:
     return audit_service.list_logs(
         request_id=request_id,
@@ -28,5 +30,5 @@ def logs(
 
 
 @router.get("/summary", response_model=AuditLogSummary)
-def summary() -> AuditLogSummary:
+def summary(user=Depends(require_permissions("audit:read"))) -> AuditLogSummary:
     return audit_service.summary()
