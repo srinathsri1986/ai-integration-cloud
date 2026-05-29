@@ -215,7 +215,7 @@ class OllamaProvider:
             ) from exc
 
         try:
-            parsed = json.loads(body["response"])
+            parsed = json.loads(_strip_markdown_json_fence(body["response"]))
             intent, confidence = _validated_intent_payload(parsed)
         except Exception as exc:
             raise LLMProviderError(
@@ -243,6 +243,20 @@ def _extract_output_text(body: dict) -> str:
                 return content["text"]
 
     raise ValueError("No structured output text found.")
+
+
+def _strip_markdown_json_fence(text: str) -> str:
+    normalized = text.strip()
+
+    if normalized.startswith("```"):
+        lines = normalized.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        normalized = "\n".join(lines).strip()
+
+    return normalized
 
 
 def _validated_intent_payload(parsed: dict) -> tuple[OrchestratorIntent, float]:

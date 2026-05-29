@@ -33,11 +33,17 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://cfo_app:local_dev_password@postgres:5432/cfo_orchestrator}
       ENVIRONMENT: ${ENVIRONMENT:-local}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       NETSUITE_MODE: mock
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:7b}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       PLACEHOLDER_JWT_SECRET: ${PLACEHOLDER_JWT_SECRET:-local-dev-only}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:

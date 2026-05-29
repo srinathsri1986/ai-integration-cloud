@@ -172,8 +172,8 @@ AI_PROVIDER=mock
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
 OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=qwen3:30b
-OLLAMA_TIMEOUT_SECONDS=20
+OLLAMA_MODEL=qwen2.5-coder:7b
+OLLAMA_TIMEOUT_SECONDS=30
 ```
 
 Supported provider modes:
@@ -243,6 +243,39 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 ```
 
 The Ollama provider is limited to structured intent extraction. It does not receive credentials and must not generate SQL, SuiteQL, raw NetSuite queries, or tool calls. If Ollama is unavailable, times out, returns invalid JSON, or returns an unsupported intent, the orchestrator falls back to the rule-based router and records that fallback in audit metadata.
+
+### Docker Compose AI Provider Wiring
+
+The API container receives AI provider settings through `infra/docker-compose.yml`.
+
+Run with the default mock provider:
+
+```bash
+docker compose -f infra/docker-compose.yml up --build
+```
+
+Run with local Ollama from Docker:
+
+```bash
+export AI_PROVIDER=ollama
+export OLLAMA_BASE_URL=http://host.docker.internal:11434
+export OLLAMA_MODEL=qwen2.5-coder:7b
+export OLLAMA_TIMEOUT_SECONDS=30
+docker compose -f infra/docker-compose.yml up --build
+```
+
+Docker uses `host.docker.internal` because Ollama runs on the Mac host while FastAPI runs inside the API container. For non-Docker FastAPI, use `OLLAMA_BASE_URL=http://localhost:11434`.
+
+Verify provider behavior through the audit log:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/orchestrator/query" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Show me P/L vs budget for Q1","periodRange":"2026-Q1","subsidiary":"NA"}'
+curl "http://localhost:8000/api/v1/audit/logs"
+```
+
+Recent audit entries should show `aiProvider` as `ollama`, `aiMode` as `ollama`, `modelName` as `qwen2.5-coder:7b`, and `modelCallAttempted` as `true` when Ollama is reachable. If Ollama fails or returns invalid output, `usedFallbackRouter` becomes `true`.
 
 ## Tests
 

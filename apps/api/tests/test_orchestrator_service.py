@@ -218,7 +218,7 @@ def test_openai_request_failure_falls_back_to_rule_based_router(monkeypatch) -> 
     assert response.used_fallback_router is True
 
 
-def test_ollama_provider_validates_mocked_structured_response(monkeypatch) -> None:
+def test_ollama_provider_validates_raw_json_response(monkeypatch) -> None:
     def fake_urlopen(request, timeout):
         return FakeHTTPResponse(
             {
@@ -247,6 +247,45 @@ def test_ollama_provider_validates_mocked_structured_response(monkeypatch) -> No
     assert response.ai_provider == "ollama"
     assert response.ai_mode == "ollama"
     assert response.model_name == "qwen3:30b"
+    assert response.model_call_attempted is True
+    assert response.model_call_succeeded is True
+    assert response.used_fallback_router is False
+
+
+def test_ollama_provider_validates_fenced_json_response(monkeypatch) -> None:
+    def fake_urlopen(request, timeout):
+        return FakeHTTPResponse(
+            {
+                "response": (
+                    "```json\n"
+                    "{\n"
+                    '  "intent": "PL_VS_BUDGET",\n'
+                    '  "confidence": 0.95\n'
+                    "}\n"
+                    "```"
+                )
+            }
+        )
+
+    monkeypatch.setattr("app.services.llm_provider.urllib_request.urlopen", fake_urlopen)
+    provider = OllamaProvider(
+        base_url="http://localhost:11434",
+        model_name="qwen2.5-coder:7b",
+        timeout_seconds=20,
+    )
+    service = OrchestratorService(
+        ai_provider="ollama",
+        model_name="qwen2.5-coder:7b",
+        llm_provider=provider,
+    )
+
+    response = service.query(OrchestratorQueryRequest(question="Show me P/L vs budget for Q1"))
+
+    assert response.detected_intent == OrchestratorIntent.PL_VS_BUDGET
+    assert response.tools_used == ["cfo.pl_vs_budget"]
+    assert response.ai_provider == "ollama"
+    assert response.ai_mode == "ollama"
+    assert response.model_name == "qwen2.5-coder:7b"
     assert response.model_call_attempted is True
     assert response.model_call_succeeded is True
     assert response.used_fallback_router is False
