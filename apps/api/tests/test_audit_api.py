@@ -40,6 +40,10 @@ def test_orchestrator_query_creates_audit_log() -> None:
     assert logs[0]["success"] is True
     assert logs[0]["failureReason"] is None
     assert logs[0]["latencyMs"] >= 0
+    assert logs[0]["aiProvider"] == "none"
+    assert logs[0]["aiMode"] == "rule_based"
+    assert logs[0]["modelName"] is None
+    assert logs[0]["usedFallbackRouter"] is False
 
 
 def test_audit_summary_aggregates_logs() -> None:

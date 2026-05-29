@@ -36,3 +36,7 @@ class OrchestratorQueryResponse(BaseModel):
     data: Any
     executive_summary: str = Field(alias="executiveSummary")
     fallback_used: bool = Field(alias="fallbackUsed")
+    ai_provider: str = Field(alias="aiProvider")
+    ai_mode: str = Field(alias="aiMode")
+    model_name: str | None = Field(default=None, alias="modelName")
+    used_fallback_router: bool = Field(alias="usedFallbackRouter")

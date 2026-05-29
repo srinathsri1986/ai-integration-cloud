@@ -38,6 +38,10 @@ class AuditService:
                 success=success,
                 failureReason=None if success else "ConnectorTestFailed",
                 latencyMs=latency_ms,
+                aiProvider="none",
+                aiMode="disabled",
+                modelName=None,
+                usedFallbackRouter=False,
             )
         )
 
@@ -65,6 +69,10 @@ class AuditService:
                 success=success,
                 failureReason=None if success else "FlowRunFailed",
                 latencyMs=latency_ms,
+                aiProvider="none",
+                aiMode="disabled",
+                modelName=None,
+                usedFallbackRouter=False,
             )
         )
 

@@ -15,6 +15,10 @@ class AuditLogEntry(BaseModel):
     success: bool
     failure_reason: str | None = Field(default=None, alias="failureReason")
     latency_ms: int = Field(alias="latencyMs")
+    ai_provider: str = Field(default="none", alias="aiProvider")
+    ai_mode: str = Field(default="disabled", alias="aiMode")
+    model_name: str | None = Field(default=None, alias="modelName")
+    used_fallback_router: bool = Field(default=False, alias="usedFallbackRouter")
 
 
 class AuditLogSummary(BaseModel):

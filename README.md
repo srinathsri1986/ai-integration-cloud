@@ -163,6 +163,24 @@ Flow definitions and last run state are stored in memory only and reset when the
 
 The web dashboard includes a Flow Catalog section with flow cards, step views, run buttons, status, and last run result messaging.
 
+## LLM Provider Abstraction v0.9
+
+The orchestrator includes a safe AI intent layer with a provider abstraction. It does not call external LLM APIs in V0.9 and does not require or store API keys.
+
+```bash
+AI_PROVIDER_MODE=disabled
+AI_MODEL_NAME=mock-cfo-intent-v0
+```
+
+Supported provider modes:
+
+- `disabled`: default; uses the deterministic rule-based router.
+- `mock`: uses the local `MockLLMProvider` for deterministic mock intent extraction.
+- `openai_placeholder`: placeholder only; no external call, falls back to the rule-based router.
+- `anthropic_placeholder`: placeholder only; no external call, falls back to the rule-based router.
+
+Orchestrator responses and audit logs include `aiProvider`, `aiMode`, `modelName`, and `usedFallbackRouter` so callers can see whether intent routing was rule-based, mock LLM-driven, or safely disabled. Approved tool routing is unchanged, and the system still does not expose SQL, SuiteQL, credentials, or raw NetSuite access.
+
 ## Tests
 
 Backend:

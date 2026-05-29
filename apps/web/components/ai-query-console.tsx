@@ -12,6 +12,18 @@ import { submitOrchestratorQuery } from "@/lib/api";
 
 const exampleQuestion = "Show me P/L vs budget for Q1";
 
+function aiModeLabel(result: OrchestratorQueryResponse) {
+  if (result.aiMode === "mock_llm") {
+    return "Mock LLM";
+  }
+
+  if (result.aiMode === "disabled") {
+    return "Disabled";
+  }
+
+  return "Rule-based";
+}
+
 export function AiQueryConsole() {
   const [error, setError] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
@@ -74,7 +86,16 @@ export function AiQueryConsole() {
                 <Bot className="h-4 w-4 text-primary" />
                 <p className="text-sm font-medium">Orchestrator result</p>
               </div>
-              {result ? <Badge>{result.detectedIntent}</Badge> : <Badge>Waiting</Badge>}
+              <div className="flex flex-wrap justify-end gap-2">
+                {result ? (
+                  <>
+                    <Badge>{aiModeLabel(result)}</Badge>
+                    <Badge>{result.detectedIntent}</Badge>
+                  </>
+                ) : (
+                  <Badge>Waiting</Badge>
+                )}
+              </div>
             </div>
             {result ? (
               <div className="mt-4 space-y-3 text-sm">
@@ -87,6 +108,16 @@ export function AiQueryConsole() {
                   <div>
                     <p className="text-muted-foreground">Fallback</p>
                     <p className="font-medium">{result.fallbackUsed ? "Yes" : "No"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-muted-foreground">AI provider</p>
+                    <p className="font-medium">{result.aiProvider}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Router fallback</p>
+                    <p className="font-medium">{result.usedFallbackRouter ? "Yes" : "No"}</p>
                   </div>
                 </div>
                 <div>

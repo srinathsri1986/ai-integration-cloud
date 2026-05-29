@@ -63,6 +63,7 @@ export async function AuditLogPanel() {
                   <div className="flex flex-wrap gap-2">
                     <Badge>{log.detectedIntent}</Badge>
                     <Badge>{log.success ? "success" : "failure"}</Badge>
+                    <Badge>{log.aiMode}</Badge>
                     {log.fallbackUsed ? <Badge>fallback</Badge> : null}
                   </div>
                   <p className="mt-3 text-sm font-medium">{log.question}</p>

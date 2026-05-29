@@ -3,7 +3,9 @@ from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
 
+from app.core.config import get_settings
 from app.models.audit import AuditLogEntry
+from app.models.llm import AIProviderMode, AIRoutingMode
 from app.models.orchestrator import (
     OrchestratorIntent,
     OrchestratorQueryRequest,
@@ -11,17 +13,37 @@ from app.models.orchestrator import (
 )
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
+from app.services.llm_provider import LLMProvider, make_llm_provider
 
 
 @dataclass(frozen=True)
 class IntentMatch:
     confidence: float
     intent: OrchestratorIntent
+    ai_provider: str = "rule_based"
+    ai_mode: AIRoutingMode = "rule_based"
+    model_name: str | None = None
+    used_fallback_router: bool = False
 
 
 class OrchestratorService:
-    def __init__(self, cfo_service: CfoService | None = None) -> None:
+    def __init__(
+        self,
+        cfo_service: CfoService | None = None,
+        ai_provider_mode: AIProviderMode | None = None,
+        model_name: str | None = None,
+        llm_provider: LLMProvider | None = None,
+    ) -> None:
+        settings = get_settings()
         self.cfo_service = cfo_service or CfoService()
+        self.ai_provider_mode: AIProviderMode = (
+            ai_provider_mode or settings.ai_provider_mode  # type: ignore[assignment]
+        )
+        self.model_name = model_name or settings.ai_model_name
+        self.llm_provider = llm_provider or make_llm_provider(
+            mode=self.ai_provider_mode,
+            model_name=self.model_name,
+        )
 
     def route_intent(self, question: str) -> IntentMatch:
         normalized = question.lower()
@@ -46,10 +68,57 @@ class OrchestratorService:
 
         return IntentMatch(0.2, OrchestratorIntent.UNKNOWN)
 
+    def extract_intent(self, question: str) -> IntentMatch:
+        if self.ai_provider_mode == "disabled":
+            rule_match = self.route_intent(question)
+            return IntentMatch(
+                confidence=rule_match.confidence,
+                intent=rule_match.intent,
+                ai_provider="none",
+                ai_mode="rule_based",
+                model_name=None,
+                used_fallback_router=False,
+            )
+
+        if self.ai_provider_mode in {"openai_placeholder", "anthropic_placeholder"}:
+            rule_match = self.route_intent(question)
+            return IntentMatch(
+                confidence=rule_match.confidence,
+                intent=rule_match.intent,
+                ai_provider=self.ai_provider_mode.replace("_placeholder", ""),
+                ai_mode="disabled",
+                model_name=self.model_name,
+                used_fallback_router=True,
+            )
+
+        try:
+            if self.llm_provider is None:
+                raise RuntimeError("No LLM provider configured.")
+
+            provider_match = self.llm_provider.extract_intent(question)
+            return IntentMatch(
+                confidence=provider_match.confidence,
+                intent=provider_match.intent,
+                ai_provider=provider_match.provider_name,
+                ai_mode="mock_llm",
+                model_name=provider_match.model_name,
+                used_fallback_router=False,
+            )
+        except Exception:
+            rule_match = self.route_intent(question)
+            return IntentMatch(
+                confidence=rule_match.confidence,
+                intent=rule_match.intent,
+                ai_provider="mock",
+                ai_mode="mock_llm",
+                model_name=self.model_name,
+                used_fallback_router=True,
+            )
+
     def query(self, request: OrchestratorQueryRequest) -> OrchestratorQueryResponse:
         request_id = str(uuid4())
         started = perf_counter()
-        match = self.route_intent(request.question)
+        match = self.extract_intent(request.question)
         period = request.period_range or "2026-Q1"
         subsidiary = request.subsidiary or "NA"
         endpoint_called = "/api/v1/orchestrator/query"
@@ -115,6 +184,10 @@ class OrchestratorService:
                 data=data,
                 executiveSummary=summary,
                 fallbackUsed=False,
+                aiProvider=match.ai_provider,
+                aiMode=match.ai_mode,
+                modelName=match.model_name,
+                usedFallbackRouter=match.used_fallback_router,
             )
         except Exception as exc:
             failure_reason = exc.__class__.__name__
@@ -136,5 +209,9 @@ class OrchestratorService:
                     success=success,
                     failureReason=failure_reason,
                     latencyMs=latency_ms,
+                    aiProvider=match.ai_provider,
+                    aiMode=match.ai_mode,
+                    modelName=match.model_name,
+                    usedFallbackRouter=match.used_fallback_router,
                 )
             )

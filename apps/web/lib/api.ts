@@ -215,7 +215,11 @@ const fallbackOrchestratorResponse: OrchestratorQueryResponse = {
   toolsUsed: [],
   data: { message: "The orchestrator API is unavailable." },
   executiveSummary: "The AI Query Console could not reach the rule-based orchestrator.",
-  fallbackUsed: true
+  fallbackUsed: true,
+  aiProvider: "none",
+  aiMode: "rule_based",
+  modelName: null,
+  usedFallbackRouter: true
 };
 
 const fallbackAuditLogs: AuditLogEntry[] = [];

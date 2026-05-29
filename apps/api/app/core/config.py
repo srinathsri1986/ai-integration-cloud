@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:3000"
     placeholder_jwt_secret: str = "local-dev-only"
     netsuite_mode: str = "mock"
+    ai_provider_mode: str = "disabled"
+    ai_model_name: str = "mock-cfo-intent-v0"
 
     @property
     def cors_origins(self) -> list[str]:
