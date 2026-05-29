@@ -42,7 +42,7 @@ def test_orchestrator_query_creates_audit_log() -> None:
     assert logs[0]["latencyMs"] >= 0
     assert logs[0]["aiProvider"] == "mock"
     assert logs[0]["aiMode"] == "mock_llm"
-    assert logs[0]["modelName"] == "gpt-4.1-mini"
+    assert logs[0]["modelName"] == "mock-cfo-intent-v0"
     assert logs[0]["modelCallAttempted"] is False
     assert logs[0]["modelCallSucceeded"] is False
     assert logs[0]["usedFallbackRouter"] is False

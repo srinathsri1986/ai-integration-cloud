@@ -164,7 +164,7 @@ export const orchestratorQueryResponseSchema = z.object({
   executiveSummary: z.string(),
   fallbackUsed: z.boolean(),
   aiProvider: z.string(),
-  aiMode: z.enum(["rule_based", "mock_llm", "openai", "disabled"]),
+  aiMode: z.enum(["rule_based", "mock_llm", "openai", "ollama", "disabled"]),
   modelName: z.string().nullable(),
   modelCallAttempted: z.boolean(),
   modelCallSucceeded: z.boolean(),

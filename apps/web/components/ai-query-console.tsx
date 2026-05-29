@@ -21,6 +21,10 @@ function aiModeLabel(result: OrchestratorQueryResponse) {
     return "OpenAI";
   }
 
+  if (result.aiMode === "ollama") {
+    return "Ollama";
+  }
+
   if (result.aiMode === "disabled") {
     return "Disabled";
   }

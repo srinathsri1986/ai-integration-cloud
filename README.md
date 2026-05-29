@@ -165,12 +165,15 @@ The web dashboard includes a Flow Catalog section with flow cards, step views, r
 
 ## LLM Provider Abstraction v1.0
 
-The orchestrator includes a safe AI intent layer with a provider abstraction. Local build and tests do not require real API keys.
+The orchestrator includes a safe AI intent layer with a provider abstraction. Local build and tests do not require real API keys or local model services.
 
 ```bash
 AI_PROVIDER=mock
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4.1-mini
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3:30b
+OLLAMA_TIMEOUT_SECONDS=20
 ```
 
 Supported provider modes:
@@ -178,10 +181,68 @@ Supported provider modes:
 - `disabled`: uses the deterministic rule-based router.
 - `mock`: default; uses the local `MockLLMProvider` for deterministic mock intent extraction.
 - `openai`: calls OpenAI only when `OPENAI_API_KEY` is configured.
+- `ollama`: calls a local Ollama server only when reachable.
 
 The real OpenAI provider is limited to structured intent extraction. The model can only return an intent and confidence score, and its output is validated against the existing supported intent schema before any approved CFO service is called. The model does not call tools and must not generate SQL, SuiteQL, or raw NetSuite queries.
 
 If the OpenAI call fails, no key is present, or the model output is invalid, the orchestrator falls back to the rule-based router. Orchestrator responses and audit logs include `aiProvider`, `aiMode`, `modelName`, `modelCallAttempted`, `modelCallSucceeded`, and `usedFallbackRouter`.
+
+## Local Ollama Provider v1.1
+
+Hardware check from the local Mac used for this setup:
+
+- MacBook Pro with Apple M3 Pro
+- 11 CPU cores
+- 18 GB memory
+- About 163 GiB free disk space
+
+Model guidance:
+
+- `qwen3:30b`: recommended primary local quality model for this hardware class, though it may be slow because 18 GB RAM is tight.
+- `deepseek-r1:32b`: similar memory pressure to `qwen3:30b`; useful as an alternate reasoning model if `qwen3:30b` is not suitable.
+- `llama3.1:70b`: not recommended on 18 GB RAM.
+- `qwen2.5-coder:7b`: recommended smaller fallback for fast structured JSON extraction.
+- `llama3.1:8b`: practical fallback if 30B/32B models are too slow.
+
+Install and run Ollama on macOS:
+
+```bash
+brew install --cask ollama
+open -a Ollama
+curl http://localhost:11434/api/tags
+```
+
+Pull selected models:
+
+```bash
+ollama pull qwen3:30b
+ollama pull qwen2.5-coder:7b
+```
+
+Validate JSON behavior:
+
+```bash
+ollama list
+curl http://localhost:11434/api/generate -d '{
+  "model": "qwen3:30b",
+  "prompt": "Return only JSON: {\"intent\":\"PL_VS_BUDGET\",\"confidence\":0.95}",
+  "stream": false
+}'
+```
+
+For FastAPI running directly on the Mac, use:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
+For FastAPI running in Docker Compose while Ollama runs on the Mac host, use:
+
+```bash
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+```
+
+The Ollama provider is limited to structured intent extraction. It does not receive credentials and must not generate SQL, SuiteQL, raw NetSuite queries, or tool calls. If Ollama is unavailable, times out, returns invalid JSON, or returns an unsupported intent, the orchestrator falls back to the rule-based router and records that fallback in audit metadata.
 
 ## Tests
 

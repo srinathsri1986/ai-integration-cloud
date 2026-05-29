@@ -40,13 +40,26 @@ class OrchestratorService:
         settings = get_settings()
         self.cfo_service = cfo_service or CfoService()
         self.ai_provider: AIProvider = ai_provider or settings.ai_provider  # type: ignore[assignment]
-        self.model_name = model_name or settings.openai_model
+        self.model_name = model_name or self._default_model_name()
         self.openai_api_key = openai_api_key if openai_api_key is not None else settings.openai_api_key
         self.llm_provider = llm_provider or make_llm_provider(
             provider=self.ai_provider,
             model_name=self.model_name,
             openai_api_key=self.openai_api_key,
+            ollama_base_url=settings.ollama_base_url,
+            ollama_timeout_seconds=settings.ollama_timeout_seconds,
         )
+
+    def _default_model_name(self) -> str:
+        settings = get_settings()
+
+        if self.ai_provider == "openai":
+            return settings.openai_model
+
+        if self.ai_provider == "ollama":
+            return settings.ollama_model
+
+        return "mock-cfo-intent-v0"
 
     def route_intent(self, question: str) -> IntentMatch:
         normalized = question.lower()
@@ -94,7 +107,7 @@ class OrchestratorService:
                 confidence=provider_match.confidence,
                 intent=provider_match.intent,
                 ai_provider=provider_match.provider_name,
-                ai_mode="mock_llm" if provider_match.provider_name == "mock" else "openai",
+                ai_mode=self._ai_mode_for_provider(provider_match.provider_name),
                 model_name=provider_match.model_name,
                 model_call_attempted=provider_match.model_call_attempted,
                 model_call_succeeded=provider_match.model_call_succeeded,
@@ -108,12 +121,24 @@ class OrchestratorService:
                 confidence=rule_match.confidence,
                 intent=rule_match.intent,
                 ai_provider=self.ai_provider,
-                ai_mode="mock_llm" if self.ai_provider == "mock" else "openai",
+                ai_mode=self._ai_mode_for_provider(self.ai_provider),
                 model_name=self.model_name,
                 model_call_attempted=attempted,
                 model_call_succeeded=succeeded,
                 used_fallback_router=True,
             )
+
+    def _ai_mode_for_provider(self, provider_name: str) -> AIRoutingMode:
+        if provider_name == "mock":
+            return "mock_llm"
+
+        if provider_name == "openai":
+            return "openai"
+
+        if provider_name == "ollama":
+            return "ollama"
+
+        return "disabled"
 
     def query(self, request: OrchestratorQueryRequest) -> OrchestratorQueryResponse:
         request_id = str(uuid4())

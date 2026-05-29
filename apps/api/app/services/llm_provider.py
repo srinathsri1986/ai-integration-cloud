@@ -169,6 +169,70 @@ class OpenAIProvider:
         )
 
 
+class OllamaProvider:
+    provider_name = "ollama"
+
+    def __init__(
+        self,
+        base_url: str,
+        model_name: str,
+        timeout_seconds: int = 20,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+
+    def extract_intent(self, question: str) -> LLMIntentResult:
+        prompt = (
+            "You are a safe CFO intent classifier. Return only JSON with keys intent and "
+            "confidence. The intent must be one of: CFO_DASHBOARD_SUMMARY, PL_VS_BUDGET, "
+            "YOY_COMPARISON, SUBSIDIARY_DRILLDOWN, RUNNING_PROJECTS, "
+            "OVERDUE_PROJECTS_BY_ACCOUNT_MANAGER, UNKNOWN. Do not call tools. Do not generate "
+            "SQL, SuiteQL, raw NetSuite queries, credentials, or secrets.\n\n"
+            f"Question: {question}"
+        )
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            f"{self.base_url}/api/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama intent extraction request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(body["response"])
+            intent, confidence = _validated_intent_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama intent extraction returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMIntentResult(
+            confidence=confidence,
+            intent=intent,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
+
 def _extract_output_text(body: dict) -> str:
     if isinstance(body.get("output_text"), str):
         return body["output_text"]
@@ -181,15 +245,34 @@ def _extract_output_text(body: dict) -> str:
     raise ValueError("No structured output text found.")
 
 
+def _validated_intent_payload(parsed: dict) -> tuple[OrchestratorIntent, float]:
+    intent = OrchestratorIntent(parsed["intent"])
+    confidence = float(parsed["confidence"])
+
+    if confidence < 0 or confidence > 1:
+        raise ValueError("confidence must be between 0 and 1")
+
+    return intent, confidence
+
+
 def make_llm_provider(
     provider: AIProvider,
     model_name: str,
     openai_api_key: str | None = None,
+    ollama_base_url: str = "http://localhost:11434",
+    ollama_timeout_seconds: int = 20,
 ) -> LLMProvider | None:
     if provider == "mock":
         return MockLLMProvider(model_name=model_name)
 
     if provider == "openai":
         return OpenAIProvider(api_key=openai_api_key, model_name=model_name)
+
+    if provider == "ollama":
+        return OllamaProvider(
+            base_url=ollama_base_url,
+            model_name=model_name,
+            timeout_seconds=ollama_timeout_seconds,
+        )
 
     return None

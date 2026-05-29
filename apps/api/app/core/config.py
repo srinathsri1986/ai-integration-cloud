@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     ai_provider: str = "mock"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:30b"
+    ollama_timeout_seconds: int = 20
 
     @property
     def cors_origins(self) -> list[str]:

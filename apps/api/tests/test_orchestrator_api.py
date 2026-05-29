@@ -24,7 +24,7 @@ def test_orchestrator_query_returns_pl_vs_budget_result() -> None:
     assert body["data"]["source"] == "mock"
     assert body["aiProvider"] == "mock"
     assert body["aiMode"] == "mock_llm"
-    assert body["modelName"] == "gpt-4.1-mini"
+    assert body["modelName"] == "mock-cfo-intent-v0"
     assert body["modelCallAttempted"] is False
     assert body["modelCallSucceeded"] is False
     assert body["usedFallbackRouter"] is False
