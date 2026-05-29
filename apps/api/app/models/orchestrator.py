@@ -39,4 +39,6 @@ class OrchestratorQueryResponse(BaseModel):
     ai_provider: str = Field(alias="aiProvider")
     ai_mode: str = Field(alias="aiMode")
     model_name: str | None = Field(default=None, alias="modelName")
+    model_call_attempted: bool = Field(alias="modelCallAttempted")
+    model_call_succeeded: bool = Field(alias="modelCallSucceeded")
     used_fallback_router: bool = Field(alias="usedFallbackRouter")

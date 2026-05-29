@@ -33,16 +33,18 @@ def test_orchestrator_query_creates_audit_log() -> None:
     assert logs[0]["channel"] == "web"
     assert logs[0]["question"] == "Show me P/L vs budget for Q1"
     assert logs[0]["detectedIntent"] == "PL_VS_BUDGET"
-    assert logs[0]["confidence"] == 0.89
+    assert logs[0]["confidence"] == 0.91
     assert logs[0]["toolsUsed"] == ["cfo.pl_vs_budget"]
     assert logs[0]["endpointCalled"] == "/api/v1/cfo/pl-vs-budget"
     assert logs[0]["fallbackUsed"] is False
     assert logs[0]["success"] is True
     assert logs[0]["failureReason"] is None
     assert logs[0]["latencyMs"] >= 0
-    assert logs[0]["aiProvider"] == "none"
-    assert logs[0]["aiMode"] == "rule_based"
-    assert logs[0]["modelName"] is None
+    assert logs[0]["aiProvider"] == "mock"
+    assert logs[0]["aiMode"] == "mock_llm"
+    assert logs[0]["modelName"] == "gpt-4.1-mini"
+    assert logs[0]["modelCallAttempted"] is False
+    assert logs[0]["modelCallSucceeded"] is False
     assert logs[0]["usedFallbackRouter"] is False
 
 

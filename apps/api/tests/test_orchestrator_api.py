@@ -22,9 +22,11 @@ def test_orchestrator_query_returns_pl_vs_budget_result() -> None:
     assert body["toolsUsed"] == ["cfo.pl_vs_budget"]
     assert body["fallbackUsed"] is False
     assert body["data"]["source"] == "mock"
-    assert body["aiProvider"] == "none"
-    assert body["aiMode"] == "rule_based"
-    assert body["modelName"] is None
+    assert body["aiProvider"] == "mock"
+    assert body["aiMode"] == "mock_llm"
+    assert body["modelName"] == "gpt-4.1-mini"
+    assert body["modelCallAttempted"] is False
+    assert body["modelCallSucceeded"] is False
     assert body["usedFallbackRouter"] is False
 
 
@@ -38,7 +40,7 @@ def test_orchestrator_query_returns_unknown_without_tools() -> None:
     body = response.json()
     assert body["detectedIntent"] == "UNKNOWN"
     assert body["toolsUsed"] == []
-    assert body["aiMode"] == "rule_based"
+    assert body["aiMode"] == "mock_llm"
 
 
 def test_orchestrator_validates_period_range() -> None:

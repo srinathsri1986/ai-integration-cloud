@@ -219,6 +219,8 @@ const fallbackOrchestratorResponse: OrchestratorQueryResponse = {
   aiProvider: "none",
   aiMode: "rule_based",
   modelName: null,
+  modelCallAttempted: false,
+  modelCallSucceeded: false,
   usedFallbackRouter: true
 };
 

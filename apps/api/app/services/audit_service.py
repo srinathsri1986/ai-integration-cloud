@@ -41,6 +41,8 @@ class AuditService:
                 aiProvider="none",
                 aiMode="disabled",
                 modelName=None,
+                modelCallAttempted=False,
+                modelCallSucceeded=False,
                 usedFallbackRouter=False,
             )
         )
@@ -72,6 +74,8 @@ class AuditService:
                 aiProvider="none",
                 aiMode="disabled",
                 modelName=None,
+                modelCallAttempted=False,
+                modelCallSucceeded=False,
                 usedFallbackRouter=False,
             )
         )

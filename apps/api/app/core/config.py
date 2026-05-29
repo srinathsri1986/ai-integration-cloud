@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:3000"
     placeholder_jwt_secret: str = "local-dev-only"
     netsuite_mode: str = "mock"
-    ai_provider_mode: str = "disabled"
-    ai_model_name: str = "mock-cfo-intent-v0"
+    ai_provider: str = "mock"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
 
     @property
     def cors_origins(self) -> list[str]:

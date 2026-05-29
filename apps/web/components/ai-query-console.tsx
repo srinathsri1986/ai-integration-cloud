@@ -17,6 +17,10 @@ function aiModeLabel(result: OrchestratorQueryResponse) {
     return "Mock LLM";
   }
 
+  if (result.aiMode === "openai") {
+    return "OpenAI";
+  }
+
   if (result.aiMode === "disabled") {
     return "Disabled";
   }
@@ -118,6 +122,16 @@ export function AiQueryConsole() {
                   <div>
                     <p className="text-muted-foreground">Router fallback</p>
                     <p className="font-medium">{result.usedFallbackRouter ? "Yes" : "No"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-muted-foreground">Model call</p>
+                    <p className="font-medium">{result.modelCallAttempted ? "Attempted" : "No"}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Model result</p>
+                    <p className="font-medium">{result.modelCallSucceeded ? "Succeeded" : "None"}</p>
                   </div>
                 </div>
                 <div>

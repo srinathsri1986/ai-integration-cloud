@@ -164,8 +164,10 @@ export const orchestratorQueryResponseSchema = z.object({
   executiveSummary: z.string(),
   fallbackUsed: z.boolean(),
   aiProvider: z.string(),
-  aiMode: z.enum(["rule_based", "mock_llm", "disabled"]),
+  aiMode: z.enum(["rule_based", "mock_llm", "openai", "disabled"]),
   modelName: z.string().nullable(),
+  modelCallAttempted: z.boolean(),
+  modelCallSucceeded: z.boolean(),
   usedFallbackRouter: z.boolean()
 });
 
@@ -190,6 +192,8 @@ export const auditLogEntrySchema = z.object({
   aiProvider: z.string(),
   aiMode: z.string(),
   modelName: z.string().nullable(),
+  modelCallAttempted: z.boolean(),
+  modelCallSucceeded: z.boolean(),
   usedFallbackRouter: z.boolean()
 });
 

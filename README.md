@@ -163,23 +163,25 @@ Flow definitions and last run state are stored in memory only and reset when the
 
 The web dashboard includes a Flow Catalog section with flow cards, step views, run buttons, status, and last run result messaging.
 
-## LLM Provider Abstraction v0.9
+## LLM Provider Abstraction v1.0
 
-The orchestrator includes a safe AI intent layer with a provider abstraction. It does not call external LLM APIs in V0.9 and does not require or store API keys.
+The orchestrator includes a safe AI intent layer with a provider abstraction. Local build and tests do not require real API keys.
 
 ```bash
-AI_PROVIDER_MODE=disabled
-AI_MODEL_NAME=mock-cfo-intent-v0
+AI_PROVIDER=mock
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
 ```
 
 Supported provider modes:
 
-- `disabled`: default; uses the deterministic rule-based router.
-- `mock`: uses the local `MockLLMProvider` for deterministic mock intent extraction.
-- `openai_placeholder`: placeholder only; no external call, falls back to the rule-based router.
-- `anthropic_placeholder`: placeholder only; no external call, falls back to the rule-based router.
+- `disabled`: uses the deterministic rule-based router.
+- `mock`: default; uses the local `MockLLMProvider` for deterministic mock intent extraction.
+- `openai`: calls OpenAI only when `OPENAI_API_KEY` is configured.
 
-Orchestrator responses and audit logs include `aiProvider`, `aiMode`, `modelName`, and `usedFallbackRouter` so callers can see whether intent routing was rule-based, mock LLM-driven, or safely disabled. Approved tool routing is unchanged, and the system still does not expose SQL, SuiteQL, credentials, or raw NetSuite access.
+The real OpenAI provider is limited to structured intent extraction. The model can only return an intent and confidence score, and its output is validated against the existing supported intent schema before any approved CFO service is called. The model does not call tools and must not generate SQL, SuiteQL, or raw NetSuite queries.
+
+If the OpenAI call fails, no key is present, or the model output is invalid, the orchestrator falls back to the rule-based router. Orchestrator responses and audit logs include `aiProvider`, `aiMode`, `modelName`, `modelCallAttempted`, `modelCallSucceeded`, and `usedFallbackRouter`.
 
 ## Tests
 

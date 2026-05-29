@@ -18,6 +18,8 @@ class AuditLogEntry(BaseModel):
     ai_provider: str = Field(default="none", alias="aiProvider")
     ai_mode: str = Field(default="disabled", alias="aiMode")
     model_name: str | None = Field(default=None, alias="modelName")
+    model_call_attempted: bool = Field(default=False, alias="modelCallAttempted")
+    model_call_succeeded: bool = Field(default=False, alias="modelCallSucceeded")
     used_fallback_router: bool = Field(default=False, alias="usedFallbackRouter")
 
 

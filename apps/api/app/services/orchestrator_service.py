@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from app.core.config import get_settings
 from app.models.audit import AuditLogEntry
-from app.models.llm import AIProviderMode, AIRoutingMode
+from app.models.llm import AIProvider, AIRoutingMode
 from app.models.orchestrator import (
     OrchestratorIntent,
     OrchestratorQueryRequest,
@@ -13,7 +13,7 @@ from app.models.orchestrator import (
 )
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
-from app.services.llm_provider import LLMProvider, make_llm_provider
+from app.services.llm_provider import LLMProvider, LLMProviderError, make_llm_provider
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,8 @@ class IntentMatch:
     ai_provider: str = "rule_based"
     ai_mode: AIRoutingMode = "rule_based"
     model_name: str | None = None
+    model_call_attempted: bool = False
+    model_call_succeeded: bool = False
     used_fallback_router: bool = False
 
 
@@ -30,19 +32,20 @@ class OrchestratorService:
     def __init__(
         self,
         cfo_service: CfoService | None = None,
-        ai_provider_mode: AIProviderMode | None = None,
+        ai_provider: AIProvider | None = None,
         model_name: str | None = None,
         llm_provider: LLMProvider | None = None,
+        openai_api_key: str | None = None,
     ) -> None:
         settings = get_settings()
         self.cfo_service = cfo_service or CfoService()
-        self.ai_provider_mode: AIProviderMode = (
-            ai_provider_mode or settings.ai_provider_mode  # type: ignore[assignment]
-        )
-        self.model_name = model_name or settings.ai_model_name
+        self.ai_provider: AIProvider = ai_provider or settings.ai_provider  # type: ignore[assignment]
+        self.model_name = model_name or settings.openai_model
+        self.openai_api_key = openai_api_key if openai_api_key is not None else settings.openai_api_key
         self.llm_provider = llm_provider or make_llm_provider(
-            mode=self.ai_provider_mode,
+            provider=self.ai_provider,
             model_name=self.model_name,
+            openai_api_key=self.openai_api_key,
         )
 
     def route_intent(self, question: str) -> IntentMatch:
@@ -69,7 +72,7 @@ class OrchestratorService:
         return IntentMatch(0.2, OrchestratorIntent.UNKNOWN)
 
     def extract_intent(self, question: str) -> IntentMatch:
-        if self.ai_provider_mode == "disabled":
+        if self.ai_provider == "disabled":
             rule_match = self.route_intent(question)
             return IntentMatch(
                 confidence=rule_match.confidence,
@@ -77,18 +80,9 @@ class OrchestratorService:
                 ai_provider="none",
                 ai_mode="rule_based",
                 model_name=None,
+                model_call_attempted=False,
+                model_call_succeeded=False,
                 used_fallback_router=False,
-            )
-
-        if self.ai_provider_mode in {"openai_placeholder", "anthropic_placeholder"}:
-            rule_match = self.route_intent(question)
-            return IntentMatch(
-                confidence=rule_match.confidence,
-                intent=rule_match.intent,
-                ai_provider=self.ai_provider_mode.replace("_placeholder", ""),
-                ai_mode="disabled",
-                model_name=self.model_name,
-                used_fallback_router=True,
             )
 
         try:
@@ -100,18 +94,24 @@ class OrchestratorService:
                 confidence=provider_match.confidence,
                 intent=provider_match.intent,
                 ai_provider=provider_match.provider_name,
-                ai_mode="mock_llm",
+                ai_mode="mock_llm" if provider_match.provider_name == "mock" else "openai",
                 model_name=provider_match.model_name,
+                model_call_attempted=provider_match.model_call_attempted,
+                model_call_succeeded=provider_match.model_call_succeeded,
                 used_fallback_router=False,
             )
-        except Exception:
+        except Exception as exc:
             rule_match = self.route_intent(question)
+            attempted = exc.model_call_attempted if isinstance(exc, LLMProviderError) else False
+            succeeded = exc.model_call_succeeded if isinstance(exc, LLMProviderError) else False
             return IntentMatch(
                 confidence=rule_match.confidence,
                 intent=rule_match.intent,
-                ai_provider="mock",
-                ai_mode="mock_llm",
+                ai_provider=self.ai_provider,
+                ai_mode="mock_llm" if self.ai_provider == "mock" else "openai",
                 model_name=self.model_name,
+                model_call_attempted=attempted,
+                model_call_succeeded=succeeded,
                 used_fallback_router=True,
             )
 
@@ -187,6 +187,8 @@ class OrchestratorService:
                 aiProvider=match.ai_provider,
                 aiMode=match.ai_mode,
                 modelName=match.model_name,
+                modelCallAttempted=match.model_call_attempted,
+                modelCallSucceeded=match.model_call_succeeded,
                 usedFallbackRouter=match.used_fallback_router,
             )
         except Exception as exc:
@@ -212,6 +214,8 @@ class OrchestratorService:
                     aiProvider=match.ai_provider,
                     aiMode=match.ai_mode,
                     modelName=match.model_name,
+                    modelCallAttempted=match.model_call_attempted,
+                    modelCallSucceeded=match.model_call_succeeded,
                     usedFallbackRouter=match.used_fallback_router,
                 )
             )
