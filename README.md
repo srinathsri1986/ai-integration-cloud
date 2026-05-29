@@ -126,6 +126,23 @@ The audit log records request metadata, detected intent, tools used, endpoint ca
 
 The web dashboard includes a Tool Execution Monitoring panel that shows the latest orchestrator calls and aggregate audit counters.
 
+## Connector Studio v0.7
+
+The backend exposes a mock NetSuite connector configuration surface:
+
+```bash
+curl "http://localhost:8000/api/v1/connectors"
+curl "http://localhost:8000/api/v1/connectors/netsuite"
+curl -X POST "http://localhost:8000/api/v1/connectors/netsuite/test"
+curl -X PUT "http://localhost:8000/api/v1/connectors/netsuite/config" \
+  -H "Content-Type: application/json" \
+  -d '{"accountId":"MOCK-CFO-SBX","environment":"sandbox","authMode":"placeholder","mockMode":true}'
+```
+
+Connector configuration is in memory only and resets when the API process restarts. V0.7 accepts placeholder fields only: `accountId`, `environment`, `authMode`, `mockMode`, `status`, and `lastTestedAt`. It does not store real NetSuite credentials, tokens, passwords, secrets, SQL, SuiteQL, or raw NetSuite access.
+
+The web dashboard includes a Connector Studio section with a NetSuite connector card, mock mode status, placeholder config form, and a mock test connection button. Connector test actions are written to the in-memory audit log.
+
 ## Tests
 
 Backend:

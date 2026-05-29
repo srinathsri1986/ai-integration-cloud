@@ -16,9 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuditLogPanel } from "@/components/audit-log-panel";
 import { AiQueryConsole } from "@/components/ai-query-console";
+import { ConnectorStudio } from "@/components/connector-studio";
 import {
   type ApiResult,
   getDashboardSummary,
+  getNetSuiteConnectorConfig,
   getOverdueProjects,
   getPlVsBudget,
   getRunningProjects,
@@ -85,15 +87,23 @@ function statusLabel(status: string) {
 }
 
 export default async function Home() {
-  const [summaryResult, plResult, yoyResult, subsidiaryResult, projectsResult, overdueResult] =
-    await Promise.all([
-      getDashboardSummary(),
-      getPlVsBudget(),
-      getYoyComparison(),
-      getSubsidiaryDrilldown(),
-      getRunningProjects(),
-      getOverdueProjects()
-    ]);
+  const [
+    summaryResult,
+    plResult,
+    yoyResult,
+    subsidiaryResult,
+    projectsResult,
+    overdueResult,
+    connectorResult
+  ] = await Promise.all([
+    getDashboardSummary(),
+    getPlVsBudget(),
+    getYoyComparison(),
+    getSubsidiaryDrilldown(),
+    getRunningProjects(),
+    getOverdueProjects(),
+    getNetSuiteConnectorConfig()
+  ]);
   const summary = summaryResult.data;
   const plVsBudget = plResult.data;
   const yoyComparison = yoyResult.data;
@@ -355,6 +365,8 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      <ConnectorStudio initialConfig={connectorResult} />
 
       <AuditLogPanel />
     </main>

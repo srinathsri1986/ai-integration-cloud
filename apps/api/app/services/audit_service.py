@@ -1,4 +1,5 @@
 from collections import Counter
+from datetime import UTC, datetime
 from threading import Lock
 
 from app.models.audit import AuditLogEntry, AuditLogSummary
@@ -12,6 +13,33 @@ class AuditService:
     def record(self, entry: AuditLogEntry) -> None:
         with self._lock:
             self._logs.append(entry)
+
+    def record_connector_action(
+        self,
+        request_id: str,
+        action: str,
+        connector_id: str,
+        endpoint_called: str,
+        success: bool,
+        latency_ms: int,
+    ) -> None:
+        self.record(
+            AuditLogEntry(
+                timestamp=datetime.now(UTC).isoformat(),
+                requestId=request_id,
+                user="local-dev-user",
+                channel="web",
+                question=f"Connector action: {connector_id}.{action}",
+                detectedIntent="CONNECTOR_TEST",
+                confidence=1,
+                toolsUsed=[f"connector.{connector_id}.{action}"],
+                endpointCalled=endpoint_called,
+                fallbackUsed=False,
+                success=success,
+                failureReason=None if success else "ConnectorTestFailed",
+                latencyMs=latency_ms,
+            )
+        )
 
     def list_logs(self) -> list[AuditLogEntry]:
         with self._lock:

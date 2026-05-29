@@ -2,6 +2,10 @@ import type {
   AuditLogEntry,
   AuditLogSummary,
   CfoDashboardSummary,
+  ConnectorListItem,
+  NetSuiteConnectionTestResponse,
+  NetSuiteConnectorConfig,
+  NetSuiteConnectorConfigUpdate,
   OverdueProjectsByManagerResponse,
   OrchestratorQueryRequest,
   OrchestratorQueryResponse,
@@ -222,6 +226,34 @@ const fallbackAuditSummary: AuditLogSummary = {
   byIntent: {}
 };
 
+const fallbackNetSuiteConnectorConfig: NetSuiteConnectorConfig = {
+  accountId: "MOCK-ACCOUNT",
+  environment: "sandbox",
+  authMode: "placeholder",
+  mockMode: true,
+  status: "not_configured",
+  lastTestedAt: null
+};
+
+const fallbackConnectorList: ConnectorListItem[] = [
+  {
+    id: "netsuite",
+    name: "NetSuite",
+    status: "not_configured",
+    mockMode: true,
+    lastTestedAt: null
+  }
+];
+
+const fallbackConnectionTestResponse: NetSuiteConnectionTestResponse = {
+  connectorId: "netsuite",
+  success: false,
+  status: "test_failed",
+  message: "The connector API is unavailable.",
+  testedAt: new Date(0).toISOString(),
+  mockMode: true
+};
+
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
   return {
     generatedAt: body.generated_at,
@@ -406,6 +438,82 @@ export async function getAuditLogs(): Promise<ApiResult<AuditLogEntry[]>> {
 
 export async function getAuditSummary(): Promise<ApiResult<AuditLogSummary>> {
   return getApiResult("/api/v1/audit/summary", fallbackAuditSummary, (body) => body);
+}
+
+export async function getConnectors(): Promise<ApiResult<ConnectorListItem[]>> {
+  return getApiResult("/api/v1/connectors", fallbackConnectorList, (body) => body);
+}
+
+export async function getNetSuiteConnectorConfig(): Promise<ApiResult<NetSuiteConnectorConfig>> {
+  return getApiResult(
+    "/api/v1/connectors/netsuite",
+    fallbackNetSuiteConnectorConfig,
+    (body) => body
+  );
+}
+
+export async function testNetSuiteConnection(): Promise<
+  ClientApiResult<NetSuiteConnectionTestResponse>
+> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/netsuite/test`, {
+      cache: "no-store",
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackConnectionTestResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackConnectionTestResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function updateNetSuiteConnectorConfig(
+  request: NetSuiteConnectorConfigUpdate
+): Promise<ClientApiResult<NetSuiteConnectorConfig>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/netsuite/config`, {
+      body: JSON.stringify({ ...request, mockMode: true, authMode: "placeholder" }),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "PUT"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackNetSuiteConnectorConfig,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackNetSuiteConnectorConfig,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
 }
 
 export async function submitOrchestratorQuery(

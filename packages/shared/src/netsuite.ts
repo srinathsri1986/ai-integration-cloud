@@ -34,3 +34,57 @@ export const netSuiteQueryResultSchema = z.object({
 });
 
 export type NetSuiteQueryResult = z.infer<typeof netSuiteQueryResultSchema>;
+
+export const connectorStatusSchema = z.enum([
+  "not_configured",
+  "configured",
+  "test_passed",
+  "test_failed"
+]);
+
+export type ConnectorStatus = z.infer<typeof connectorStatusSchema>;
+
+export const netSuiteConnectorConfigSchema = z.object({
+  accountId: z.string().min(3).max(64),
+  environment: z.enum(["sandbox", "production"]),
+  authMode: z.literal("placeholder"),
+  mockMode: z.boolean(),
+  status: connectorStatusSchema,
+  lastTestedAt: z.string().nullable()
+});
+
+export type NetSuiteConnectorConfig = z.infer<typeof netSuiteConnectorConfigSchema>;
+
+export const netSuiteConnectorConfigUpdateSchema = z.object({
+  accountId: z.string().min(3).max(64),
+  environment: z.enum(["sandbox", "production"]),
+  authMode: z.literal("placeholder"),
+  mockMode: z.boolean()
+});
+
+export type NetSuiteConnectorConfigUpdate = z.infer<
+  typeof netSuiteConnectorConfigUpdateSchema
+>;
+
+export const connectorListItemSchema = z.object({
+  id: z.literal("netsuite"),
+  name: z.string(),
+  status: connectorStatusSchema,
+  mockMode: z.boolean(),
+  lastTestedAt: z.string().nullable()
+});
+
+export type ConnectorListItem = z.infer<typeof connectorListItemSchema>;
+
+export const netSuiteConnectionTestResponseSchema = z.object({
+  connectorId: z.literal("netsuite"),
+  success: z.boolean(),
+  status: connectorStatusSchema,
+  message: z.string(),
+  testedAt: z.string(),
+  mockMode: z.boolean()
+});
+
+export type NetSuiteConnectionTestResponse = z.infer<
+  typeof netSuiteConnectionTestResponseSchema
+>;
