@@ -27,6 +27,7 @@ def test_list_flows_returns_mock_catalog() -> None:
     assert all(flow["status"] == "active" for flow in body)
     assert all(flow["lastRunAt"] is None for flow in body)
     assert all(flow["lastRunStatus"] == "never_run" for flow in body)
+    assert all(flow["triggerType"] == "manual" for flow in body)
 
 
 def test_get_flow_returns_steps_without_raw_query_surface() -> None:
@@ -41,10 +42,10 @@ def test_get_flow_returns_steps_without_raw_query_surface() -> None:
     assert "credential" not in body
 
 
-def test_unknown_flow_returns_422_before_execution() -> None:
+def test_unknown_flow_returns_404_before_execution() -> None:
     response = client.get("/api/v1/flows/not-approved")
 
-    assert response.status_code == 422
+    assert response.status_code == 404
 
 
 def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
@@ -106,6 +107,119 @@ def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
     ]
     assert body["data"]["runningProjects"]["source"] == "mock"
     assert body["data"]["overdueProjects"]["source"] == "mock"
+
+
+def test_create_flow_definition_uses_approved_tools_and_writes_audit_log() -> None:
+    response = client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "custom-cfo-refresh",
+            "name": "Custom CFO refresh",
+            "description": "Refresh CFO dashboard data with approved CFO actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "draft",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["flowId"] == "custom-cfo-refresh"
+    assert body["status"] == "draft"
+    assert body["steps"][0]["approvedTool"] == "cfo.dashboard_summary"
+
+    flows = client.get("/api/v1/flows").json()
+    assert "custom-cfo-refresh" in [flow["flowId"] for flow in flows]
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["detectedIntent"] == "FLOW_DEFINITION"
+    assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary"]
+
+
+def test_flow_definition_rejects_raw_query_language_and_unapproved_tool() -> None:
+    raw_query_response = client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "bad-flow",
+            "name": "Bad flow",
+            "description": "Run select * from transaction",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "draft",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "bad",
+                    "name": "Bad",
+                    "description": "Bad step",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+    unapproved_tool_response = client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "bad-tool-flow",
+            "name": "Bad tool flow",
+            "description": "Use an unsupported tool action.",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "draft",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "bad",
+                    "name": "Bad",
+                    "description": "Bad step",
+                    "approvedTool": "netsuite.raw_suiteql",
+                }
+            ],
+        },
+    )
+
+    assert raw_query_response.status_code == 422
+    assert unapproved_tool_response.status_code == 422
+
+
+def test_custom_flow_run_fails_closed_until_runtime_mapping_exists() -> None:
+    client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "custom-active-flow",
+            "name": "Custom active flow",
+            "description": "Refresh CFO dashboard data with approved CFO actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "active",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+
+    response = client.post("/api/v1/flows/custom-active-flow/run")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert "runtime mapping is not enabled" in body["message"]
+    assert body["toolsUsed"] == ["cfo.dashboard_summary"]
 
 
 def test_run_subsidiary_flow_uses_approved_services_only() -> None:

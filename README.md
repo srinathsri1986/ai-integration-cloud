@@ -412,6 +412,50 @@ Role boundaries:
 
 The web app includes a local role selector that stores the placeholder token in browser local storage for client-side actions. Missing auth defaults to a local Integration Admin only for this local MVP workflow.
 
+## Flow Designer Lite v1.7
+
+V1.7 adds a controlled form-based flow designer before the full drag-and-drop canvas. Integration Admins and Developers can save flow definitions using approved building blocks only.
+
+Flow definitions support:
+
+- flow ID
+- name
+- description
+- source connector: `netsuite`
+- target module
+- status: `draft`, `active`, `paused`
+- trigger type: `manual` or `schedule_placeholder`
+- one or more approved steps
+
+Approved step actions:
+
+- `cfo.dashboard_summary`
+- `cfo.pl_vs_budget`
+- `cfo.yoy_comparison`
+- `cfo.subsidiary_drilldown`
+- `cfo.running_projects`
+- `cfo.overdue_projects_by_account_manager`
+- `orchestrator.query`
+
+Save a controlled flow definition:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flowId":"custom-cfo-refresh",
+    "name":"Custom CFO refresh",
+    "description":"Refresh CFO dashboard data with approved CFO actions.",
+    "sourceConnector":"netsuite",
+    "targetModule":"cfo_dashboard",
+    "status":"draft",
+    "triggerType":"manual",
+    "steps":[{"id":"summary","name":"Load summary","description":"Load approved CFO summary data.","approvedTool":"cfo.dashboard_summary"}]
+  }'
+```
+
+Custom flow definitions are persisted and audited, but custom execution fails closed until explicit runtime mappings are added. This preserves governance while establishing the product shape for the later React Flow canvas.
+
 ## Tests
 
 Backend:

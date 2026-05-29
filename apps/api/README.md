@@ -104,6 +104,18 @@ Protected endpoint groups use role permissions:
 
 This is placeholder local auth only. Production SSO/OIDC/SAML and tenant-aware policy enforcement are future work.
 
+## Flow Designer Lite
+
+Flow definitions can be saved through controlled forms or API calls:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
+  -H "Content-Type: application/json" \
+  -d '{"flowId":"custom-cfo-refresh","name":"Custom CFO refresh","description":"Refresh CFO dashboard data with approved CFO actions.","sourceConnector":"netsuite","targetModule":"cfo_dashboard","status":"draft","triggerType":"manual","steps":[{"id":"summary","name":"Load summary","description":"Load approved CFO summary data.","approvedTool":"cfo.dashboard_summary"}]}'
+```
+
+Definitions are persisted in `flow_definitions`, audited as `FLOW_DEFINITION`, and validated against approved tools. Raw SQL, SuiteQL, and arbitrary code execution language are rejected. Custom flow execution is intentionally fail-closed until runtime mappings are implemented.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

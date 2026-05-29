@@ -94,6 +94,40 @@ class AuditService:
             )
         )
 
+    def record_flow_definition_action(
+        self,
+        flow_id: str,
+        action: str,
+        tools_used: list[str],
+    ) -> None:
+        self.record(
+            AuditLogEntry(
+                timestamp=datetime.now(UTC).isoformat(),
+                requestId=f"flow-definition-{flow_id}",
+                user="local-dev-user",
+                channel="web",
+                question=f"Flow definition action: {flow_id}.{action}",
+                detectedIntent="FLOW_DEFINITION",
+                confidence=1,
+                toolsUsed=tools_used,
+                endpointCalled="/api/v1/flows/definitions",
+                fallbackUsed=False,
+                success=True,
+                failureReason=None,
+                latencyMs=0,
+                aiProvider="none",
+                aiMode="disabled",
+                modelName=None,
+                modelCallAttempted=False,
+                modelCallSucceeded=False,
+                usedFallbackRouter=False,
+                narrativeProvider="none",
+                narrativeModel=None,
+                narrativeGenerated=False,
+                narrativeFallbackUsed=False,
+            )
+        )
+
     def list_logs(
         self,
         *,

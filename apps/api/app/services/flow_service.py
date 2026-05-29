@@ -4,8 +4,9 @@ from time import perf_counter
 from uuid import uuid4
 
 from app.core.database import SessionLocal
-from app.models.flows import FlowDefinition, FlowId, FlowRunResponse
+from app.models.flows import FlowDefinition, FlowDefinitionUpsertRequest, FlowId, FlowRunResponse
 from app.models.orchestrator import OrchestratorQueryRequest
+from app.repositories.flow_definition_repository import FlowDefinitionRepository
 from app.repositories.flow_run_repository import FlowRunRepository
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
@@ -21,6 +22,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             sourceConnector="netsuite",
             targetModule="cfo_dashboard",
             status="active",
+            triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=[
@@ -45,6 +47,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             sourceConnector="netsuite",
             targetModule="project_risk",
             status="active",
+            triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=[
@@ -69,6 +72,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             sourceConnector="netsuite",
             targetModule="subsidiary_drilldown",
             status="active",
+            triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=[
@@ -98,16 +102,44 @@ class FlowService:
         self.cfo_service = cfo_service or CfoService()
         self.orchestrator_service = orchestrator_service or OrchestratorService(self.cfo_service)
         self._lock = Lock()
-        self._flows = _initial_flows()
+        self._seed_flows()
+
+    def _seed_flows(self) -> None:
+        with SessionLocal() as session:
+            FlowDefinitionRepository(session).seed_missing(list(_initial_flows().values()))
 
     def list_flows(self) -> list[FlowDefinition]:
-        with self._lock:
-            return [flow.model_copy(deep=True) for flow in self._flows.values()]
+        self._seed_flows()
+        with SessionLocal() as session:
+            return FlowDefinitionRepository(session).list_flows()
 
     def get_flow(self, flow_id: str) -> FlowDefinition:
-        with self._lock:
-            flow = self._flows[flow_id]
-            return flow.model_copy(deep=True)
+        self._seed_flows()
+        with SessionLocal() as session:
+            return FlowDefinitionRepository(session).get_flow(flow_id)
+
+    def upsert_flow(self, request: FlowDefinitionUpsertRequest) -> FlowDefinition:
+        flow = FlowDefinition(
+            flowId=request.flow_id,
+            name=request.name,
+            description=request.description,
+            sourceConnector=request.source_connector,
+            targetModule=request.target_module,
+            status=request.status,
+            triggerType=request.trigger_type,
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=request.steps,
+        )
+        with SessionLocal() as session:
+            saved = FlowDefinitionRepository(session).upsert(flow)
+
+        audit_service.record_flow_definition_action(
+            flow_id=saved.flow_id,
+            action="upsert",
+            tools_used=[step.approved_tool for step in saved.steps],
+        )
+        return saved
 
     def run_flow(self, flow_id: FlowId) -> FlowRunResponse:
         request_id = str(uuid4())
@@ -117,6 +149,23 @@ class FlowService:
         success = False
 
         try:
+            flow = self.get_flow(flow_id)
+            if flow.status != "active":
+                completed = datetime.now(UTC).isoformat()
+                response = FlowRunResponse(
+                    requestId=request_id,
+                    flowId=flow_id,
+                    status="failed",
+                    startedAt=started,
+                    completedAt=completed,
+                    toolsUsed=[],
+                    message="Flow is not active and cannot be run.",
+                    data={},
+                )
+                with SessionLocal() as session:
+                    FlowRunRepository(session).append(response)
+                return response
+
             if flow_id == "netsuite-cfo-dashboard-refresh":
                 data = {
                     "dashboardSummary": self.cfo_service.dashboard_summary().model_dump(),
@@ -137,7 +186,7 @@ class FlowService:
                     "cfo.running_projects",
                     "cfo.overdue_projects_by_account_manager",
                 ]
-            else:
+            elif flow_id == "netsuite-subsidiary-drilldown-refresh":
                 data = {
                     "subsidiaryDrilldown": self.cfo_service.subsidiary_drilldown(
                         period="2026-Q1",
@@ -152,13 +201,30 @@ class FlowService:
                     ).model_dump(),
                 }
                 tools_used = ["cfo.subsidiary_drilldown", "orchestrator.query"]
+            else:
+                completed = datetime.now(UTC).isoformat()
+                tools_used = [step.approved_tool for step in flow.steps]
+                response = FlowRunResponse(
+                    requestId=request_id,
+                    flowId=flow_id,
+                    status="failed",
+                    startedAt=started,
+                    completedAt=completed,
+                    toolsUsed=tools_used,
+                    message=(
+                        "Flow definition is saved, but executable runtime mapping is not "
+                        "enabled for custom flows yet."
+                    ),
+                    data={"steps": [step.model_dump(by_alias=True) for step in flow.steps]},
+                )
+                with SessionLocal() as session:
+                    FlowRunRepository(session).append(response)
+                    FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                return response
 
             completed = datetime.now(UTC).isoformat()
-            with self._lock:
-                flow = self._flows[flow_id].model_copy(
-                    update={"last_run_at": completed, "last_run_status": "succeeded"}
-                )
-                self._flows[flow_id] = flow
+            with SessionLocal() as session:
+                FlowDefinitionRepository(session).update_last_run(flow_id, completed, "succeeded")
 
             success = True
             response = FlowRunResponse(
@@ -189,9 +255,9 @@ class FlowService:
     def clear_for_tests(self) -> None:
         with SessionLocal() as session:
             FlowRunRepository(session).clear()
+            FlowDefinitionRepository(session).clear()
 
-        with self._lock:
-            self._flows = _initial_flows()
+        self._seed_flows()
 
     def list_runs(
         self,

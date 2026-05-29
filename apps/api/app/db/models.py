@@ -76,3 +76,33 @@ class FlowRunRecord(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class FlowDefinitionRecord(Base):
+    __tablename__ = "flow_definitions"
+    __table_args__ = (
+        Index("ix_flow_definitions_status", "status"),
+        Index("ix_flow_definitions_target_module", "target_module"),
+    )
+
+    flow_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source_connector: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_module: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_run_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_run_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(_json_type(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )

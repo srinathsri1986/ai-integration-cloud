@@ -110,17 +110,29 @@ export const flowIdSchema = z.enum(flowIds);
 
 export type FlowId = z.infer<typeof flowIdSchema>;
 
-export const flowStatusSchema = z.enum(["active", "paused"]);
+export const flowStatusSchema = z.enum(["draft", "active", "paused"]);
 export const flowRunStatusSchema = z.enum(["never_run", "succeeded", "failed"]);
+export const flowTriggerTypeSchema = z.enum(["manual", "schedule_placeholder"]);
+export const approvedFlowToolSchema = z.enum([
+  "cfo.dashboard_summary",
+  "cfo.pl_vs_budget",
+  "cfo.yoy_comparison",
+  "cfo.subsidiary_drilldown",
+  "cfo.running_projects",
+  "cfo.overdue_projects_by_account_manager",
+  "orchestrator.query"
+]);
 
 export type FlowStatus = z.infer<typeof flowStatusSchema>;
 export type FlowRunStatus = z.infer<typeof flowRunStatusSchema>;
+export type FlowTriggerType = z.infer<typeof flowTriggerTypeSchema>;
+export type ApprovedFlowTool = z.infer<typeof approvedFlowToolSchema>;
 
 export const flowStepSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string(),
-  approvedTool: z.string()
+  approvedTool: approvedFlowToolSchema
 });
 
 export type FlowStep = z.infer<typeof flowStepSchema>;
@@ -132,12 +144,26 @@ export const flowDefinitionSchema = z.object({
   sourceConnector: z.literal("netsuite"),
   targetModule: z.string(),
   status: flowStatusSchema,
+  triggerType: flowTriggerTypeSchema,
   lastRunAt: z.string().nullable(),
   lastRunStatus: flowRunStatusSchema,
   steps: z.array(flowStepSchema)
 });
 
 export type FlowDefinition = z.infer<typeof flowDefinitionSchema>;
+
+export const flowDefinitionUpsertRequestSchema = z.object({
+  flowId: z.string().min(3).max(96),
+  name: z.string().min(3).max(120),
+  description: z.string().min(10).max(500),
+  sourceConnector: z.literal("netsuite"),
+  targetModule: z.string().min(3).max(80),
+  status: flowStatusSchema,
+  triggerType: flowTriggerTypeSchema,
+  steps: z.array(flowStepSchema).min(1).max(8)
+});
+
+export type FlowDefinitionUpsertRequest = z.infer<typeof flowDefinitionUpsertRequestSchema>;
 
 export const flowRunResponseSchema = z.object({
   requestId: z.string(),

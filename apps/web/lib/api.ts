@@ -5,6 +5,7 @@ import type {
   CfoDashboardSummary,
   ConnectorListItem,
   FlowDefinition,
+  FlowDefinitionUpsertRequest,
   FlowId,
   FlowRunResponse,
   NetSuiteConnectionTestResponse,
@@ -285,6 +286,7 @@ const fallbackFlows: FlowDefinition[] = [
     sourceConnector: "netsuite",
     targetModule: "cfo_dashboard",
     status: "active",
+    triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -309,6 +311,7 @@ const fallbackFlows: FlowDefinition[] = [
     sourceConnector: "netsuite",
     targetModule: "project_risk",
     status: "active",
+    triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -333,6 +336,7 @@ const fallbackFlows: FlowDefinition[] = [
     sourceConnector: "netsuite",
     targetModule: "subsidiary_drilldown",
     status: "active",
+    triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -662,6 +666,41 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
   } catch (error) {
     return {
       data: { ...fallbackFlowRunResponse, flowId },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function saveFlowDefinition(
+  request: FlowDefinitionUpsertRequest
+): Promise<ClientApiResult<FlowDefinition>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/definitions`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackFlows[0],
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackFlows[0],
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false
