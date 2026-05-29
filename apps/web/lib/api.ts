@@ -1,4 +1,6 @@
 import type {
+  AuditLogEntry,
+  AuditLogSummary,
   CfoDashboardSummary,
   OverdueProjectsByManagerResponse,
   OrchestratorQueryRequest,
@@ -209,6 +211,17 @@ const fallbackOrchestratorResponse: OrchestratorQueryResponse = {
   fallbackUsed: true
 };
 
+const fallbackAuditLogs: AuditLogEntry[] = [];
+
+const fallbackAuditSummary: AuditLogSummary = {
+  total: 0,
+  successes: 0,
+  failures: 0,
+  fallbackCount: 0,
+  averageLatencyMs: 0,
+  byIntent: {}
+};
+
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
   return {
     generatedAt: body.generated_at,
@@ -385,6 +398,14 @@ export async function getOverdueProjects(): Promise<ApiResult<OverdueProjectsByM
     fallbackOverdueProjects,
     snakeToOverdueProjects
   );
+}
+
+export async function getAuditLogs(): Promise<ApiResult<AuditLogEntry[]>> {
+  return getApiResult("/api/v1/audit/logs", fallbackAuditLogs, (body) => body);
+}
+
+export async function getAuditSummary(): Promise<ApiResult<AuditLogSummary>> {
+  return getApiResult("/api/v1/audit/summary", fallbackAuditSummary, (body) => body);
 }
 
 export async function submitOrchestratorQuery(

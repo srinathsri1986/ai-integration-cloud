@@ -168,3 +168,32 @@ export const orchestratorQueryResponseSchema = z.object({
 export type OrchestratorQueryResponse = z.infer<
   typeof orchestratorQueryResponseSchema
 >;
+
+export const auditLogEntrySchema = z.object({
+  timestamp: z.string(),
+  requestId: z.string(),
+  user: z.string(),
+  channel: z.string(),
+  question: z.string(),
+  detectedIntent: z.string(),
+  confidence: z.number().min(0).max(1),
+  toolsUsed: z.array(z.string()),
+  endpointCalled: z.string(),
+  fallbackUsed: z.boolean(),
+  success: z.boolean(),
+  failureReason: z.string().nullable(),
+  latencyMs: z.number()
+});
+
+export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
+
+export const auditLogSummarySchema = z.object({
+  total: z.number(),
+  successes: z.number(),
+  failures: z.number(),
+  fallbackCount: z.number(),
+  averageLatencyMs: z.number(),
+  byIntent: z.record(z.string(), z.number())
+});
+
+export type AuditLogSummary = z.infer<typeof auditLogSummarySchema>;

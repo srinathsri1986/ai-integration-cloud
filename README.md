@@ -113,6 +113,19 @@ Example questions:
 
 The web dashboard includes an AI Query Console that calls only `/api/v1/orchestrator/query`. The orchestrator does not call an external LLM yet and does not accept SQL, SuiteQL, or raw NetSuite access.
 
+## Audit Log v0.6
+
+Orchestrator executions are recorded in an in-memory audit log. The log resets when the API process restarts.
+
+```bash
+curl "http://localhost:8000/api/v1/audit/logs"
+curl "http://localhost:8000/api/v1/audit/summary"
+```
+
+The audit log records request metadata, detected intent, tools used, endpoint called, success or failure, fallback status, and latency. It does not store credentials, secrets, SQL, SuiteQL, or raw NetSuite access details.
+
+The web dashboard includes a Tool Execution Monitoring panel that shows the latest orchestrator calls and aggregate audit counters.
+
 ## Tests
 
 Backend:

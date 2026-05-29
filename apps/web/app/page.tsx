@@ -14,6 +14,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuditLogPanel } from "@/components/audit-log-panel";
+import { AiQueryConsole } from "@/components/ai-query-console";
 import {
   type ApiResult,
   getDashboardSummary,
@@ -23,7 +25,6 @@ import {
   getSubsidiaryDrilldown,
   getYoyComparison
 } from "@/lib/api";
-import { AiQueryConsole } from "@/components/ai-query-console";
 
 export const dynamic = "force-dynamic";
 
@@ -354,6 +355,8 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      <AuditLogPanel />
     </main>
   );
 }
