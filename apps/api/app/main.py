@@ -1,17 +1,38 @@
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import audit, cfo, connectors, flows, health, orchestrator
 from app.core.config import get_settings
+from app.core.config_validation import validate_settings_or_raise
 from app.core.logging import configure_logging
 
 settings = get_settings()
 configure_logging(settings.log_level)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    validation = validate_settings_or_raise(settings)
+    logger.info(
+        "Runtime configuration validated.",
+        extra={
+            "configPosture": validation.posture,
+            "configWarnings": validation.warnings,
+        },
+    )
+    yield
+
 
 app = FastAPI(
     title="NetSuite CFO Intelligence Orchestrator API",
     version="0.1.0",
     description="MVP API using mock NetSuite data and approved query templates.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

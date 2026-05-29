@@ -46,6 +46,7 @@ services:
       NETSUITE_TIMEOUT_SECONDS: ${NETSUITE_TIMEOUT_SECONDS:-15}
       NETSUITE_TOKEN_ID: ${NETSUITE_TOKEN_ID:-}
       NETSUITE_TOKEN_SECRET: ${NETSUITE_TOKEN_SECRET:-}
+      # Future hardening: replace local env secret values with Docker secrets or vault references.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:7b}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}

@@ -86,3 +86,16 @@ def test_unknown_orchestrator_query_logs_no_approved_tool_call() -> None:
     assert logs[0]["endpointCalled"] == "/api/v1/orchestrator/query"
     assert "credential" not in logs[0]
     assert "secret" not in logs[0]
+
+
+def test_audit_log_masks_inline_secret_values() -> None:
+    response = client.post(
+        "/api/v1/orchestrator/query",
+        json={"question": "Show dashboard summary password=super-secret-token"},
+    )
+
+    assert response.status_code == 200
+    logs = client.get("/api/v1/audit/logs").json()
+
+    assert "super-secret-token" not in logs[0]["question"]
+    assert "password=****" in logs[0]["question"]

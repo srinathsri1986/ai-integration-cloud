@@ -53,6 +53,14 @@ NETSUITE_TIMEOUT_SECONDS=15
 
 V1.3 validates HTTPS base URL and token-based auth readiness only. It does not expose arbitrary SuiteQL, does not execute raw NetSuite queries, and does not return secret values through API responses or audit logs. Real CFO sandbox template execution must be added one approved service method at a time.
 
+## Runtime config validation and redaction
+
+Startup validation runs when the FastAPI app starts. Invalid runtime modes fail closed, while incomplete optional provider settings are reported as safe warnings. Logged configuration posture uses booleans only and does not include raw secret values.
+
+Audit entries are redacted before storage. Inline secret-like patterns such as `password=...`, `token:...`, API keys, and bearer tokens are masked if they accidentally appear in request text.
+
+Use `.env.local` for local-only real values. Do not commit `.env`, `.env.local`, or any file containing real NetSuite/OpenAI secrets.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

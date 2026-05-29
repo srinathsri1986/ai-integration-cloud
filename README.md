@@ -332,6 +332,33 @@ The Connector Studio UI shows sandbox readiness with safe metadata only:
 
 It never displays, stores, or accepts real token values in the web UI.
 
+## Secrets and Runtime Hardening v1.4
+
+V1.4 adds startup configuration validation and centralized secret redaction. Mock mode remains the default, so local development does not require real NetSuite or OpenAI credentials.
+
+Recommended local secret workflow:
+
+```bash
+cp .env.example .env.local
+```
+
+Put real local-only values in `.env.local` when needed. Files matching `.env.*` are ignored by Git except `.env.example`, so placeholders stay documented without committing secrets.
+
+Runtime validation checks:
+
+- `NETSUITE_MODE` must be `mock` or `sandbox`.
+- `AI_PROVIDER` must be `disabled`, `mock`, `openai`, or `ollama`.
+- Sandbox mode reports safe warnings when base URL or token-based auth values are incomplete.
+- OpenAI and Ollama modes report safe warnings when provider configuration is incomplete.
+
+Runtime posture logs and readiness metadata use booleans only, such as `credentialsConfigured`, and never log raw token, password, key, or secret values. Audit entries are redacted before storage to mask accidental inline secret patterns such as `password=...`, `token:...`, and bearer tokens.
+
+Future production secret options:
+
+- Docker secrets for containerized local demos.
+- OCI Vault, AWS Secrets Manager, or Azure Key Vault through a provider abstraction.
+- Per-tenant secret references rather than stored plaintext values.
+
 ## Tests
 
 Backend:

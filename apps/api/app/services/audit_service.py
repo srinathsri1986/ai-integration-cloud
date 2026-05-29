@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from threading import Lock
 
+from app.core.security import redact_mapping
 from app.models.audit import AuditLogEntry, AuditLogSummary
 
 
@@ -11,8 +12,9 @@ class AuditService:
         self._lock = Lock()
 
     def record(self, entry: AuditLogEntry) -> None:
+        safe_entry = AuditLogEntry.model_validate(redact_mapping(entry.model_dump(by_alias=True)))
         with self._lock:
-            self._logs.append(entry)
+            self._logs.append(safe_entry)
 
     def record_connector_action(
         self,
