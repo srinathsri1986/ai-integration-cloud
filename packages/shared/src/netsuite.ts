@@ -44,13 +44,20 @@ export const connectorStatusSchema = z.enum([
 
 export type ConnectorStatus = z.infer<typeof connectorStatusSchema>;
 
+export const connectorModeSchema = z.enum(["mock", "sandbox"]);
+
+export type ConnectorMode = z.infer<typeof connectorModeSchema>;
+
 export const netSuiteConnectorConfigSchema = z.object({
   accountId: z.string().min(3).max(64),
   environment: z.enum(["sandbox", "production"]),
-  authMode: z.literal("placeholder"),
+  authMode: z.enum(["placeholder", "token_based_auth"]),
   mockMode: z.boolean(),
+  mode: connectorModeSchema,
   status: connectorStatusSchema,
-  lastTestedAt: z.string().nullable()
+  lastTestedAt: z.string().nullable(),
+  baseUrlConfigured: z.boolean(),
+  credentialsConfigured: z.boolean()
 });
 
 export type NetSuiteConnectorConfig = z.infer<typeof netSuiteConnectorConfigSchema>;
@@ -71,6 +78,7 @@ export const connectorListItemSchema = z.object({
   name: z.string(),
   status: connectorStatusSchema,
   mockMode: z.boolean(),
+  mode: connectorModeSchema,
   lastTestedAt: z.string().nullable()
 });
 
@@ -82,7 +90,10 @@ export const netSuiteConnectionTestResponseSchema = z.object({
   status: connectorStatusSchema,
   message: z.string(),
   testedAt: z.string(),
-  mockMode: z.boolean()
+  mockMode: z.boolean(),
+  mode: connectorModeSchema,
+  baseUrlConfigured: z.boolean(),
+  credentialsConfigured: z.boolean()
 });
 
 export type NetSuiteConnectionTestResponse = z.infer<

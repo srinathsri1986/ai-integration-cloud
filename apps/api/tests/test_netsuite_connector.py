@@ -2,6 +2,11 @@ import pytest
 
 from app.connectors.netsuite.mock_connector import MockNetSuiteConnector
 from app.connectors.netsuite.query_templates import run_approved_mock_template
+from app.connectors.netsuite.sandbox_connector import (
+    NetSuiteSandboxConnectionConfig,
+    NetSuiteSandboxConnector,
+    NetSuiteSandboxConnectorError,
+)
 
 
 def test_mock_connector_returns_pl_vs_budget_for_approved_template() -> None:
@@ -27,3 +32,53 @@ def test_mock_connector_filters_overdue_projects_by_days() -> None:
 def test_unknown_or_sql_like_template_is_rejected() -> None:
     with pytest.raises(KeyError):
         run_approved_mock_template("select * from transaction")
+
+
+def test_sandbox_connector_reports_configuration_readiness() -> None:
+    connector = NetSuiteSandboxConnector(
+        NetSuiteSandboxConnectionConfig(
+            account_id="SANDBOX-123",
+            base_url="https://sandbox.suitetalk.api.netsuite.com",
+            consumer_key="consumer-key",
+            consumer_secret="consumer-secret",
+            token_id="token-id",
+            token_secret="token-secret",
+        )
+    )
+
+    success, message = connector.test_connection()
+
+    assert success is True
+    assert "ready" in message
+
+
+def test_sandbox_connector_rejects_unknown_template_before_execution() -> None:
+    connector = NetSuiteSandboxConnector(
+        NetSuiteSandboxConnectionConfig(
+            account_id="SANDBOX-123",
+            base_url="https://sandbox.suitetalk.api.netsuite.com",
+            consumer_key="consumer-key",
+            consumer_secret="consumer-secret",
+            token_id="token-id",
+            token_secret="token-secret",
+        )
+    )
+
+    with pytest.raises(KeyError):
+        connector.run_template("select * from transaction")
+
+
+def test_sandbox_connector_blocks_template_execution_until_mapped() -> None:
+    connector = NetSuiteSandboxConnector(
+        NetSuiteSandboxConnectionConfig(
+            account_id="SANDBOX-123",
+            base_url="https://sandbox.suitetalk.api.netsuite.com",
+            consumer_key="consumer-key",
+            consumer_secret="consumer-secret",
+            token_id="token-id",
+            token_secret="token-secret",
+        )
+    )
+
+    with pytest.raises(NetSuiteSandboxConnectorError):
+        connector.run_template("pl_vs_budget")

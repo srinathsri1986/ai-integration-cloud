@@ -245,8 +245,11 @@ const fallbackNetSuiteConnectorConfig: NetSuiteConnectorConfig = {
   environment: "sandbox",
   authMode: "placeholder",
   mockMode: true,
+  mode: "mock",
   status: "not_configured",
-  lastTestedAt: null
+  lastTestedAt: null,
+  baseUrlConfigured: false,
+  credentialsConfigured: false
 };
 
 const fallbackConnectorList: ConnectorListItem[] = [
@@ -255,6 +258,7 @@ const fallbackConnectorList: ConnectorListItem[] = [
     name: "NetSuite",
     status: "not_configured",
     mockMode: true,
+    mode: "mock",
     lastTestedAt: null
   }
 ];
@@ -265,7 +269,10 @@ const fallbackConnectionTestResponse: NetSuiteConnectionTestResponse = {
   status: "test_failed",
   message: "The connector API is unavailable.",
   testedAt: new Date(0).toISOString(),
-  mockMode: true
+  mockMode: true,
+  mode: "mock",
+  baseUrlConfigured: false,
+  credentialsConfigured: false
 };
 
 const fallbackFlows: FlowDefinition[] = [

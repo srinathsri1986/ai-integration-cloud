@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:3000"
     placeholder_jwt_secret: str = "local-dev-only"
     netsuite_mode: str = "mock"
+    netsuite_account_id: str = "placeholder-account"
+    netsuite_base_url: str | None = None
+    netsuite_consumer_key: str | None = None
+    netsuite_consumer_secret: str | None = None
+    netsuite_token_id: str | None = None
+    netsuite_token_secret: str | None = None
+    netsuite_timeout_seconds: int = 15
     ai_provider: str = "mock"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"

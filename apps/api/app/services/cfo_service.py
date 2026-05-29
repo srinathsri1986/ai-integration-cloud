@@ -1,5 +1,6 @@
 from app.connectors.netsuite.mock_data import MOCK_CFO_SUMMARY
-from app.connectors.netsuite.mock_connector import MockNetSuiteConnector
+from app.connectors.netsuite.factory import make_netsuite_connector
+from app.connectors.netsuite.interface import NetSuiteConnector
 from app.models.cfo import (
     CfoDashboardSummary,
     NetSuiteTemplateResult,
@@ -12,8 +13,8 @@ from app.models.cfo import (
 
 
 class CfoService:
-    def __init__(self, connector: MockNetSuiteConnector | None = None) -> None:
-        self.connector = connector or MockNetSuiteConnector()
+    def __init__(self, connector: NetSuiteConnector | None = None) -> None:
+        self.connector = connector or make_netsuite_connector()
 
     def dashboard_summary(self) -> CfoDashboardSummary:
         return CfoDashboardSummary.model_validate(MOCK_CFO_SUMMARY)

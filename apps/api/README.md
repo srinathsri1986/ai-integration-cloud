@@ -36,6 +36,23 @@ The orchestrator adds an executive narrative to `/api/v1/orchestrator/query` res
 
 The model prompt receives compact summarized JSON, tool names, and source policy text only. It never receives credentials, raw transactions, arbitrary SQL, SuiteQL, raw NetSuite queries, or raw NetSuite access details. If the configured provider fails or returns invalid output, the service falls back to deterministic template text.
 
+## NetSuite sandbox mode
+
+The API can be started with `NETSUITE_MODE=sandbox` to validate local sandbox connector readiness:
+
+```bash
+NETSUITE_MODE=sandbox
+NETSUITE_ACCOUNT_ID=placeholder-account
+NETSUITE_BASE_URL=https://placeholder-account.suitetalk.api.netsuite.com
+NETSUITE_CONSUMER_KEY=
+NETSUITE_CONSUMER_SECRET=
+NETSUITE_TOKEN_ID=
+NETSUITE_TOKEN_SECRET=
+NETSUITE_TIMEOUT_SECONDS=15
+```
+
+V1.3 validates HTTPS base URL and token-based auth readiness only. It does not expose arbitrary SuiteQL, does not execute raw NetSuite queries, and does not return secret values through API responses or audit logs. Real CFO sandbox template execution must be added one approved service method at a time.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

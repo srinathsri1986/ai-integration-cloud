@@ -298,6 +298,40 @@ Provider behavior:
 
 If the selected model is unavailable, times out, returns invalid JSON, returns an overlong narrative, or includes blocked raw-query/sensitive language, the API falls back to deterministic template narrative generation. Orchestrator responses and audit logs include `narrativeProvider`, `narrativeModel`, `narrativeGenerated`, and `narrativeFallbackUsed`.
 
+## NetSuite Sandbox Connector Foundation v1.3
+
+The connector layer now supports an explicit sandbox mode for local readiness checks:
+
+```bash
+NETSUITE_MODE=sandbox
+NETSUITE_ACCOUNT_ID=placeholder-account
+NETSUITE_BASE_URL=https://placeholder-account.suitetalk.api.netsuite.com
+NETSUITE_CONSUMER_KEY=
+NETSUITE_CONSUMER_SECRET=
+NETSUITE_TOKEN_ID=
+NETSUITE_TOKEN_SECRET=
+NETSUITE_TIMEOUT_SECONDS=15
+```
+
+Mock mode remains the default and is still the recommended mode for local MVP work:
+
+```bash
+NETSUITE_MODE=mock
+```
+
+The sandbox connector validates that a HTTPS base URL and token-based auth values are configured, but V1.3 does not execute real SuiteQL or Saved Search calls yet. Approved template dispatch is preserved, unknown template IDs are rejected, and sandbox template execution fails closed until each approved CFO template is explicitly mapped.
+
+The Connector Studio UI shows sandbox readiness with safe metadata only:
+
+- runtime mode
+- status
+- auth mode
+- base URL configured
+- credentials configured
+- last tested timestamp
+
+It never displays, stores, or accepts real token values in the web UI.
+
 ## Tests
 
 Backend:
