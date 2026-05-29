@@ -3,8 +3,10 @@ from threading import Lock
 from time import perf_counter
 from uuid import uuid4
 
+from app.core.database import SessionLocal
 from app.models.flows import FlowDefinition, FlowId, FlowRunResponse
 from app.models.orchestrator import OrchestratorQueryRequest
+from app.repositories.flow_run_repository import FlowRunRepository
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
 from app.services.orchestrator_service import OrchestratorService
@@ -159,7 +161,7 @@ class FlowService:
                 self._flows[flow_id] = flow
 
             success = True
-            return FlowRunResponse(
+            response = FlowRunResponse(
                 requestId=request_id,
                 flowId=flow_id,
                 status="succeeded",
@@ -169,6 +171,10 @@ class FlowService:
                 message="Mock flow execution completed using approved CFO services only.",
                 data=data,
             )
+            with SessionLocal() as session:
+                FlowRunRepository(session).append(response)
+
+            return response
         finally:
             latency_ms = int((perf_counter() - timer_started) * 1000)
             audit_service.record_flow_action(
@@ -181,8 +187,27 @@ class FlowService:
             )
 
     def clear_for_tests(self) -> None:
+        with SessionLocal() as session:
+            FlowRunRepository(session).clear()
+
         with self._lock:
             self._flows = _initial_flows()
+
+    def list_runs(
+        self,
+        *,
+        flow_id: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[FlowRunResponse]:
+        with SessionLocal() as session:
+            return FlowRunRepository(session).list_runs(
+                flow_id=flow_id,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
 
 
 flow_service = FlowService()

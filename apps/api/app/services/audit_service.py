@@ -1,9 +1,10 @@
-from collections import Counter
 from datetime import UTC, datetime
 from threading import Lock
 
+from app.core.database import SessionLocal
 from app.core.security import redact_mapping
 from app.models.audit import AuditLogEntry, AuditLogSummary
+from app.repositories.audit_repository import AuditRepository
 
 
 class AuditService:
@@ -13,6 +14,9 @@ class AuditService:
 
     def record(self, entry: AuditLogEntry) -> None:
         safe_entry = AuditLogEntry.model_validate(redact_mapping(entry.model_dump(by_alias=True)))
+        with SessionLocal() as session:
+            AuditRepository(session).append(safe_entry)
+
         with self._lock:
             self._logs.append(safe_entry)
 
@@ -90,31 +94,34 @@ class AuditService:
             )
         )
 
-    def list_logs(self) -> list[AuditLogEntry]:
-        with self._lock:
-            return list(reversed(self._logs))
+    def list_logs(
+        self,
+        *,
+        request_id: str | None = None,
+        intent: str | None = None,
+        provider: str | None = None,
+        success: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditLogEntry]:
+        with SessionLocal() as session:
+            return AuditRepository(session).list_logs(
+                request_id=request_id,
+                intent=intent,
+                provider=provider,
+                success=success,
+                limit=limit,
+                offset=offset,
+            )
 
     def summary(self) -> AuditLogSummary:
-        with self._lock:
-            logs = list(self._logs)
-
-        total = len(logs)
-        successes = sum(1 for log in logs if log.success)
-        failures = total - successes
-        fallback_count = sum(1 for log in logs if log.fallback_used)
-        average_latency_ms = sum(log.latency_ms for log in logs) / total if total else 0
-        by_intent = Counter(log.detected_intent for log in logs)
-
-        return AuditLogSummary(
-            total=total,
-            successes=successes,
-            failures=failures,
-            fallbackCount=fallback_count,
-            averageLatencyMs=round(average_latency_ms, 2),
-            byIntent=dict(by_intent),
-        )
+        with SessionLocal() as session:
+            return AuditRepository(session).summary()
 
     def clear_for_tests(self) -> None:
+        with SessionLocal() as session:
+            AuditRepository(session).clear()
+
         with self._lock:
             self._logs.clear()
 

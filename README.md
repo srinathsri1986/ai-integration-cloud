@@ -359,6 +359,30 @@ Future production secret options:
 - OCI Vault, AWS Secrets Manager, or Azure Key Vault through a provider abstraction.
 - Per-tenant secret references rather than stored plaintext values.
 
+## Persistent Audit and Flow History v1.5
+
+Audit events and flow runs now persist through a database-backed repository layer. The Docker Compose API service uses PostgreSQL through `DATABASE_URL`, while tests use SQLite so the suite does not require Docker.
+
+Tables are created at API startup for the local MVP:
+
+- `audit_logs`: append-only audit events with indexed request, intent, provider, success, and timestamp fields.
+- `flow_runs`: append-only flow execution records with indexed request, flow, status, and timestamp fields.
+
+The audit log API supports filtered and paginated reads:
+
+```bash
+curl "http://localhost:8000/api/v1/audit/logs?intent=PL_VS_BUDGET&provider=ollama&success=true&limit=50&offset=0"
+curl "http://localhost:8000/api/v1/audit/logs?requestId=<request-id>"
+```
+
+Flow run history is available through:
+
+```bash
+curl "http://localhost:8000/api/v1/flows/runs?flow_id=netsuite-cfo-dashboard-refresh&run_status=succeeded"
+```
+
+The service keeps queryable operational fields as indexed columns and stores full redacted event metadata as JSON/JSONB for future governance views. This keeps V1.5 simple for the MVP while leaving room for monthly partitioning, retention policies, async write buffering, and analytics stores later.
+
 ## Tests
 
 Backend:

@@ -61,6 +61,29 @@ Audit entries are redacted before storage. Inline secret-like patterns such as `
 
 Use `.env.local` for local-only real values. Do not commit `.env`, `.env.local`, or any file containing real NetSuite/OpenAI secrets.
 
+## Persistent audit and flow history
+
+The API initializes local MVP persistence tables on startup:
+
+- `audit_logs`
+- `flow_runs`
+
+Audit writes are redacted before persistence. Audit reads support filters and pagination:
+
+```bash
+curl "http://localhost:8000/api/v1/audit/logs?intent=PL_VS_BUDGET&provider=ollama&success=true&limit=50&offset=0"
+curl "http://localhost:8000/api/v1/audit/summary"
+```
+
+Flow runs are appended after successful mock flow execution:
+
+```bash
+curl "http://localhost:8000/api/v1/flows/runs"
+curl "http://localhost:8000/api/v1/flows/runs?flow_id=netsuite-project-risk-refresh"
+```
+
+PostgreSQL uses JSONB for flexible metadata. Tests use SQLite through `tests/conftest.py` to keep local test runs isolated from Docker.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

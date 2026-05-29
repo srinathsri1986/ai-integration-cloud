@@ -73,6 +73,27 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     assert "token" not in logs[0]
     assert "secret" not in logs[0]
 
+    runs = client.get("/api/v1/flows/runs").json()
+    assert len(runs) == 1
+    assert runs[0]["requestId"] == body["requestId"]
+    assert runs[0]["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert runs[0]["status"] == "succeeded"
+
+
+def test_flow_run_history_supports_filters_and_pagination() -> None:
+    client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+    client.post("/api/v1/flows/netsuite-project-risk-refresh/run")
+
+    by_flow = client.get("/api/v1/flows/runs?flow_id=netsuite-project-risk-refresh").json()
+    assert len(by_flow) == 1
+    assert by_flow[0]["flowId"] == "netsuite-project-risk-refresh"
+
+    by_status = client.get("/api/v1/flows/runs?run_status=succeeded").json()
+    assert len(by_status) == 2
+
+    paged = client.get("/api/v1/flows/runs?limit=1&offset=1").json()
+    assert len(paged) == 1
+
 
 def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
     response = client.post("/api/v1/flows/netsuite-project-risk-refresh/run")

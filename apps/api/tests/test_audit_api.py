@@ -72,6 +72,33 @@ def test_audit_summary_aggregates_logs() -> None:
     assert body["byIntent"]["OVERDUE_PROJECTS_BY_ACCOUNT_MANAGER"] == 1
 
 
+def test_audit_logs_support_filters_and_pagination() -> None:
+    first = client.post("/api/v1/orchestrator/query", json={"question": "Show dashboard summary"})
+    client.post(
+        "/api/v1/orchestrator/query",
+        json={"question": "Which projects are overdue by account manager?"},
+    )
+    request_id = client.get("/api/v1/audit/logs?intent=CFO_DASHBOARD_SUMMARY").json()[0][
+        "requestId"
+    ]
+
+    by_intent = client.get("/api/v1/audit/logs?intent=CFO_DASHBOARD_SUMMARY").json()
+    assert len(by_intent) == 1
+    assert by_intent[0]["detectedIntent"] == "CFO_DASHBOARD_SUMMARY"
+
+    by_provider = client.get("/api/v1/audit/logs?provider=mock&success=true").json()
+    assert len(by_provider) == 2
+    assert all(log["aiProvider"] == "mock" for log in by_provider)
+
+    by_request = client.get(f"/api/v1/audit/logs?requestId={request_id}").json()
+    assert len(by_request) == 1
+    assert by_request[0]["requestId"] == request_id
+
+    paged = client.get("/api/v1/audit/logs?limit=1&offset=1").json()
+    assert len(paged) == 1
+    assert first.status_code == 200
+
+
 def test_unknown_orchestrator_query_logs_no_approved_tool_call() -> None:
     response = client.post(
         "/api/v1/orchestrator/query",

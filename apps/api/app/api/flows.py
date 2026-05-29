@@ -11,6 +11,21 @@ def list_flows() -> list[FlowDefinition]:
     return flow_service.list_flows()
 
 
+@router.get("/runs", response_model=list[FlowRunResponse])
+def list_flow_runs(
+    flow_id: str | None = None,
+    run_status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[FlowRunResponse]:
+    return flow_service.list_runs(
+        flow_id=flow_id,
+        status=run_status,
+        limit=min(max(limit, 1), 500),
+        offset=max(offset, 0),
+    )
+
+
 @router.get("/{flow_id}", response_model=FlowDefinition)
 def get_flow(flow_id: FlowId) -> FlowDefinition:
     try:
