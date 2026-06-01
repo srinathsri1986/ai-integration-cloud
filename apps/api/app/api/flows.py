@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import require_permissions
-from app.models.flows import FlowDefinition, FlowDefinitionUpsertRequest, FlowId, FlowRunResponse
+from app.models.flows import (
+    FlowDefinition,
+    FlowDefinitionUpsertRequest,
+    FlowId,
+    FlowRunResponse,
+    FlowSuggestionRequest,
+    FlowSuggestionResponse,
+)
+from app.services.flow_suggestion_service import flow_suggestion_service
 from app.services.flow_service import flow_service
 
 router = APIRouter(prefix="/flows", tags=["flows"])
@@ -34,6 +42,14 @@ def upsert_flow_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> FlowDefinition:
     return flow_service.upsert_flow(request)
+
+
+@router.post("/suggestions", response_model=FlowSuggestionResponse)
+def suggest_flow_definition(
+    request: FlowSuggestionRequest,
+    user=Depends(require_permissions("flow:run")),
+) -> FlowSuggestionResponse:
+    return flow_suggestion_service.suggest(request)
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)

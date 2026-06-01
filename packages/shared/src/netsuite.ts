@@ -106,7 +106,7 @@ export const flowIds = [
   "netsuite-subsidiary-drilldown-refresh"
 ] as const;
 
-export const flowIdSchema = z.enum(flowIds);
+export const flowIdSchema = z.string().min(3).max(96);
 
 export type FlowId = z.infer<typeof flowIdSchema>;
 
@@ -164,6 +164,26 @@ export const flowDefinitionUpsertRequestSchema = z.object({
 });
 
 export type FlowDefinitionUpsertRequest = z.infer<typeof flowDefinitionUpsertRequestSchema>;
+
+export const flowSuggestionRequestSchema = z.object({
+  prompt: z.string().min(10).max(1000)
+});
+
+export type FlowSuggestionRequest = z.infer<typeof flowSuggestionRequestSchema>;
+
+export const flowSuggestionResponseSchema = z.object({
+  prompt: z.string(),
+  suggestedFlow: flowDefinitionUpsertRequestSchema,
+  rationale: z.string(),
+  suggestionProvider: z.string(),
+  suggestionModel: z.string().nullable(),
+  suggestionGenerated: z.boolean(),
+  suggestionFallbackUsed: z.boolean(),
+  modelCallAttempted: z.boolean(),
+  modelCallSucceeded: z.boolean()
+});
+
+export type FlowSuggestionResponse = z.infer<typeof flowSuggestionResponseSchema>;
 
 export const flowRunResponseSchema = z.object({
   requestId: z.string(),

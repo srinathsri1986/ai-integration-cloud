@@ -59,6 +59,22 @@ class FlowDefinitionUpsertRequest(BaseModel):
         return value
 
 
+class FlowSuggestionRequest(BaseModel):
+    prompt: str = Field(min_length=10, max_length=1000)
+
+
+class FlowSuggestionResponse(BaseModel):
+    prompt: str
+    suggested_flow: FlowDefinitionUpsertRequest = Field(alias="suggestedFlow")
+    rationale: str = Field(min_length=10, max_length=600)
+    suggestion_provider: str = Field(alias="suggestionProvider")
+    suggestion_model: str | None = Field(default=None, alias="suggestionModel")
+    suggestion_generated: bool = Field(alias="suggestionGenerated")
+    suggestion_fallback_used: bool = Field(alias="suggestionFallbackUsed")
+    model_call_attempted: bool = Field(alias="modelCallAttempted")
+    model_call_succeeded: bool = Field(alias="modelCallSucceeded")
+
+
 class FlowRunResponse(BaseModel):
     request_id: str = Field(alias="requestId")
     flow_id: FlowId = Field(alias="flowId")

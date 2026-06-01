@@ -1,7 +1,9 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models.flows import FlowSuggestionRequest
 from app.services.audit_service import audit_service
+from app.services.flow_suggestion_service import FlowSuggestionService
 from app.services.flow_service import flow_service
 
 
@@ -143,6 +145,96 @@ def test_create_flow_definition_uses_approved_tools_and_writes_audit_log() -> No
     logs = client.get("/api/v1/audit/logs").json()
     assert logs[0]["detectedIntent"] == "FLOW_DEFINITION"
     assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary"]
+
+
+def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
+    response = client.post(
+        "/api/v1/flows/suggestions",
+        json={
+            "prompt": (
+                "Create a monthly CFO dashboard refresh flow from NetSuite that compares "
+                "P/L vs budget and highlights overdue projects."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["suggestedFlow"]["status"] == "draft"
+    assert body["suggestedFlow"]["sourceConnector"] == "netsuite"
+    assert body["suggestedFlow"]["triggerType"] == "schedule_placeholder"
+    assert [step["approvedTool"] for step in body["suggestedFlow"]["steps"]] == [
+        "cfo.dashboard_summary",
+        "cfo.pl_vs_budget",
+        "cfo.overdue_projects_by_account_manager",
+        "orchestrator.query",
+    ]
+    assert "sql" not in str(body).lower()
+    assert "suiteql" not in str(body).lower()
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["detectedIntent"] == "FLOW_SUGGESTION"
+    assert logs[0]["endpointCalled"] == "/api/v1/flows/suggestions"
+    assert logs[0]["success"] is True
+
+
+def test_flow_suggestion_falls_back_when_model_output_is_invalid() -> None:
+    class InvalidFlowSuggestionProvider:
+        provider_name = "ollama"
+        model_name = "fake-local-model"
+
+        def extract_intent(self, question: str):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_narrative(self, context: dict):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_flow_suggestion(self, context: dict):
+            return type(
+                "InvalidSuggestion",
+                (),
+                {
+                    "suggested_flow": {
+                        "flowId": "bad-flow",
+                        "name": "Bad flow",
+                        "description": "Attempt to use unsupported raw access.",
+                        "sourceConnector": "netsuite",
+                        "targetModule": "cfo_dashboard",
+                        "status": "draft",
+                        "triggerType": "manual",
+                        "steps": [
+                            {
+                                "id": "raw",
+                                "name": "Raw access",
+                                "description": "Unsupported step",
+                                "approvedTool": "netsuite.raw_suiteql",
+                            }
+                        ],
+                    },
+                    "rationale": "Invalid model output for test coverage.",
+                    "model_name": "fake-local-model",
+                    "model_call_attempted": True,
+                    "model_call_succeeded": True,
+                    "provider_name": "ollama",
+                },
+            )()
+
+    service = FlowSuggestionService(
+        ai_provider="ollama",
+        model_name="fake-local-model",
+        llm_provider=InvalidFlowSuggestionProvider(),
+    )
+
+    response = service.suggest(
+        FlowSuggestionRequest(
+            prompt="Create a CFO flow for P/L budget review and overdue project risk."
+        )
+    )
+
+    assert response.suggestion_fallback_used is True
+    assert response.suggestion_provider == "ollama"
+    assert response.suggested_flow.steps[0].approved_tool == "cfo.dashboard_summary"
+    assert all("raw" not in step.approved_tool for step in response.suggested_flow.steps)
 
 
 def test_flow_definition_rejects_raw_query_language_and_unapproved_tool() -> None:

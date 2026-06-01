@@ -26,6 +26,16 @@ class LLMNarrativeResult:
     provider_name: str
 
 
+@dataclass(frozen=True)
+class LLMFlowSuggestionResult:
+    suggested_flow: dict
+    rationale: str
+    model_name: str
+    model_call_attempted: bool
+    model_call_succeeded: bool
+    provider_name: str
+
+
 class LLMProviderError(RuntimeError):
     def __init__(
         self,
@@ -48,6 +58,9 @@ class LLMProvider(Protocol):
 
     def generate_narrative(self, context: dict) -> LLMNarrativeResult:
         """Return a concise executive narrative from approved summarized CFO data only."""
+
+    def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
+        """Return a draft flow definition using approved connectors and actions only."""
 
 
 class MockLLMProvider:
@@ -105,6 +118,18 @@ class MockLLMProvider:
 
         return LLMNarrativeResult(
             narrative=_validate_narrative_text(narrative),
+            model_name=self.model_name,
+            model_call_attempted=False,
+            model_call_succeeded=False,
+            provider_name=self.provider_name,
+        )
+
+    def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
+        prompt = str(context.get("prompt", "")).lower()
+        suggested_flow = _template_flow_suggestion(prompt)
+        return LLMFlowSuggestionResult(
+            suggested_flow=suggested_flow,
+            rationale="Mock provider selected approved CFO actions from the governed tool catalog.",
             model_name=self.model_name,
             model_call_attempted=False,
             model_call_succeeded=False,
@@ -263,6 +288,65 @@ class OpenAIProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
+        if not self.api_key:
+            raise LLMProviderError(
+                "OPENAI_API_KEY is not configured.",
+                model_call_attempted=False,
+            )
+
+        payload = {
+            "model": self.model_name,
+            "input": [
+                {
+                    "role": "system",
+                    "content": _flow_suggestion_system_prompt(),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(context, separators=(",", ":")),
+                },
+            ],
+            "text": {"format": {"type": "json_object"}},
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            self.endpoint,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=10) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI flow suggestion request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(_extract_output_text(body))
+            suggested_flow, rationale = _validated_flow_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI flow suggestion returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMFlowSuggestionResult(
+            suggested_flow=suggested_flow,
+            rationale=rationale,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 class OllamaProvider:
     provider_name = "ollama"
@@ -375,6 +459,52 @@ class OllamaProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
+        prompt = (
+            f"{_flow_suggestion_system_prompt()}\n\n"
+            f"Approved flow request context: {json.dumps(context, separators=(',', ':'))}"
+        )
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            f"{self.base_url}/api/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama flow suggestion request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(body["response"]))
+            suggested_flow, rationale = _validated_flow_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama flow suggestion returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMFlowSuggestionResult(
+            suggested_flow=suggested_flow,
+            rationale=rationale,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 def _extract_output_text(body: dict) -> str:
     if isinstance(body.get("output_text"), str):
@@ -433,6 +563,117 @@ def _validate_narrative_text(text: str) -> str:
         raise ValueError("narrative included blocked sensitive or raw-query language")
 
     return normalized
+
+
+def _flow_suggestion_system_prompt() -> str:
+    return (
+        "You are a governed integration flow planner. Return only JSON with keys "
+        "suggestedFlow and rationale. suggestedFlow must include flowId, name, "
+        "description, sourceConnector, targetModule, status, triggerType, and steps. "
+        "sourceConnector must be netsuite. status must be draft. triggerType must be "
+        "manual or schedule_placeholder. Each step must include id, name, description, "
+        "and approvedTool. approvedTool must be one of: cfo.dashboard_summary, "
+        "cfo.pl_vs_budget, cfo.yoy_comparison, cfo.subsidiary_drilldown, "
+        "cfo.running_projects, cfo.overdue_projects_by_account_manager, "
+        "orchestrator.query. Do not include SQL, SuiteQL, credentials, raw NetSuite "
+        "queries, arbitrary code, execution commands, publish instructions, or tool calls."
+    )
+
+
+def _validated_flow_suggestion_payload(parsed: dict) -> tuple[dict, str]:
+    suggested_flow = parsed["suggestedFlow"]
+    rationale = str(parsed["rationale"])
+
+    if not isinstance(suggested_flow, dict):
+        raise ValueError("suggestedFlow must be an object")
+
+    if len(rationale) < 10 or len(rationale) > 600:
+        raise ValueError("rationale length is outside the allowed range")
+
+    return suggested_flow, rationale
+
+
+def _template_flow_suggestion(prompt: str) -> dict:
+    normalized = prompt.lower()
+    steps = [
+        {
+            "id": "load-cfo-summary",
+            "name": "Load CFO summary",
+            "description": "Load approved CFO dashboard summary data.",
+            "approvedTool": "cfo.dashboard_summary",
+        }
+    ]
+
+    if any(term in normalized for term in ["budget", "p/l", "profit and loss", "variance"]):
+        steps.append(
+            {
+                "id": "compare-pl-budget",
+                "name": "Compare P/L vs budget",
+                "description": "Compare approved P/L actuals against budget.",
+                "approvedTool": "cfo.pl_vs_budget",
+            }
+        )
+
+    if any(term in normalized for term in ["overdue", "risk", "late", "project"]):
+        steps.append(
+            {
+                "id": "summarize-overdue-projects",
+                "name": "Summarize overdue projects",
+                "description": "Summarize overdue project exposure by account manager.",
+                "approvedTool": "cfo.overdue_projects_by_account_manager",
+            }
+        )
+
+    if any(term in normalized for term in ["subsidiary", "drilldown", "drill down"]):
+        steps.append(
+            {
+                "id": "load-subsidiary-drilldown",
+                "name": "Load subsidiary drilldown",
+                "description": "Load approved subsidiary operating performance data.",
+                "approvedTool": "cfo.subsidiary_drilldown",
+            }
+        )
+
+    if "yoy" in normalized or "year over year" in normalized or "year-over-year" in normalized:
+        steps.append(
+            {
+                "id": "compare-yoy",
+                "name": "Compare YoY performance",
+                "description": "Compare approved current year and prior year metrics.",
+                "approvedTool": "cfo.yoy_comparison",
+            }
+        )
+
+    if any(term in normalized for term in ["narrative", "summary", "ai", "cfo"]):
+        steps.append(
+            {
+                "id": "route-approved-cfo-question",
+                "name": "Route approved CFO question",
+                "description": "Route a governed CFO question without direct tool execution by the model.",
+                "approvedTool": "orchestrator.query",
+            }
+        )
+
+    deduped_steps = []
+    seen_tools = set()
+    for step in steps:
+        if step["approvedTool"] not in seen_tools:
+            seen_tools.add(step["approvedTool"])
+            deduped_steps.append(step)
+
+    return {
+        "flowId": "ai-drafted-cfo-flow",
+        "name": "AI drafted CFO flow",
+        "description": (
+            "Draft CFO orchestration generated from a natural-language request using approved "
+            "NetSuite actions only."
+        ),
+        "sourceConnector": "netsuite",
+        "targetModule": "cfo_dashboard",
+        "status": "draft",
+        "triggerType": "schedule_placeholder" if "monthly" in normalized or "schedule" in normalized else "manual",
+        "steps": deduped_steps[:8],
+    }
 
 
 def make_llm_provider(

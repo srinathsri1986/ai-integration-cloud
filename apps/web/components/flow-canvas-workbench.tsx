@@ -9,6 +9,7 @@ import {
   FileCheck2,
   GitBranch,
   GripVertical,
+  Sparkles,
   Save,
   ShieldCheck,
   Workflow
@@ -17,13 +18,14 @@ import type {
   ApprovedFlowTool,
   FlowDefinition,
   FlowDefinitionUpsertRequest,
+  FlowSuggestionResponse,
   FlowStep
 } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { type ApiResult, saveFlowDefinition } from "@/lib/api";
+import { type ApiResult, saveFlowDefinition, suggestFlowDefinition } from "@/lib/api";
 
 type PaletteItem = {
   description: string;
@@ -97,6 +99,11 @@ export function FlowCanvasWorkbench({
   });
   const [message, setMessage] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
+  const [flowPrompt, setFlowPrompt] = useState(
+    "Create a monthly CFO dashboard refresh flow from NetSuite that compares P/L vs budget, highlights overdue projects, and records a CFO summary."
+  );
+  const [suggestion, setSuggestion] = useState<FlowSuggestionResponse | undefined>();
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
@@ -124,6 +131,27 @@ export function FlowCanvasWorkbench({
     setIsSaving(false);
   }
 
+  async function onSuggestFlow() {
+    setIsSuggesting(true);
+    setMessage(undefined);
+    const response = await suggestFlowDefinition({ prompt: flowPrompt });
+    setSuggestion(response.data);
+
+    if (response.ok) {
+      setDraft(response.data.suggestedFlow);
+      setMessage(
+        response.data.suggestionFallbackUsed
+          ? "Template fallback drafted a governed flow for review."
+          : "AI drafted a governed flow for review."
+      );
+    } else {
+      setDraft(response.data.suggestedFlow);
+      setMessage(response.error ?? "Unable to generate flow suggestion.");
+    }
+
+    setIsSuggesting(false);
+  }
+
   const previewSteps = selectedFlow?.steps ?? [];
 
   return (
@@ -140,7 +168,7 @@ export function FlowCanvasWorkbench({
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="grid min-h-[560px] lg:grid-cols-[240px_minmax(0,1fr)_300px]">
+        <div className="grid min-h-[560px] lg:grid-cols-[260px_minmax(0,1fr)_320px]">
           <aside className="border-b border-border bg-slate-950 p-4 text-white lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-2">
               <GripVertical className="h-4 w-4 text-sky-300" />
@@ -175,16 +203,48 @@ export function FlowCanvasWorkbench({
             </div>
           </aside>
 
-          <div
-            className="relative overflow-hidden bg-slate-100 p-5"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={onDrop}
-          >
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#cbd5e1_1px,transparent_1px),linear-gradient(to_bottom,#cbd5e1_1px,transparent_1px)] bg-[size:28px_28px] opacity-50" />
-            <div className="relative grid gap-4">
+          <div className="grid bg-slate-100 xl:grid-rows-[auto_1fr]">
+            <div className="border-b border-slate-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <p className="text-sm font-semibold">Describe a flow</p>
+              </div>
+              <textarea
+                className="mt-3 min-h-24 w-full resize-none rounded-md border border-border bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-primary"
+                onChange={(event) => setFlowPrompt(event.target.value)}
+                value={flowPrompt}
+              />
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Drafts only. Human review is required before save, run, or publish.
+                </p>
+                <Button disabled={isSuggesting || flowPrompt.length < 10} onClick={onSuggestFlow} type="button">
+                  <Sparkles className="h-4 w-4" />
+                  {isSuggesting ? "Drafting" : "Generate draft"}
+                </Button>
+              </div>
+              {suggestion ? (
+                <div className="mt-3 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+                  <p className="font-medium">
+                    {suggestion.suggestionProvider}
+                    {suggestion.suggestionModel ? ` / ${suggestion.suggestionModel}` : ""}
+                  </p>
+                  <p className="mt-1 leading-6">{suggestion.rationale}</p>
+                </div>
+              ) : null}
+            </div>
+
+            <div
+              className="relative overflow-hidden p-5"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={onDrop}
+            >
+              <div className="absolute inset-0 bg-[linear-gradient(to_right,#cbd5e1_1px,transparent_1px),linear-gradient(to_bottom,#cbd5e1_1px,transparent_1px)] bg-[size:28px_28px] opacity-50" />
+              <div className="relative grid gap-4">
               <div className="flex flex-wrap gap-2">
                 <Badge className="bg-white">Drop approved action nodes here</Badge>
                 <Badge className="bg-white">No arbitrary execution</Badge>
+                <Badge className="bg-white">AI drafts stay unpublished</Badge>
               </div>
               <div className="grid gap-4 xl:grid-cols-[220px_1fr_180px]">
                 <CanvasNode icon="trigger" title="Manual trigger" detail={draft.triggerType} />
@@ -200,6 +260,7 @@ export function FlowCanvasWorkbench({
                   ))}
                 </div>
                 <CanvasNode icon="audit" title="Audit event" detail="record model, tool, and flow metadata" />
+              </div>
               </div>
             </div>
           </div>

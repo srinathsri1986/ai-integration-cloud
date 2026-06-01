@@ -8,6 +8,8 @@ import type {
   FlowDefinitionUpsertRequest,
   FlowId,
   FlowRunResponse,
+  FlowSuggestionRequest,
+  FlowSuggestionResponse,
   NetSuiteConnectionTestResponse,
   NetSuiteConnectorConfig,
   NetSuiteConnectorConfigUpdate,
@@ -367,6 +369,40 @@ const fallbackFlowRunResponse: FlowRunResponse = {
   data: {}
 };
 
+const fallbackFlowSuggestionResponse: FlowSuggestionResponse = {
+  prompt: "Create a CFO dashboard refresh flow.",
+  suggestedFlow: {
+    description: "Draft CFO orchestration generated from approved NetSuite actions only.",
+    flowId: "ai-drafted-cfo-flow",
+    name: "AI drafted CFO flow",
+    sourceConnector: "netsuite",
+    status: "draft",
+    steps: [
+      {
+        approvedTool: "cfo.dashboard_summary",
+        description: "Load approved CFO dashboard summary data.",
+        id: "load-cfo-summary",
+        name: "Load CFO summary"
+      },
+      {
+        approvedTool: "cfo.pl_vs_budget",
+        description: "Compare approved P/L actuals against budget.",
+        id: "compare-pl-budget",
+        name: "Compare P/L vs budget"
+      }
+    ],
+    targetModule: "cfo_dashboard",
+    triggerType: "manual"
+  },
+  rationale: "Fallback draft uses only approved NetSuite CFO actions.",
+  suggestionProvider: "template",
+  suggestionModel: null,
+  suggestionGenerated: true,
+  suggestionFallbackUsed: true,
+  modelCallAttempted: false,
+  modelCallSucceeded: false
+};
+
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
   return {
     generatedAt: body.generated_at,
@@ -701,6 +737,41 @@ export async function saveFlowDefinition(
   } catch (error) {
     return {
       data: fallbackFlows[0],
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function suggestFlowDefinition(
+  request: FlowSuggestionRequest
+): Promise<ClientApiResult<FlowSuggestionResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/suggestions`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackFlowSuggestionResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: body.suggestionFallbackUsed, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackFlowSuggestionResponse,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

@@ -472,6 +472,12 @@ This version intentionally keeps runtime execution governed by V1.7 flow definit
 
 Note: this local implementation uses a repo-native visual canvas shell. The package manager sandbox could not install the React Flow dependency in this session, so a future V1.8.x/V1.9 step can swap the shell to `@xyflow/react` once dependencies are installed locally.
 
+## AI-Assisted Flow Draft Generation v1.9
+
+V1.9 adds a governed "Describe a flow" panel to the visual canvas. Users can describe an integration need in natural language, and the backend proposes a draft through `POST /api/v1/flows/suggestions`.
+
+The suggestion service can use the configured mock, Ollama, or OpenAI provider, but every model response is validated against the approved flow definition schema before it reaches the UI. Invalid or unavailable model output falls back to deterministic templates. Suggested flows remain drafts only; the user must review and save them manually, and custom flows still fail closed until runtime mappings are explicitly implemented.
+
 ## Tests
 
 Backend:

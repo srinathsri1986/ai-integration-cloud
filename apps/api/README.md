@@ -118,6 +118,18 @@ Definitions are persisted in `flow_definitions`, audited as `FLOW_DEFINITION`, a
 
 The web app also includes a visual flow canvas shell that saves through this same governed endpoint. It is a visual builder layer only; it does not introduce arbitrary execution.
 
+## AI-assisted flow suggestions
+
+Flow drafts can be suggested from natural-language prompts:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Create a monthly CFO dashboard refresh flow from NetSuite that compares P/L vs budget and highlights overdue projects."}'
+```
+
+Suggestions use the configured mock, Ollama, or OpenAI provider only to produce structured draft metadata. The API validates the draft against approved connectors and approved tools, falls back to deterministic templates when model output is invalid, and never publishes or executes the draft automatically.
+
 ## Safety model
 
 - No real NetSuite credentials are used.
