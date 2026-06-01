@@ -23,9 +23,7 @@ export function PersonaLogin() {
     const response = await loginWithRole(role);
 
     if (!response.ok) {
-      setError(response.error ?? "Unable to start local session.");
-      setIsLoading(false);
-      return;
+      setError("API login is unavailable, so a local persona session will be used.");
     }
 
     router.push(defaultPathForRole(role));

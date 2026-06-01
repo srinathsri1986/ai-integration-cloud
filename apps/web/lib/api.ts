@@ -838,6 +838,12 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
     });
 
     if (!response.ok) {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(LOCAL_AUTH_STORAGE_KEY);
+        window.localStorage.setItem(LOCAL_AUTH_ROLE_KEY, fallback.user.role);
+        window.localStorage.setItem(LOCAL_AUTH_EMAIL_KEY, fallback.user.email);
+      }
+
       return {
         data: fallback,
         error: `API returned ${response.status}`,
@@ -854,6 +860,12 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
     }
     return { data: body, isFallback: false, ok: true };
   } catch (error) {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(LOCAL_AUTH_STORAGE_KEY);
+      window.localStorage.setItem(LOCAL_AUTH_ROLE_KEY, fallback.user.role);
+      window.localStorage.setItem(LOCAL_AUTH_EMAIL_KEY, fallback.user.email);
+    }
+
     return {
       data: fallback,
       error: error instanceof Error ? error.message : "API unavailable",
