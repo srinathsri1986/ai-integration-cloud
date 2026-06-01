@@ -456,6 +456,22 @@ curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
 
 Custom flow definitions are persisted and audited, but custom execution fails closed until explicit runtime mappings are added. This preserves governance while establishing the product shape for the later React Flow canvas.
 
+## Visual Flow Canvas Shell v1.8
+
+V1.8 adds the first visual orchestration canvas on top of Flow Designer Lite. The canvas renders a governed trigger, connector, approved action nodes, and audit node, with a right-side properties panel and save action that writes through the existing flow definition API.
+
+The canvas supports:
+
+- drag approved action nodes from the palette into a draft flow
+- visual trigger, connector, action, and audit nodes
+- guarded properties panel for flow ID, name, and status
+- validate-and-save through `POST /api/v1/flows/definitions`
+- saved-flow preview from the current catalog
+
+This version intentionally keeps runtime execution governed by V1.7 flow definitions. Custom visual flows save successfully but still fail closed at execution time until explicit runtime mappings are added.
+
+Note: this local implementation uses a repo-native visual canvas shell. The package manager sandbox could not install the React Flow dependency in this session, so a future V1.8.x/V1.9 step can swap the shell to `@xyflow/react` once dependencies are installed locally.
+
 ## Tests
 
 Backend:

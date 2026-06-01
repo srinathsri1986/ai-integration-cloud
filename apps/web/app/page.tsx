@@ -18,6 +18,7 @@ import { AuditLogPanel } from "@/components/audit-log-panel";
 import { AccessControlPanel } from "@/components/access-control-panel";
 import { AiQueryConsole } from "@/components/ai-query-console";
 import { ConnectorStudio } from "@/components/connector-studio";
+import { FlowCanvasWorkbench } from "@/components/flow-canvas-workbench";
 import { FlowCatalog } from "@/components/flow-catalog";
 import {
   type ApiResult,
@@ -371,6 +372,8 @@ export default async function Home() {
           ))}
         </div>
       </section>
+
+      <FlowCanvasWorkbench initialFlows={flowsResult} />
 
       <FlowCatalog initialFlows={flowsResult} />
 

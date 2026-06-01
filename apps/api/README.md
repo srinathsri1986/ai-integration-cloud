@@ -116,6 +116,8 @@ curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
 
 Definitions are persisted in `flow_definitions`, audited as `FLOW_DEFINITION`, and validated against approved tools. Raw SQL, SuiteQL, and arbitrary code execution language are rejected. Custom flow execution is intentionally fail-closed until runtime mappings are implemented.
 
+The web app also includes a visual flow canvas shell that saves through this same governed endpoint. It is a visual builder layer only; it does not introduce arbitrary execution.
+
 ## Safety model
 
 - No real NetSuite credentials are used.
