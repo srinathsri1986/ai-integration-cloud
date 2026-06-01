@@ -282,6 +282,7 @@ export function FlowCanvasWorkbench({
               />
               <select
                 className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                disabled
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -291,8 +292,6 @@ export function FlowCanvasWorkbench({
                 value={draft.status}
               >
                 <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
               </select>
               <div className="rounded-md border border-border bg-muted/50 p-3">
                 <p className="text-sm font-medium">Current draft</p>

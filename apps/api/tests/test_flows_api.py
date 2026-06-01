@@ -26,7 +26,7 @@ def test_list_flows_returns_mock_catalog() -> None:
         "netsuite-subsidiary-drilldown-refresh",
     ]
     assert all(flow["sourceConnector"] == "netsuite" for flow in body)
-    assert all(flow["status"] == "active" for flow in body)
+    assert all(flow["status"] == "published" for flow in body)
     assert all(flow["lastRunAt"] is None for flow in body)
     assert all(flow["lastRunStatus"] == "never_run" for flow in body)
     assert all(flow["triggerType"] == "manual" for flow in body)
@@ -145,6 +145,66 @@ def test_create_flow_definition_uses_approved_tools_and_writes_audit_log() -> No
     logs = client.get("/api/v1/audit/logs").json()
     assert logs[0]["detectedIntent"] == "FLOW_DEFINITION"
     assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary"]
+
+
+def test_flow_lifecycle_requires_human_approval_before_publish() -> None:
+    client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "approval-flow",
+            "name": "Approval flow",
+            "description": "Refresh CFO dashboard data with approved CFO actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "draft",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+
+    run_before_publish = client.post("/api/v1/flows/approval-flow/run").json()
+    assert run_before_publish["status"] == "failed"
+    assert "published" in run_before_publish["message"]
+
+    submitted = client.post(
+        "/api/v1/flows/approval-flow/lifecycle",
+        json={"action": "submit_for_approval"},
+    ).json()
+    assert submitted["flow"]["status"] == "pending_approval"
+
+    approved = client.post(
+        "/api/v1/flows/approval-flow/lifecycle",
+        json={"action": "approve"},
+    ).json()
+    assert approved["flow"]["status"] == "approved"
+
+    published = client.post(
+        "/api/v1/flows/approval-flow/lifecycle",
+        json={"action": "publish"},
+    ).json()
+    assert published["flow"]["status"] == "published"
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["question"] == "Flow definition action: approval-flow.publish"
+    assert logs[1]["question"] == "Flow definition action: approval-flow.approve"
+    assert logs[2]["question"] == "Flow definition action: approval-flow.submit_for_approval"
+
+
+def test_flow_lifecycle_rejects_invalid_transition() -> None:
+    response = client.post(
+        "/api/v1/flows/netsuite-cfo-dashboard-refresh/lifecycle",
+        json={"action": "publish"},
+    )
+
+    assert response.status_code == 409
+    assert "Cannot apply publish" in response.json()["detail"]
 
 
 def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
@@ -283,16 +343,16 @@ def test_flow_definition_rejects_raw_query_language_and_unapproved_tool() -> Non
     assert unapproved_tool_response.status_code == 422
 
 
-def test_custom_flow_run_fails_closed_until_runtime_mapping_exists() -> None:
+def test_custom_published_flow_run_fails_closed_until_runtime_mapping_exists() -> None:
     client.post(
         "/api/v1/flows/definitions",
         json={
-            "flowId": "custom-active-flow",
-            "name": "Custom active flow",
+            "flowId": "custom-published-flow",
+            "name": "Custom published flow",
             "description": "Refresh CFO dashboard data with approved CFO actions.",
             "sourceConnector": "netsuite",
             "targetModule": "cfo_dashboard",
-            "status": "active",
+            "status": "draft",
             "triggerType": "manual",
             "steps": [
                 {
@@ -304,8 +364,14 @@ def test_custom_flow_run_fails_closed_until_runtime_mapping_exists() -> None:
             ],
         },
     )
+    client.post(
+        "/api/v1/flows/custom-published-flow/lifecycle",
+        json={"action": "submit_for_approval"},
+    )
+    client.post("/api/v1/flows/custom-published-flow/lifecycle", json={"action": "approve"})
+    client.post("/api/v1/flows/custom-published-flow/lifecycle", json={"action": "publish"})
 
-    response = client.post("/api/v1/flows/custom-active-flow/run")
+    response = client.post("/api/v1/flows/custom-published-flow/run")
 
     assert response.status_code == 200
     body = response.json()

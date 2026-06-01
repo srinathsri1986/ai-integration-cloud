@@ -130,6 +130,26 @@ curl -X POST "http://localhost:8000/api/v1/flows/suggestions" \
 
 Suggestions use the configured mock, Ollama, or OpenAI provider only to produce structured draft metadata. The API validates the draft against approved connectors and approved tools, falls back to deterministic templates when model output is invalid, and never publishes or executes the draft automatically.
 
+## Flow approval and publishing
+
+Flow definitions must move through the human approval lifecycle before execution:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/custom-cfo-refresh/lifecycle" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"submit_for_approval"}'
+
+curl -X POST "http://localhost:8000/api/v1/flows/custom-cfo-refresh/lifecycle" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"approve"}'
+
+curl -X POST "http://localhost:8000/api/v1/flows/custom-cfo-refresh/lifecycle" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"publish"}'
+```
+
+Only `published` flows can be run. Built-in mapped flows can execute after publication. Custom flows remain fail-closed even after publication until explicit runtime mappings are implemented.
+
 ## Safety model
 
 - No real NetSuite credentials are used.

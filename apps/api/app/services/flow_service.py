@@ -4,13 +4,26 @@ from time import perf_counter
 from uuid import uuid4
 
 from app.core.database import SessionLocal
-from app.models.flows import FlowDefinition, FlowDefinitionUpsertRequest, FlowId, FlowRunResponse
+from app.models.flows import (
+    FlowDefinition,
+    FlowDefinitionUpsertRequest,
+    FlowId,
+    FlowLifecycleAction,
+    FlowLifecycleResponse,
+    FlowRunResponse,
+)
 from app.models.orchestrator import OrchestratorQueryRequest
 from app.repositories.flow_definition_repository import FlowDefinitionRepository
 from app.repositories.flow_run_repository import FlowRunRepository
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
 from app.services.orchestrator_service import OrchestratorService
+
+BUILT_IN_FLOW_IDS = {
+    "netsuite-cfo-dashboard-refresh",
+    "netsuite-project-risk-refresh",
+    "netsuite-subsidiary-drilldown-refresh",
+}
 
 
 def _initial_flows() -> dict[str, FlowDefinition]:
@@ -21,7 +34,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             description="Refreshes executive CFO dashboard metrics from approved mock NetSuite data.",
             sourceConnector="netsuite",
             targetModule="cfo_dashboard",
-            status="active",
+            status="published",
             triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
@@ -46,7 +59,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             description="Refreshes running project exposure and overdue project risk views.",
             sourceConnector="netsuite",
             targetModule="project_risk",
-            status="active",
+            status="published",
             triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
@@ -71,7 +84,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
             description="Refreshes subsidiary operating performance using approved mock data.",
             sourceConnector="netsuite",
             targetModule="subsidiary_drilldown",
-            status="active",
+            status="published",
             triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
@@ -141,6 +154,44 @@ class FlowService:
         )
         return saved
 
+    def transition_flow(
+        self,
+        flow_id: str,
+        action: FlowLifecycleAction,
+        note: str | None = None,
+    ) -> FlowLifecycleResponse:
+        flow = self.get_flow(flow_id)
+        next_status = self._next_status(flow.status, action)
+
+        with SessionLocal() as session:
+            updated = FlowDefinitionRepository(session).update_status(flow_id, next_status)
+
+        audit_service.record_flow_definition_action(
+            flow_id=updated.flow_id,
+            action=action,
+            tools_used=[step.approved_tool for step in updated.steps],
+        )
+        note_suffix = f" Note: {note}" if note else ""
+        return FlowLifecycleResponse(
+            flow=updated,
+            action=action,
+            message=f"{updated.name} moved to {next_status}.{note_suffix}",
+        )
+
+    def _next_status(self, current_status: str, action: FlowLifecycleAction) -> str:
+        allowed = {
+            "draft": {"submit_for_approval": "pending_approval", "pause": "paused"},
+            "pending_approval": {"approve": "approved", "reject": "draft", "pause": "paused"},
+            "approved": {"publish": "published", "reject": "draft", "pause": "paused"},
+            "published": {"pause": "paused"},
+            "paused": {"submit_for_approval": "pending_approval"},
+        }
+        next_status = allowed.get(current_status, {}).get(action)
+        if next_status is None:
+            raise ValueError(f"Cannot apply {action} to a {current_status} flow.")
+
+        return next_status
+
     def run_flow(self, flow_id: FlowId) -> FlowRunResponse:
         request_id = str(uuid4())
         started = datetime.now(UTC).isoformat()
@@ -150,7 +201,7 @@ class FlowService:
 
         try:
             flow = self.get_flow(flow_id)
-            if flow.status != "active":
+            if flow.status != "published":
                 completed = datetime.now(UTC).isoformat()
                 response = FlowRunResponse(
                     requestId=request_id,
@@ -159,7 +210,7 @@ class FlowService:
                     startedAt=started,
                     completedAt=completed,
                     toolsUsed=[],
-                    message="Flow is not active and cannot be run.",
+                    message="Flow must be published before it can be run.",
                     data={},
                 )
                 with SessionLocal() as session:

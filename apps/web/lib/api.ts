@@ -7,6 +7,8 @@ import type {
   FlowDefinition,
   FlowDefinitionUpsertRequest,
   FlowId,
+  FlowLifecycleAction,
+  FlowLifecycleResponse,
   FlowRunResponse,
   FlowSuggestionRequest,
   FlowSuggestionResponse,
@@ -289,7 +291,7 @@ const fallbackFlows: FlowDefinition[] = [
     description: "Refreshes executive CFO dashboard metrics from approved mock NetSuite data.",
     sourceConnector: "netsuite",
     targetModule: "cfo_dashboard",
-    status: "active",
+    status: "published",
     triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
@@ -314,7 +316,7 @@ const fallbackFlows: FlowDefinition[] = [
     description: "Refreshes running project exposure and overdue project risk views.",
     sourceConnector: "netsuite",
     targetModule: "project_risk",
-    status: "active",
+    status: "published",
     triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
@@ -339,7 +341,7 @@ const fallbackFlows: FlowDefinition[] = [
     description: "Refreshes subsidiary operating performance using approved mock data.",
     sourceConnector: "netsuite",
     targetModule: "subsidiary_drilldown",
-    status: "active",
+    status: "published",
     triggerType: "manual",
     lastRunAt: null,
     lastRunStatus: "never_run",
@@ -369,6 +371,12 @@ const fallbackFlowRunResponse: FlowRunResponse = {
   toolsUsed: [],
   message: "The flow API is unavailable.",
   data: {}
+};
+
+const fallbackFlowLifecycleResponse: FlowLifecycleResponse = {
+  action: "pause",
+  flow: fallbackFlows[0],
+  message: "The flow lifecycle API is unavailable."
 };
 
 const fallbackFlowSuggestionResponse: FlowSuggestionResponse = {
@@ -704,6 +712,42 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
   } catch (error) {
     return {
       data: { ...fallbackFlowRunResponse, flowId },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function transitionFlowLifecycle(
+  flowId: FlowId,
+  action: FlowLifecycleAction
+): Promise<ClientApiResult<FlowLifecycleResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}/lifecycle`, {
+      body: JSON.stringify({ action }),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackFlowLifecycleResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackFlowLifecycleResponse,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

@@ -110,7 +110,20 @@ export const flowIdSchema = z.string().min(3).max(96);
 
 export type FlowId = z.infer<typeof flowIdSchema>;
 
-export const flowStatusSchema = z.enum(["draft", "active", "paused"]);
+export const flowStatusSchema = z.enum([
+  "draft",
+  "pending_approval",
+  "approved",
+  "published",
+  "paused"
+]);
+export const flowLifecycleActionSchema = z.enum([
+  "submit_for_approval",
+  "approve",
+  "reject",
+  "publish",
+  "pause"
+]);
 export const flowRunStatusSchema = z.enum(["never_run", "succeeded", "failed"]);
 export const flowTriggerTypeSchema = z.enum(["manual", "schedule_placeholder"]);
 export const approvedFlowToolSchema = z.enum([
@@ -124,6 +137,7 @@ export const approvedFlowToolSchema = z.enum([
 ]);
 
 export type FlowStatus = z.infer<typeof flowStatusSchema>;
+export type FlowLifecycleAction = z.infer<typeof flowLifecycleActionSchema>;
 export type FlowRunStatus = z.infer<typeof flowRunStatusSchema>;
 export type FlowTriggerType = z.infer<typeof flowTriggerTypeSchema>;
 export type ApprovedFlowTool = z.infer<typeof approvedFlowToolSchema>;
@@ -184,6 +198,21 @@ export const flowSuggestionResponseSchema = z.object({
 });
 
 export type FlowSuggestionResponse = z.infer<typeof flowSuggestionResponseSchema>;
+
+export const flowLifecycleRequestSchema = z.object({
+  action: flowLifecycleActionSchema,
+  note: z.string().max(300).nullable().optional()
+});
+
+export type FlowLifecycleRequest = z.infer<typeof flowLifecycleRequestSchema>;
+
+export const flowLifecycleResponseSchema = z.object({
+  flow: flowDefinitionSchema,
+  action: flowLifecycleActionSchema,
+  message: z.string()
+});
+
+export type FlowLifecycleResponse = z.infer<typeof flowLifecycleResponseSchema>;
 
 export const flowRunResponseSchema = z.object({
   requestId: z.string(),

@@ -5,6 +5,8 @@ from app.models.flows import (
     FlowDefinition,
     FlowDefinitionUpsertRequest,
     FlowId,
+    FlowLifecycleRequest,
+    FlowLifecycleResponse,
     FlowRunResponse,
     FlowSuggestionRequest,
     FlowSuggestionResponse,
@@ -50,6 +52,26 @@ def suggest_flow_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> FlowSuggestionResponse:
     return flow_suggestion_service.suggest(request)
+
+
+@router.post("/{flow_id}/lifecycle", response_model=FlowLifecycleResponse)
+def transition_flow_lifecycle(
+    flow_id: FlowId,
+    request: FlowLifecycleRequest,
+    user=Depends(require_permissions("flow:run")),
+) -> FlowLifecycleResponse:
+    try:
+        return flow_service.transition_flow(flow_id, request.action, request.note)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown mock integration flow.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)

@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 FlowId = str
-FlowStatus = Literal["draft", "active", "paused"]
+FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
+FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause"]
 FlowRunStatus = Literal["never_run", "succeeded", "failed"]
 FlowTriggerType = Literal["manual", "schedule_placeholder"]
 ApprovedFlowTool = Literal[
@@ -58,6 +59,14 @@ class FlowDefinitionUpsertRequest(BaseModel):
 
         return value
 
+    @field_validator("status")
+    @classmethod
+    def require_lifecycle_for_non_draft_status(cls, value: FlowStatus) -> FlowStatus:
+        if value != "draft":
+            raise ValueError("Flow definitions must be saved as draft before lifecycle actions.")
+
+        return value
+
 
 class FlowSuggestionRequest(BaseModel):
     prompt: str = Field(min_length=10, max_length=1000)
@@ -73,6 +82,17 @@ class FlowSuggestionResponse(BaseModel):
     suggestion_fallback_used: bool = Field(alias="suggestionFallbackUsed")
     model_call_attempted: bool = Field(alias="modelCallAttempted")
     model_call_succeeded: bool = Field(alias="modelCallSucceeded")
+
+
+class FlowLifecycleRequest(BaseModel):
+    action: FlowLifecycleAction
+    note: str | None = Field(default=None, max_length=300)
+
+
+class FlowLifecycleResponse(BaseModel):
+    flow: FlowDefinition
+    action: FlowLifecycleAction
+    message: str
 
 
 class FlowRunResponse(BaseModel):

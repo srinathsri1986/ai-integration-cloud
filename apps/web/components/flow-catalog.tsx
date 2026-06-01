@@ -6,13 +6,19 @@ import type {
   ApprovedFlowTool,
   FlowDefinition,
   FlowDefinitionUpsertRequest,
+  FlowLifecycleAction,
   FlowRunResponse
 } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { type ApiResult, runFlow, saveFlowDefinition } from "@/lib/api";
+import {
+  type ApiResult,
+  runFlow,
+  saveFlowDefinition,
+  transitionFlowLifecycle
+} from "@/lib/api";
 
 const approvedTools: ApprovedFlowTool[] = [
   "cfo.dashboard_summary",
@@ -28,12 +34,33 @@ function statusLabel(status: string) {
   return status.replaceAll("_", " ");
 }
 
+function lifecycleActionsForStatus(status: FlowDefinition["status"]): FlowLifecycleAction[] {
+  if (status === "draft") {
+    return ["submit_for_approval"];
+  }
+
+  if (status === "pending_approval") {
+    return ["approve", "reject"];
+  }
+
+  if (status === "approved") {
+    return ["publish", "reject"];
+  }
+
+  if (status === "published") {
+    return ["pause"];
+  }
+
+  return ["submit_for_approval"];
+}
+
 export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefinition[]> }) {
   const [flows, setFlows] = useState(initialFlows.data);
   const [error, setError] = useState<string | undefined>(
     initialFlows.isFallback ? initialFlows.error : undefined
   );
   const [runningFlowId, setRunningFlowId] = useState<string | undefined>();
+  const [transitioningFlowId, setTransitioningFlowId] = useState<string | undefined>();
   const [lastRun, setLastRun] = useState<Record<string, FlowRunResponse>>({});
   const [designerMessage, setDesignerMessage] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
@@ -77,6 +104,25 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
       setError(response.error ?? "Unable to run flow.");
     }
     setRunningFlowId(undefined);
+  }
+
+  async function onTransition(flow: FlowDefinition, action: FlowLifecycleAction) {
+    setError(undefined);
+    setTransitioningFlowId(`${flow.flowId}:${action}`);
+    const response = await transitionFlowLifecycle(flow.flowId, action);
+
+    if (response.ok) {
+      setFlows((current) =>
+        current.map((item) =>
+          item.flowId === response.data.flow.flowId ? response.data.flow : item
+        )
+      );
+      setDesignerMessage(response.data.message);
+    } else {
+      setError(response.error ?? "Unable to update flow lifecycle.");
+    }
+
+    setTransitioningFlowId(undefined);
   }
 
   async function onSaveDesigner() {
@@ -144,6 +190,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
               />
               <select
                 className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                disabled
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -153,8 +200,6 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
                 value={draft.status}
               >
                 <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
               </select>
               <select
                 className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
@@ -244,6 +289,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
                 <Badge>{statusLabel(flow.status)}</Badge>
                 <Badge>{flow.sourceConnector}</Badge>
                 <Badge>{flow.targetModule}</Badge>
+                {flow.status !== "published" ? <Badge>approval required</Badge> : <Badge>runnable</Badge>}
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -280,15 +326,30 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
                 </p>
               ) : null}
 
-              <Button
-                className="mt-4 w-full"
-                disabled={runningFlowId === flow.flowId}
-                onClick={() => onRun(flow)}
-                type="button"
-              >
-                <Play className="h-4 w-4" />
-                {runningFlowId === flow.flowId ? "Running" : "Run flow"}
-              </Button>
+              <div className="mt-4 grid gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {lifecycleActionsForStatus(flow.status).map((action) => (
+                    <Button
+                      disabled={transitioningFlowId === `${flow.flowId}:${action}`}
+                      key={action}
+                      onClick={() => onTransition(flow, action)}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {statusLabel(action)}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={runningFlowId === flow.flowId || flow.status !== "published"}
+                  onClick={() => onRun(flow)}
+                  type="button"
+                >
+                  <Play className="h-4 w-4" />
+                  {runningFlowId === flow.flowId ? "Running" : "Run published flow"}
+                </Button>
+              </div>
             </Card>
           );
         })}

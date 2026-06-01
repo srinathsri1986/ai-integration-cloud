@@ -14,6 +14,8 @@ class FlowDefinitionRepository:
             existing = self.session.get(FlowDefinitionRecord, flow.flow_id)
             if existing is None:
                 self.session.add(self._to_record(flow))
+            elif existing.status == "active":
+                existing.status = flow.status
         self.session.commit()
 
     def list_flows(self) -> list[FlowDefinition]:
@@ -53,6 +55,14 @@ class FlowDefinitionRepository:
         record.last_run_status = status
         self.session.commit()
 
+    def update_status(self, flow_id: str, status: str) -> FlowDefinition:
+        record = self.session.get(FlowDefinitionRecord, flow_id)
+        if record is None:
+            raise KeyError(flow_id)
+        record.status = status
+        self.session.commit()
+        return self.get_flow(flow_id)
+
     def clear(self) -> None:
         self.session.execute(delete(FlowDefinitionRecord))
         self.session.commit()
@@ -72,13 +82,14 @@ class FlowDefinitionRepository:
         )
 
     def _to_model(self, record: FlowDefinitionRecord) -> FlowDefinition:
+        status = "published" if record.status == "active" else record.status
         return FlowDefinition(
             flowId=record.flow_id,
             name=record.name,
             description=record.description,
             sourceConnector=record.source_connector,
             targetModule=record.target_module,
-            status=record.status,
+            status=status,
             triggerType=record.trigger_type,
             lastRunAt=record.last_run_at,
             lastRunStatus=record.last_run_status,

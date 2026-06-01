@@ -489,6 +489,20 @@ The web app now uses a persona-based platform structure instead of one combined 
 
 Dedicated pages are available for `/cfo`, `/orchestrator`, `/flows`, `/connectors`, `/audit`, and `/admin`. The shared platform shell provides role-aware navigation, local environment/model status, and a cleaner enterprise workbench layout while preserving the existing placeholder RBAC backend.
 
+## Human Approval and Publish Workflow v2.1
+
+Flow definitions now move through an explicit governance lifecycle:
+
+- `draft`
+- `pending_approval`
+- `approved`
+- `published`
+- `paused`
+
+The flow API exposes lifecycle actions through `POST /api/v1/flows/{flow_id}/lifecycle`. Users can submit a draft for approval, approve or reject it, publish an approved flow, and pause a published flow. The UI surfaces these actions in the Flow Catalog.
+
+Only `published` flows can be run. Built-in mapped flows can execute after publication, while custom published flows still fail closed until explicit runtime mappings are implemented. AI-generated drafts cannot publish themselves; a human lifecycle action is required.
+
 ## Tests
 
 Backend:
