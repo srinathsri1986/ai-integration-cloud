@@ -24,6 +24,8 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOCAL_AUTH_STORAGE_KEY = "netsuite-cfo-placeholder-token";
+export const LOCAL_AUTH_ROLE_KEY = "netsuite-cfo-placeholder-role";
+export const LOCAL_AUTH_EMAIL_KEY = "netsuite-cfo-placeholder-email";
 
 export type ApiResult<T> = {
   data: T;
@@ -847,6 +849,8 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
     const body = await response.json();
     if (typeof window !== "undefined") {
       window.localStorage.setItem(LOCAL_AUTH_STORAGE_KEY, body.accessToken);
+      window.localStorage.setItem(LOCAL_AUTH_ROLE_KEY, body.user.role);
+      window.localStorage.setItem(LOCAL_AUTH_EMAIL_KEY, body.user.email);
     }
     return { data: body, isFallback: false, ok: true };
   } catch (error) {

@@ -478,6 +478,17 @@ V1.9 adds a governed "Describe a flow" panel to the visual canvas. Users can des
 
 The suggestion service can use the configured mock, Ollama, or OpenAI provider, but every model response is validated against the approved flow definition schema before it reaches the UI. Invalid or unavailable model output falls back to deterministic templates. Suggested flows remain drafts only; the user must review and save them manually, and custom flows still fail closed until runtime mappings are explicitly implemented.
 
+## Persona-Based Enterprise UI v2.0
+
+The web app now uses a persona-based platform structure instead of one combined MVP dashboard. The root route redirects to `/login`, where users choose a local placeholder persona and land in the workspace that matches their role:
+
+- CFO and Finance Controller: `/cfo`
+- Integration Admin: `/flows`
+- Developer: `/orchestrator`
+- Viewer: `/cfo`
+
+Dedicated pages are available for `/cfo`, `/orchestrator`, `/flows`, `/connectors`, `/audit`, and `/admin`. The shared platform shell provides role-aware navigation, local environment/model status, and a cleaner enterprise workbench layout while preserving the existing placeholder RBAC backend.
+
 ## Tests
 
 Backend:

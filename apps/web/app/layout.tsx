@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NetSuite CFO Intelligence",
-  description: "CFO intelligence orchestrator MVP using mock NetSuite data."
+  title: "NetSuite CFO Intelligence Orchestrator",
+  description: "Persona-based AI-native integration cloud for governed CFO orchestration."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
