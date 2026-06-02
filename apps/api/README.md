@@ -197,6 +197,21 @@ curl "http://localhost:8000/api/v1/flows/runs/{request_id}"
 
 Each timeline step includes status, timestamps, latency, approved tool, attached mapping definition ID, and warnings. Built-in flows show approved CFO service steps. Custom mapped flows include both approved action steps and a mapping simulation step.
 
+## Generic REST connector foundation
+
+The API exposes a governed mock REST connector for system-agnostic integration design:
+
+```bash
+curl "http://localhost:8000/api/v1/connectors/rest-api"
+curl "http://localhost:8000/api/v1/connectors/rest-api/objects"
+curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/test"
+curl -X PUT "http://localhost:8000/api/v1/connectors/rest-api/config" \
+  -H "Content-Type: application/json" \
+  -d '{"displayName":"Customer REST Gateway","baseUrlPlaceholder":"https://customer-api.example.com","authMode":"placeholder","mockMode":true}'
+```
+
+The connector returns approved object metadata for `customer`, `invoice`, and `opportunity`. The mock test action writes a connector audit event but does not perform an outbound HTTP call. Config updates accept placeholder metadata only and reject non-placeholder auth modes. Secret-like fields such as API keys, bearer tokens, passwords, and secrets are not part of the response model.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

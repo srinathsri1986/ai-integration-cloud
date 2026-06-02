@@ -48,6 +48,10 @@ export const connectorModeSchema = z.enum(["mock", "sandbox"]);
 
 export type ConnectorMode = z.infer<typeof connectorModeSchema>;
 
+export const connectorIdSchema = z.enum(["netsuite", "rest-api"]);
+
+export type ConnectorId = z.infer<typeof connectorIdSchema>;
+
 export const netSuiteConnectorConfigSchema = z.object({
   accountId: z.string().min(3).max(64),
   environment: z.enum(["sandbox", "production"]),
@@ -74,7 +78,7 @@ export type NetSuiteConnectorConfigUpdate = z.infer<
 >;
 
 export const connectorListItemSchema = z.object({
-  id: z.literal("netsuite"),
+  id: connectorIdSchema,
   name: z.string(),
   status: connectorStatusSchema,
   mockMode: z.boolean(),
@@ -98,6 +102,82 @@ export const netSuiteConnectionTestResponseSchema = z.object({
 
 export type NetSuiteConnectionTestResponse = z.infer<
   typeof netSuiteConnectionTestResponseSchema
+>;
+
+export const restApiObjectIdSchema = z.enum(["customer", "invoice", "opportunity"]);
+
+export type RestApiObjectId = z.infer<typeof restApiObjectIdSchema>;
+
+export const restApiActionIdSchema = z.enum([
+  "read_sample",
+  "validate_payload",
+  "simulate_post_placeholder"
+]);
+
+export type RestApiActionId = z.infer<typeof restApiActionIdSchema>;
+
+export const restApiObjectFieldSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  type: z.enum(["string", "number", "boolean", "date"]),
+  required: z.boolean()
+});
+
+export type RestApiObjectField = z.infer<typeof restApiObjectFieldSchema>;
+
+export const restApiApprovedObjectSchema = z.object({
+  objectId: restApiObjectIdSchema,
+  label: z.string(),
+  description: z.string(),
+  fields: z.array(restApiObjectFieldSchema)
+});
+
+export type RestApiApprovedObject = z.infer<typeof restApiApprovedObjectSchema>;
+
+export const restApiConnectorConfigSchema = z.object({
+  connectorId: z.literal("rest-api"),
+  displayName: z.string().min(3).max(80),
+  baseUrlPlaceholder: z.string().min(3).max(120),
+  authMode: z.literal("placeholder"),
+  mockMode: z.boolean(),
+  mode: z.literal("mock"),
+  status: connectorStatusSchema,
+  lastTestedAt: z.string().nullable(),
+  baseUrlConfigured: z.boolean(),
+  credentialsConfigured: z.boolean(),
+  approvedObjects: z.array(restApiObjectIdSchema),
+  approvedActions: z.array(restApiActionIdSchema)
+});
+
+export type RestApiConnectorConfig = z.infer<typeof restApiConnectorConfigSchema>;
+
+export const restApiConnectorConfigUpdateSchema = z.object({
+  displayName: z.string().min(3).max(80),
+  baseUrlPlaceholder: z.string().min(3).max(120),
+  authMode: z.literal("placeholder"),
+  mockMode: z.boolean()
+});
+
+export type RestApiConnectorConfigUpdate = z.infer<
+  typeof restApiConnectorConfigUpdateSchema
+>;
+
+export const restApiConnectionTestResponseSchema = z.object({
+  connectorId: z.literal("rest-api"),
+  success: z.boolean(),
+  status: connectorStatusSchema,
+  message: z.string(),
+  testedAt: z.string(),
+  mockMode: z.boolean(),
+  mode: z.literal("mock"),
+  baseUrlConfigured: z.boolean(),
+  credentialsConfigured: z.boolean(),
+  approvedObjects: z.array(restApiObjectIdSchema),
+  approvedActions: z.array(restApiActionIdSchema)
+});
+
+export type RestApiConnectionTestResponse = z.infer<
+  typeof restApiConnectionTestResponseSchema
 >;
 
 export const flowIds = [

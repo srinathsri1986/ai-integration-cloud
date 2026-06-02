@@ -26,6 +26,10 @@ import type {
   OrchestratorQueryRequest,
   OrchestratorQueryResponse,
   PlVsBudgetResponse,
+  RestApiApprovedObject,
+  RestApiConnectionTestResponse,
+  RestApiConnectorConfig,
+  RestApiConnectorConfigUpdate,
   RunningProjectsResponse,
   SubsidiaryDrilldownResponse,
   YoyComparisonResponse
@@ -268,10 +272,33 @@ const fallbackNetSuiteConnectorConfig: NetSuiteConnectorConfig = {
   credentialsConfigured: false
 };
 
+const fallbackRestApiConnectorConfig: RestApiConnectorConfig = {
+  connectorId: "rest-api",
+  displayName: "Generic REST API",
+  baseUrlPlaceholder: "https://api.example.com",
+  authMode: "placeholder",
+  mockMode: true,
+  mode: "mock",
+  status: "not_configured",
+  lastTestedAt: null,
+  baseUrlConfigured: false,
+  credentialsConfigured: false,
+  approvedObjects: ["customer", "invoice", "opportunity"],
+  approvedActions: ["read_sample", "validate_payload", "simulate_post_placeholder"]
+};
+
 const fallbackConnectorList: ConnectorListItem[] = [
   {
     id: "netsuite",
     name: "NetSuite",
+    status: "not_configured",
+    mockMode: true,
+    mode: "mock",
+    lastTestedAt: null
+  },
+  {
+    id: "rest-api",
+    name: "REST API",
     status: "not_configured",
     mockMode: true,
     mode: "mock",
@@ -290,6 +317,56 @@ const fallbackConnectionTestResponse: NetSuiteConnectionTestResponse = {
   baseUrlConfigured: false,
   credentialsConfigured: false
 };
+
+const fallbackRestApiConnectionTestResponse: RestApiConnectionTestResponse = {
+  connectorId: "rest-api",
+  success: false,
+  status: "test_failed",
+  message: "The REST connector API is unavailable.",
+  testedAt: new Date(0).toISOString(),
+  mockMode: true,
+  mode: "mock",
+  baseUrlConfigured: false,
+  credentialsConfigured: false,
+  approvedObjects: ["customer", "invoice", "opportunity"],
+  approvedActions: ["read_sample", "validate_payload", "simulate_post_placeholder"]
+};
+
+const fallbackRestApiObjects: RestApiApprovedObject[] = [
+  {
+    objectId: "customer",
+    label: "Customer",
+    description: "Approved customer profile shape for REST API mappings.",
+    fields: [
+      { name: "externalId", label: "External ID", type: "string", required: true },
+      { name: "displayName", label: "Display name", type: "string", required: true },
+      { name: "status", label: "Status", type: "string", required: false },
+      { name: "region", label: "Region", type: "string", required: false }
+    ]
+  },
+  {
+    objectId: "invoice",
+    label: "Invoice",
+    description: "Approved invoice header shape for finance API mappings.",
+    fields: [
+      { name: "invoiceNumber", label: "Invoice number", type: "string", required: true },
+      { name: "customerExternalId", label: "Customer external ID", type: "string", required: true },
+      { name: "amount", label: "Amount", type: "number", required: true },
+      { name: "invoiceDate", label: "Invoice date", type: "date", required: true }
+    ]
+  },
+  {
+    objectId: "opportunity",
+    label: "Opportunity",
+    description: "Approved opportunity shape for pipeline-to-finance handoffs.",
+    fields: [
+      { name: "opportunityId", label: "Opportunity ID", type: "string", required: true },
+      { name: "accountName", label: "Account name", type: "string", required: true },
+      { name: "amount", label: "Amount", type: "number", required: false },
+      { name: "closeDate", label: "Close date", type: "date", required: false }
+    ]
+  }
+];
 
 const fallbackFlows: FlowDefinition[] = [
   {
@@ -699,6 +776,22 @@ export async function getNetSuiteConnectorConfig(): Promise<ApiResult<NetSuiteCo
   );
 }
 
+export async function getRestApiConnectorConfig(): Promise<ApiResult<RestApiConnectorConfig>> {
+  return getApiResult(
+    "/api/v1/connectors/rest-api",
+    fallbackRestApiConnectorConfig,
+    (body) => body
+  );
+}
+
+export async function getRestApiObjects(): Promise<ApiResult<RestApiApprovedObject[]>> {
+  return getApiResult(
+    "/api/v1/connectors/rest-api/objects",
+    fallbackRestApiObjects,
+    (body) => body
+  );
+}
+
 export async function testNetSuiteConnection(): Promise<
   ClientApiResult<NetSuiteConnectionTestResponse>
 > {
@@ -723,6 +816,37 @@ export async function testNetSuiteConnection(): Promise<
   } catch (error) {
     return {
       data: fallbackConnectionTestResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function testRestApiConnection(): Promise<
+  ClientApiResult<RestApiConnectionTestResponse>
+> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/test`, {
+      cache: "no-store",
+      headers: authHeaders(),
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackRestApiConnectionTestResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackRestApiConnectionTestResponse,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false
@@ -758,6 +882,41 @@ export async function updateNetSuiteConnectorConfig(
   } catch (error) {
     return {
       data: fallbackNetSuiteConnectorConfig,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function updateRestApiConnectorConfig(
+  request: RestApiConnectorConfigUpdate
+): Promise<ClientApiResult<RestApiConnectorConfig>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/config`, {
+      body: JSON.stringify({ ...request, mockMode: true, authMode: "placeholder" }),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "PUT"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackRestApiConnectorConfig,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackRestApiConnectorConfig,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

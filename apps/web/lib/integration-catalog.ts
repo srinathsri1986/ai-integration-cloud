@@ -82,12 +82,12 @@ export const integrationSystems: IntegrationSystem[] = [
     auth: "API key placeholder",
     category: "API",
     color: "border-amber-200 bg-amber-50 text-amber-950",
-    description: "Generic REST resources from OpenAPI or sample JSON payloads.",
+    description: "Governed REST resources with approved object schemas and mock readiness tests.",
     icon: Globe2,
     id: "rest-api",
     name: "REST API",
-    objects: ["Resources", "Endpoints", "JSON payloads", "Webhooks"],
-    readiness: "Template"
+    objects: ["Customers", "Invoices", "Opportunities", "JSON payloads"],
+    readiness: "Ready"
   },
   {
     auth: "Key placeholder",

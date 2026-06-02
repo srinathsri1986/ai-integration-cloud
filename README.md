@@ -633,6 +633,24 @@ The Flow Catalog UI now loads published mappings and exposes a mapping selector 
 
 V2.8 adds runtime visibility for flow runs. Flow run records now include an `executionTimeline` with step-level status, timestamps, latency, approved tool, mapping ID, and warnings.
 
+## Generic REST Connector Foundation v2.9
+
+V2.9 starts the move from a NetSuite-specific MVP to a system-agnostic integration platform by adding a governed REST API connector foundation.
+
+```bash
+curl "http://localhost:8000/api/v1/connectors"
+curl "http://localhost:8000/api/v1/connectors/rest-api"
+curl "http://localhost:8000/api/v1/connectors/rest-api/objects"
+curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/test"
+curl -X PUT "http://localhost:8000/api/v1/connectors/rest-api/config" \
+  -H "Content-Type: application/json" \
+  -d '{"displayName":"Customer REST Gateway","baseUrlPlaceholder":"https://customer-api.example.com","authMode":"placeholder","mockMode":true}'
+```
+
+The REST connector is mock-first and exposes approved object schemas for `customer`, `invoice`, and `opportunity`. It supports placeholder configuration and a safe mock test action only. It does not execute outbound HTTP requests, does not store tokens, headers, passwords, API keys, or secrets, and does not allow arbitrary URLs or payload execution.
+
+The Connector Studio UI now includes both NetSuite and REST API gateways, with an approved REST object tray for future drag-and-drop mapping and flow design.
+
 The backend exposes flow run detail lookup:
 
 ```bash

@@ -6,6 +6,10 @@ from app.models.connectors import (
     NetSuiteConnectionTestResponse,
     NetSuiteConnectorConfig,
     NetSuiteConnectorConfigUpdate,
+    RestApiApprovedObject,
+    RestApiConnectionTestResponse,
+    RestApiConnectorConfig,
+    RestApiConnectorConfigUpdate,
 )
 from app.services.connector_config_service import connector_config_service
 
@@ -33,3 +37,26 @@ def update_netsuite_config(
     user=Depends(require_permissions("connector:admin")),
 ) -> NetSuiteConnectorConfig:
     return connector_config_service.update_netsuite_config(update)
+
+
+@router.get("/rest-api", response_model=RestApiConnectorConfig)
+def get_rest_api_config(user=Depends(require_permissions("connector:admin"))) -> RestApiConnectorConfig:
+    return connector_config_service.get_rest_api_config()
+
+
+@router.get("/rest-api/objects", response_model=list[RestApiApprovedObject])
+def list_rest_api_objects(user=Depends(require_permissions("connector:admin"))) -> list[RestApiApprovedObject]:
+    return connector_config_service.approved_rest_api_objects()
+
+
+@router.post("/rest-api/test", response_model=RestApiConnectionTestResponse)
+def test_rest_api_connection(user=Depends(require_permissions("connector:admin"))) -> RestApiConnectionTestResponse:
+    return connector_config_service.test_rest_api_connection()
+
+
+@router.put("/rest-api/config", response_model=RestApiConnectorConfig)
+def update_rest_api_config(
+    update: RestApiConnectorConfigUpdate,
+    user=Depends(require_permissions("connector:admin")),
+) -> RestApiConnectorConfig:
+    return connector_config_service.update_rest_api_config(update)

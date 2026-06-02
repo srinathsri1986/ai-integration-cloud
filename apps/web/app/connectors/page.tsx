@@ -2,12 +2,18 @@ import { ConnectorStudio } from "@/components/connector-studio";
 import { PlatformShell } from "@/components/platform-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { getNetSuiteConnectorConfig } from "@/lib/api";
+import {
+  getNetSuiteConnectorConfig,
+  getRestApiConnectorConfig,
+  getRestApiObjects
+} from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConnectorsPage() {
   const connectorResult = await getNetSuiteConnectorConfig();
+  const restApiConnectorResult = await getRestApiConnectorConfig();
+  const restApiObjectsResult = await getRestApiObjects();
 
   return (
     <PlatformShell
@@ -35,12 +41,16 @@ export default async function ConnectorsPage() {
             <Badge className="border-amber-200 bg-amber-50 text-amber-900">No raw access</Badge>
             <h2 className="mt-4 text-xl font-semibold text-slate-950">Template-only access</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Users and models cannot submit arbitrary SQL, SuiteQL, or direct NetSuite queries.
+              Users and models cannot submit arbitrary SQL, SuiteQL, URLs, headers, or payloads.
             </p>
           </Card>
         </section>
         <div className="-mx-5 lg:-mx-8">
-          <ConnectorStudio initialConfig={connectorResult} />
+          <ConnectorStudio
+            initialConfig={connectorResult}
+            initialRestApiConfig={restApiConnectorResult}
+            initialRestApiObjects={restApiObjectsResult}
+          />
         </div>
       </div>
     </PlatformShell>
