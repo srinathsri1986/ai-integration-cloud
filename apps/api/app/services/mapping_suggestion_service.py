@@ -212,6 +212,7 @@ class MappingSuggestionService:
             ("budget_amount", "Amount", "direct", 0.91, "Budget and amount fields share numeric finance meaning."),
             ("due_date", "CloseDate", "format_date", 0.88, "Date values need target system date formatting."),
             ("account_manager", "OwnerName", "direct", 0.84, "Owner fields represent the responsible business person."),
+            ("project_id", "Name", "rename", 0.8, "Project identifier can seed a reviewed opportunity name."),
             ("project_id", "externalId", "rename", 0.78, "The project identifier can seed an external reference."),
             ("customer", "displayName", "rename", 0.86, "Customer text can become the display name."),
             ("invoice_number", "externalId", "rename", 0.82, "Invoice number can be retained as an external identifier."),

@@ -865,6 +865,13 @@ def _template_mapping_suggestions(context: dict) -> list[dict]:
         },
         {
             "sourceField": "project_id",
+            "targetField": "Name",
+            "transform": "rename",
+            "confidence": 0.8,
+            "rationale": "Project identifier can seed a reviewed opportunity name.",
+        },
+        {
+            "sourceField": "project_id",
             "targetField": "externalId",
             "transform": "rename",
             "confidence": 0.78,

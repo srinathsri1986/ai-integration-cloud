@@ -128,6 +128,40 @@ class AuditService:
             )
         )
 
+    def record_mapping_definition_action(
+        self,
+        mapping_id: str,
+        action: str,
+        tools_used: list[str],
+    ) -> None:
+        self.record(
+            AuditLogEntry(
+                timestamp=datetime.now(UTC).isoformat(),
+                requestId=f"mapping-definition-{mapping_id}",
+                user="local-dev-user",
+                channel="web",
+                question=f"Mapping definition action: {mapping_id}.{action}",
+                detectedIntent="MAPPING_DEFINITION",
+                confidence=1,
+                toolsUsed=tools_used,
+                endpointCalled="/api/v1/mappings/definitions",
+                fallbackUsed=False,
+                success=True,
+                failureReason=None,
+                latencyMs=0,
+                aiProvider="none",
+                aiMode="disabled",
+                modelName=None,
+                modelCallAttempted=False,
+                modelCallSucceeded=False,
+                usedFallbackRouter=False,
+                narrativeProvider="none",
+                narrativeModel=None,
+                narrativeGenerated=False,
+                narrativeFallbackUsed=False,
+            )
+        )
+
     def list_logs(
         self,
         *,

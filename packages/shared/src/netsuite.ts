@@ -242,6 +242,80 @@ export const mappingSuggestionResponseSchema = z.object({
 
 export type MappingSuggestionResponse = z.infer<typeof mappingSuggestionResponseSchema>;
 
+export const mappingDefinitionStatusSchema = z.enum([
+  "draft",
+  "pending_approval",
+  "approved",
+  "published",
+  "paused"
+]);
+
+export type MappingDefinitionStatus = z.infer<typeof mappingDefinitionStatusSchema>;
+
+export const mappingLifecycleActionSchema = z.enum([
+  "submit_for_approval",
+  "approve",
+  "reject",
+  "publish",
+  "pause"
+]);
+
+export type MappingLifecycleAction = z.infer<typeof mappingLifecycleActionSchema>;
+
+export const mappingDefinitionRowSchema = z.object({
+  id: z.string(),
+  sourceField: z.string(),
+  targetField: z.string(),
+  transform: mappingTransformSchema,
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  rationale: z.string().nullable().optional()
+});
+
+export type MappingDefinitionRow = z.infer<typeof mappingDefinitionRowSchema>;
+
+export const mappingDefinitionSchema = z.object({
+  mappingId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  sourceObjectId: z.string(),
+  targetObjectId: z.string(),
+  status: mappingDefinitionStatusSchema,
+  mappings: z.array(mappingDefinitionRowSchema),
+  createdAt: z.string().nullable(),
+  updatedAt: z.string().nullable()
+});
+
+export type MappingDefinition = z.infer<typeof mappingDefinitionSchema>;
+
+export const mappingDefinitionUpsertRequestSchema = z.object({
+  mappingId: z.string().min(3).max(96),
+  name: z.string().min(3).max(120),
+  description: z.string().min(10).max(500),
+  sourceObjectId: z.string().min(3).max(80),
+  targetObjectId: z.string().min(3).max(80),
+  status: mappingDefinitionStatusSchema,
+  mappings: z.array(mappingDefinitionRowSchema).min(1).max(50)
+});
+
+export type MappingDefinitionUpsertRequest = z.infer<
+  typeof mappingDefinitionUpsertRequestSchema
+>;
+
+export const mappingLifecycleRequestSchema = z.object({
+  action: mappingLifecycleActionSchema,
+  note: z.string().max(300).nullable().optional()
+});
+
+export type MappingLifecycleRequest = z.infer<typeof mappingLifecycleRequestSchema>;
+
+export const mappingLifecycleResponseSchema = z.object({
+  mapping: mappingDefinitionSchema,
+  action: mappingLifecycleActionSchema,
+  message: z.string()
+});
+
+export type MappingLifecycleResponse = z.infer<typeof mappingLifecycleResponseSchema>;
+
 export const flowLifecycleRequestSchema = z.object({
   action: flowLifecycleActionSchema,
   note: z.string().max(300).nullable().optional()

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Archive,
   ArrowRightLeft,
   BrainCircuit,
   CheckCircle2,
@@ -10,18 +11,24 @@ import {
   Link2,
   ListChecks,
   MousePointerClick,
+  Rocket,
   ShieldCheck,
   Sparkles,
   Unlink,
   XCircle
 } from "lucide-react";
-import type { MappingSuggestionItem } from "@netsuite-cfo/shared";
+import type { MappingDefinition, MappingLifecycleAction, MappingSuggestionItem } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { integrationSystems } from "@/lib/integration-catalog";
-import { suggestMappingDefinition } from "@/lib/api";
+import {
+  getMappingDefinitions,
+  saveMappingDefinition,
+  suggestMappingDefinition,
+  transitionMappingLifecycle
+} from "@/lib/api";
 import {
   mappingObjects,
   mappingTransforms,
@@ -76,6 +83,11 @@ export function DataMappingStudio() {
   const [suggestions, setSuggestions] = useState<MappingSuggestionItem[]>([]);
   const [suggestionStatus, setSuggestionStatus] = useState<string | undefined>();
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [mappingId, setMappingId] = useState("netsuite-project-to-salesforce-opportunity");
+  const [mappingName, setMappingName] = useState("NetSuite Project to Salesforce Opportunity");
+  const [savedMappings, setSavedMappings] = useState<MappingDefinition[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingMappings, setIsLoadingMappings] = useState(false);
 
   const sourceObject = useMemo(
     () => mappingObjects.find((object) => object.id === sourceObjectId) ?? sourceObjects[0],
@@ -89,6 +101,17 @@ export function DataMappingStudio() {
   const missingRequiredTargets = targetObject.fields.filter(
     (field) => field.required && !mappedTargetFields.has(field.name)
   );
+
+  useEffect(() => {
+    loadSavedMappings();
+  }, []);
+
+  async function loadSavedMappings() {
+    setIsLoadingMappings(true);
+    const response = await getMappingDefinitions();
+    setSavedMappings(response.data);
+    setIsLoadingMappings(false);
+  }
 
   function onSourceSystemChange(systemId: string) {
     const objects = objectsForSystem(systemId);
@@ -191,13 +214,65 @@ export function DataMappingStudio() {
     setMessage(`${suggestion.sourceField} to ${suggestion.targetField} rejected.`);
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     if (missingRequiredTargets.length > 0) {
       setMessage(`Map required fields first: ${missingRequiredTargets.map((field) => field.name).join(", ")}.`);
       return;
     }
 
-    setMessage("Mapping draft validated locally. Persistence and AI suggestions come next.");
+    setIsSaving(true);
+    const response = await saveMappingDefinition({
+      description: `Maps ${sourceObject.displayName} fields into ${targetObject.displayName} fields with governed transforms.`,
+      mappingId,
+      mappings: mappings.map((mapping) => ({
+        confidence: mapping.confidence ?? null,
+        id: mapping.id,
+        rationale: mapping.rationale ?? null,
+        sourceField: mapping.sourceField,
+        targetField: mapping.targetField,
+        transform: mapping.transform
+      })),
+      name: mappingName,
+      sourceObjectId,
+      status: "draft",
+      targetObjectId
+    });
+
+    setIsSaving(false);
+    if (!response.ok) {
+      setMessage(response.error ?? "Mapping draft could not be saved.");
+      return;
+    }
+
+    setMessage(`${response.data.name} saved as a governed draft.`);
+    await loadSavedMappings();
+  }
+
+  async function applyLifecycle(mapping: MappingDefinition, action: MappingLifecycleAction) {
+    const response = await transitionMappingLifecycle(mapping.mappingId, action);
+    setMessage(response.data.message);
+    await loadSavedMappings();
+  }
+
+  function openSavedMapping(mapping: MappingDefinition) {
+    setMappingId(mapping.mappingId);
+    setMappingName(mapping.name);
+    setSourceObjectId(mapping.sourceObjectId);
+    setTargetObjectId(mapping.targetObjectId);
+    setSourceSystemId(mappingObjects.find((object) => object.id === mapping.sourceObjectId)?.systemId ?? sourceSystemId);
+    setTargetSystemId(mappingObjects.find((object) => object.id === mapping.targetObjectId)?.systemId ?? targetSystemId);
+    setMappings(
+      mapping.mappings.map((row) => ({
+        confidence: row.confidence ?? undefined,
+        id: row.id,
+        rationale: row.rationale ?? undefined,
+        sourceField: row.sourceField,
+        targetField: row.targetField,
+        transform: row.transform
+      }))
+    );
+    setSuggestions([]);
+    setMessage(`${mapping.name} opened in the mapping grid.`);
   }
 
   return (
@@ -324,6 +399,99 @@ export function DataMappingStudio() {
         </div>
       </Card>
 
+      <Card className="border-slate-200 bg-white/95 shadow-sm">
+        <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
+          <div>
+            <Badge className="border-indigo-200 bg-indigo-50 text-indigo-900">
+              <Archive className="mr-1 h-3.5 w-3.5" />
+              Mapping definition
+            </Badge>
+            <h2 className="mt-4 text-xl font-semibold text-slate-950">Save a governed mapping draft</h2>
+            <div className="mt-4 grid gap-3">
+              <label className="text-sm font-semibold text-slate-950" htmlFor="mapping-id">
+                Mapping ID
+              </label>
+              <input
+                className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                id="mapping-id"
+                onChange={(event) => setMappingId(event.target.value)}
+                value={mappingId}
+              />
+              <label className="text-sm font-semibold text-slate-950" htmlFor="mapping-name">
+                Display name
+              </label>
+              <input
+                className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                id="mapping-name"
+                onChange={(event) => setMappingName(event.target.value)}
+                value={mappingName}
+              />
+              <Button disabled={isSaving || mappings.length === 0} onClick={saveDraft} type="button">
+                <ListChecks className="h-4 w-4" />
+                {isSaving ? "Saving..." : "Save mapping draft"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Saved mappings</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Drafts can be submitted, approved, and published by explicit human action.
+                </p>
+              </div>
+              <Button className="bg-white" onClick={loadSavedMappings} type="button" variant="secondary">
+                Refresh
+              </Button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {isLoadingMappings ? (
+                <p className="rounded-md border border-slate-200 bg-white p-4 text-sm text-muted-foreground">
+                  Loading saved mappings...
+                </p>
+              ) : savedMappings.length > 0 ? (
+                savedMappings.map((mapping) => (
+                  <div className="rounded-lg border border-slate-200 bg-white p-3" key={mapping.mappingId}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">{mapping.name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{mapping.mappingId}</p>
+                      </div>
+                      <Badge className={statusBadgeClass(mapping.status)}>{mapping.status}</Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold hover:bg-muted"
+                        onClick={() => openSavedMapping(mapping)}
+                        type="button"
+                      >
+                        Open
+                      </button>
+                      {lifecycleActionsForStatus(mapping.status).map((action) => (
+                        <button
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-xs font-semibold hover:bg-muted"
+                          key={action}
+                          onClick={() => applyLifecycle(mapping, action)}
+                          type="button"
+                        >
+                          {action === "publish" ? <Rocket className="h-3.5 w-3.5" /> : null}
+                          {actionLabel(action)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-muted-foreground">
+                  No saved mapping definitions yet.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr_1fr]">
         <FieldTray
           fields={sourceObject.fields}
@@ -439,7 +607,7 @@ export function DataMappingStudio() {
 
           <Button className="mt-5 w-full" onClick={saveDraft} type="button">
             <ListChecks className="h-4 w-4" />
-            Validate mapping draft
+            Save mapping draft
           </Button>
         </Card>
 
@@ -577,6 +745,55 @@ function FieldTray({
 
 function objectsForSelect(systemId: string) {
   return mappingObjects.filter((object) => object.systemId === systemId);
+}
+
+function lifecycleActionsForStatus(status: MappingDefinition["status"]): MappingLifecycleAction[] {
+  if (status === "draft") {
+    return ["submit_for_approval"];
+  }
+  if (status === "pending_approval") {
+    return ["approve", "reject"];
+  }
+  if (status === "approved") {
+    return ["publish", "reject"];
+  }
+  if (status === "published") {
+    return ["pause"];
+  }
+  if (status === "paused") {
+    return ["submit_for_approval"];
+  }
+
+  return [];
+}
+
+function actionLabel(action: MappingLifecycleAction) {
+  const labels: Record<MappingLifecycleAction, string> = {
+    approve: "Approve",
+    pause: "Pause",
+    publish: "Publish",
+    reject: "Reject",
+    submit_for_approval: "Submit"
+  };
+
+  return labels[action];
+}
+
+function statusBadgeClass(status: MappingDefinition["status"]) {
+  if (status === "published") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  }
+  if (status === "approved") {
+    return "border-sky-200 bg-sky-50 text-sky-900";
+  }
+  if (status === "pending_approval") {
+    return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+  if (status === "paused") {
+    return "border-slate-200 bg-slate-100 text-slate-700";
+  }
+
+  return "border-slate-200 bg-white text-slate-700";
 }
 
 function FieldPill({ label }: { label: string }) {

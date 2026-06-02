@@ -14,6 +14,10 @@ import type {
   FlowSuggestionResponse,
   MappingSuggestionRequest,
   MappingSuggestionResponse,
+  MappingDefinition,
+  MappingDefinitionUpsertRequest,
+  MappingLifecycleAction,
+  MappingLifecycleResponse,
   NetSuiteConnectionTestResponse,
   NetSuiteConnectorConfig,
   NetSuiteConnectorConfigUpdate,
@@ -448,6 +452,26 @@ const fallbackMappingSuggestionResponse: MappingSuggestionResponse = {
   suggestionFallbackUsed: true,
   modelCallAttempted: false,
   modelCallSucceeded: false
+};
+
+const fallbackMappingDefinitions: MappingDefinition[] = [];
+
+const fallbackMappingDefinition: MappingDefinition = {
+  createdAt: null,
+  description: "Local fallback mapping definition.",
+  mappingId: "fallback-mapping",
+  mappings: [],
+  name: "Fallback mapping",
+  sourceObjectId: "netsuite-project",
+  status: "draft",
+  targetObjectId: "salesforce-opportunity",
+  updatedAt: null
+};
+
+const fallbackMappingLifecycleResponse: MappingLifecycleResponse = {
+  action: "pause",
+  mapping: fallbackMappingDefinition,
+  message: "The mapping lifecycle API is unavailable."
 };
 
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
@@ -900,6 +924,106 @@ export async function suggestMappingDefinition(
         sourceObjectId: request.sourceObjectId,
         targetObjectId: request.targetObjectId
       },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function getMappingDefinitions(): Promise<ClientApiResult<MappingDefinition[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions`, {
+      cache: "no-store",
+      headers: authHeaders()
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackMappingDefinitions,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackMappingDefinitions,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function saveMappingDefinition(
+  request: MappingDefinitionUpsertRequest
+): Promise<ClientApiResult<MappingDefinition>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: { ...fallbackMappingDefinition, ...request },
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ...fallbackMappingDefinition, ...request },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function transitionMappingLifecycle(
+  mappingId: string,
+  action: MappingLifecycleAction,
+  note?: string
+): Promise<ClientApiResult<MappingLifecycleResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}/lifecycle`, {
+      body: JSON.stringify({ action, note }),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackMappingLifecycleResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackMappingLifecycleResponse,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

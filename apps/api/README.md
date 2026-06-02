@@ -144,6 +144,26 @@ The service can use mock, Ollama, or OpenAI through the shared LLM provider abst
 
 Mapping suggestions are advisory only. They do not save, publish, execute, generate SQL/SuiteQL, access credentials, or access raw systems.
 
+## Mapping definitions
+
+Reviewed mappings can be saved as governed draft definitions:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/definitions" \
+  -H "Content-Type: application/json" \
+  -d '{"mappingId":"netsuite-project-to-salesforce-opportunity","name":"NetSuite Project to Salesforce Opportunity","description":"Maps approved project fields into Salesforce opportunity fields.","sourceObjectId":"netsuite-project","targetObjectId":"salesforce-opportunity","status":"draft","mappings":[{"id":"project-to-name","sourceField":"project_id","targetField":"Name","transform":"rename"},{"id":"customer-to-account","sourceField":"customer_name","targetField":"AccountName","transform":"direct"},{"id":"budget-to-amount","sourceField":"budget_amount","targetField":"Amount","transform":"direct"},{"id":"date-to-close","sourceField":"due_date","targetField":"CloseDate","transform":"format_date"}]}'
+```
+
+Lifecycle actions are explicit and human controlled:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/lifecycle" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"submit_for_approval"}'
+```
+
+The API validates known source and target fields, required target fields, duplicate targets, allowed transforms, and blocked raw-query/secret language. Mapping saves and lifecycle transitions are audited as `MAPPING_DEFINITION`.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

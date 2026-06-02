@@ -106,3 +106,30 @@ class FlowDefinitionRecord(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class MappingDefinitionRecord(Base):
+    __tablename__ = "mapping_definitions"
+    __table_args__ = (
+        Index("ix_mapping_definitions_status", "status"),
+        Index("ix_mapping_definitions_source_target", "source_object_id", "target_object_id"),
+    )
+
+    mapping_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source_object_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    target_object_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    mappings: Mapped[list[dict[str, Any]]] = mapped_column(_json_type(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )

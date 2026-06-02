@@ -555,6 +555,35 @@ curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
 
 Every model response is validated against known source fields, known target fields, and approved transforms before the UI sees it. Invalid or unavailable model output falls back to deterministic templates. Suggestions remain human-reviewed drafts only; accepting a suggestion adds it to the local mapping grid, while publishing/runtime persistence is still a future step.
 
+## Mapping Persistence and Governance v2.5
+
+V2.5 makes reviewed field mappings persistent platform assets. Integrators can save accepted mappings as governed drafts, list saved mapping definitions, reopen them in Data Mapping Studio, and move them through a human lifecycle before publication.
+
+The backend exposes:
+
+```bash
+curl "http://localhost:8000/api/v1/mappings/definitions"
+
+curl -X POST "http://localhost:8000/api/v1/mappings/definitions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mappingId":"netsuite-project-to-salesforce-opportunity",
+    "name":"NetSuite Project to Salesforce Opportunity",
+    "description":"Maps approved project fields into Salesforce opportunity fields.",
+    "sourceObjectId":"netsuite-project",
+    "targetObjectId":"salesforce-opportunity",
+    "status":"draft",
+    "mappings":[
+      {"id":"project-to-name","sourceField":"project_id","targetField":"Name","transform":"rename"},
+      {"id":"customer-to-account","sourceField":"customer_name","targetField":"AccountName","transform":"direct"},
+      {"id":"budget-to-amount","sourceField":"budget_amount","targetField":"Amount","transform":"direct"},
+      {"id":"date-to-close","sourceField":"due_date","targetField":"CloseDate","transform":"format_date"}
+    ]
+  }'
+```
+
+Mapping definitions support `draft`, `pending_approval`, `approved`, `published`, and `paused` states through explicit lifecycle actions. The server validates every saved row against known source fields, known target fields, duplicate target usage, required target fields, and approved transforms. No mapping can introduce arbitrary code, SQL, SuiteQL, credentials, or raw system access.
+
 ## Tests
 
 Backend:
