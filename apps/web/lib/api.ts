@@ -300,6 +300,7 @@ const fallbackFlows: FlowDefinition[] = [
     targetModule: "cfo_dashboard",
     status: "published",
     triggerType: "manual",
+    mappingDefinitionId: null,
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -325,6 +326,7 @@ const fallbackFlows: FlowDefinition[] = [
     targetModule: "project_risk",
     status: "published",
     triggerType: "manual",
+    mappingDefinitionId: null,
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -350,6 +352,7 @@ const fallbackFlows: FlowDefinition[] = [
     targetModule: "subsidiary_drilldown",
     status: "published",
     triggerType: "manual",
+    mappingDefinitionId: null,
     lastRunAt: null,
     lastRunStatus: "never_run",
     steps: [
@@ -394,6 +397,7 @@ const fallbackFlowSuggestionResponse: FlowSuggestionResponse = {
     name: "AI drafted CFO flow",
     sourceConnector: "netsuite",
     status: "draft",
+    mappingDefinitionId: null,
     steps: [
       {
         approvedTool: "cfo.dashboard_summary",

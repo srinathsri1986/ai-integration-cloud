@@ -23,6 +23,23 @@ def init_db() -> None:
     from app.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_lightweight_columns()
+
+
+def _ensure_lightweight_columns() -> None:
+    with engine.begin() as connection:
+        dialect_name = connection.dialect.name
+        if dialect_name == "sqlite":
+            rows = connection.exec_driver_sql("PRAGMA table_info(flow_definitions)").fetchall()
+            columns = {row[1] for row in rows}
+            if "mapping_definition_id" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE flow_definitions ADD COLUMN mapping_definition_id VARCHAR(96)"
+                )
+        elif dialect_name == "postgresql":
+            connection.exec_driver_sql(
+                "ALTER TABLE flow_definitions ADD COLUMN IF NOT EXISTS mapping_definition_id VARCHAR(96)"
+            )
 
 
 def get_session() -> Iterator[Session]:

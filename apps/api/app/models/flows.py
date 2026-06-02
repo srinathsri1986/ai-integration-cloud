@@ -34,6 +34,7 @@ class FlowDefinition(BaseModel):
     target_module: str = Field(alias="targetModule")
     status: FlowStatus
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
+    mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId")
     last_run_at: str | None = Field(default=None, alias="lastRunAt")
     last_run_status: FlowRunStatus = Field(alias="lastRunStatus")
     steps: list[FlowStep]
@@ -47,6 +48,7 @@ class FlowDefinitionUpsertRequest(BaseModel):
     target_module: str = Field(alias="targetModule", min_length=3, max_length=80)
     status: FlowStatus = "draft"
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
+    mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId", max_length=96)
     steps: list[FlowStep] = Field(min_length=1, max_length=8)
 
     @field_validator("description", "name", "target_module")

@@ -598,6 +598,37 @@ Simulation uses only catalog sample payloads and approved transforms. It does no
 
 The Mapping Studio UI now includes a **Simulate saved mapping** action and a side-by-side source/output preview panel.
 
+## Flow-to-Mapping Linkage v2.7
+
+V2.7 links governed mappings to custom flows. Flow definitions now support an optional `mappingDefinitionId`. Custom flows without a mapping still fail closed, while custom flows with an attached published mapping can run a safe runtime preview that includes the mapping simulation output.
+
+The flow definition API accepts:
+
+```json
+{
+  "flowId": "mapped-runtime-preview",
+  "name": "Mapped runtime preview",
+  "description": "Preview a mapped payload through approved actions.",
+  "sourceConnector": "netsuite",
+  "targetModule": "salesforce_opportunity",
+  "status": "draft",
+  "triggerType": "manual",
+  "mappingDefinitionId": "netsuite-project-to-salesforce-opportunity",
+  "steps": [
+    {
+      "id": "summary",
+      "name": "Load summary",
+      "description": "Load approved CFO summary data.",
+      "approvedTool": "cfo.dashboard_summary"
+    }
+  ]
+}
+```
+
+The backend validates that referenced mappings exist and are `published` before saving a flow reference. Flow runs include the mapping ID in audit logs and return a runtime preview payload under `data.mappingSimulation`.
+
+The Flow Catalog UI now loads published mappings and exposes a mapping selector in Recipe Designer Lite.
+
 ## Tests
 
 Backend:

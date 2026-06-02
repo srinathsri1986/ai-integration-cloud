@@ -92,6 +92,7 @@ class FlowDefinitionRecord(Base):
     target_module: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    mapping_definition_id: Mapped[str | None] = mapped_column(String(96), nullable=True)
     last_run_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_run_status: Mapped[str] = mapped_column(String(32), nullable=False)
     steps: Mapped[list[dict[str, Any]]] = mapped_column(_json_type(), nullable=False)

@@ -174,6 +174,18 @@ curl -X POST "http://localhost:8000/api/v1/mappings/definitions/netsuite-project
 
 Simulation is preview-only. It applies approved transforms to catalog sample values and returns source payload, target payload, transform names, warnings, and simulation timestamp. It does not execute arbitrary code, call external systems, or access secrets. Simulation actions are audited as `MAPPING_SIMULATION`.
 
+## Flow-to-mapping linkage
+
+Flow definitions can optionally reference a published mapping definition:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
+  -H "Content-Type: application/json" \
+  -d '{"flowId":"mapped-runtime-preview","name":"Mapped runtime preview","description":"Preview a mapped payload through approved actions.","sourceConnector":"netsuite","targetModule":"salesforce_opportunity","status":"draft","triggerType":"manual","mappingDefinitionId":"netsuite-project-to-salesforce-opportunity","steps":[{"id":"summary","name":"Load summary","description":"Load approved CFO summary data.","approvedTool":"cfo.dashboard_summary"}]}'
+```
+
+Referenced mappings must exist and be `published`; draft or missing mappings are rejected. Custom published flows with an attached published mapping run a safe runtime preview and return the mapping simulation result in the flow run payload. Custom flows without a mapping remain fail-closed.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

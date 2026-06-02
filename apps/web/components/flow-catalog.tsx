@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { GitBranch, Play, Save, Workflow } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GitBranch, Link2, Play, Save, Workflow } from "lucide-react";
 import type {
   ApprovedFlowTool,
   FlowDefinition,
   FlowDefinitionUpsertRequest,
   FlowLifecycleAction,
-  FlowRunResponse
+  FlowRunResponse,
+  MappingDefinition
 } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type ApiResult,
+  getMappingDefinitions,
   runFlow,
   saveFlowDefinition,
   transitionFlowLifecycle
@@ -64,12 +66,15 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
   const [lastRun, setLastRun] = useState<Record<string, FlowRunResponse>>({});
   const [designerMessage, setDesignerMessage] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
+  const [mappingDefinitions, setMappingDefinitions] = useState<MappingDefinition[]>([]);
+  const [isLoadingMappings, setIsLoadingMappings] = useState(false);
   const [draft, setDraft] = useState<FlowDefinitionUpsertRequest>({
     description: "Refresh CFO dashboard data through approved NetSuite CFO actions.",
     flowId: "custom-cfo-refresh",
     name: "Custom CFO refresh",
     sourceConnector: "netsuite",
     status: "draft",
+    mappingDefinitionId: null,
     steps: [
       {
         approvedTool: "cfo.dashboard_summary",
@@ -81,6 +86,18 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
     targetModule: "cfo_dashboard",
     triggerType: "manual"
   });
+  const publishedMappings = mappingDefinitions.filter((mapping) => mapping.status === "published");
+
+  useEffect(() => {
+    loadMappingDefinitions();
+  }, []);
+
+  async function loadMappingDefinitions() {
+    setIsLoadingMappings(true);
+    const response = await getMappingDefinitions();
+    setMappingDefinitions(response.data);
+    setIsLoadingMappings(false);
+  }
 
   async function onRun(flow: FlowDefinition) {
     setError(undefined);
@@ -225,6 +242,23 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
               />
               <select
                 className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary md:col-span-2"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    mappingDefinitionId: event.target.value || null
+                  }))
+                }
+                value={draft.mappingDefinitionId ?? ""}
+              >
+                <option value="">No mapping attached</option>
+                {publishedMappings.map((mapping) => (
+                  <option key={mapping.mappingId} value={mapping.mappingId}>
+                    {mapping.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary md:col-span-2"
                 onChange={(event) => {
                   const tool = event.target.value as ApprovedFlowTool;
                   setDraft((current) => ({
@@ -261,7 +295,16 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
               <Badge>No SuiteQL input</Badge>
               <Badge>Approved tools only</Badge>
               <Badge>Human save required</Badge>
+              <Badge>Published mappings only</Badge>
             </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              {isLoadingMappings
+                ? "Loading published mappings..."
+                : `${publishedMappings.length} published mappings available.`}
+            </p>
+            <Button className="mt-3 w-full" onClick={loadMappingDefinitions} type="button" variant="secondary">
+              Refresh mappings
+            </Button>
             <Button className="mt-4 w-full" disabled={isSaving} onClick={onSaveDesigner} type="button">
               <Save className="h-4 w-4" />
               {isSaving ? "Saving" : "Save flow"}
@@ -289,6 +332,12 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
                 <Badge>{statusLabel(flow.status)}</Badge>
                 <Badge>{flow.sourceConnector}</Badge>
                 <Badge>{flow.targetModule}</Badge>
+                {flow.mappingDefinitionId ? (
+                  <Badge className="border-sky-200 bg-sky-50 text-sky-900">
+                    <Link2 className="mr-1 h-3.5 w-3.5" />
+                    {flow.mappingDefinitionId}
+                  </Badge>
+                ) : null}
                 {flow.status !== "published" ? <Badge>approval required</Badge> : <Badge>runnable</Badge>}
               </div>
 
@@ -324,6 +373,11 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
                 <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
                   {result.message} Request {result.requestId}.
                 </p>
+              ) : null}
+              {result?.data && typeof result.data === "object" && "mappingSimulation" in result.data ? (
+                <pre className="mt-3 max-h-56 overflow-auto rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                  {JSON.stringify((result.data as { mappingSimulation: unknown }).mappingSimulation, null, 2)}
+                </pre>
               ) : null}
 
               <div className="mt-4 grid gap-2">

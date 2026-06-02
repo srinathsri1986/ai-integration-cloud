@@ -43,7 +43,18 @@ def upsert_flow_definition(
     request: FlowDefinitionUpsertRequest,
     user=Depends(require_permissions("flow:run")),
 ) -> FlowDefinition:
-    return flow_service.upsert_flow(request)
+    try:
+        return flow_service.upsert_flow(request)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown mapping definition.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post("/suggestions", response_model=FlowSuggestionResponse)

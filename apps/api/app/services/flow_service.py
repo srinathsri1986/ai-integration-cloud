@@ -17,6 +17,7 @@ from app.repositories.flow_definition_repository import FlowDefinitionRepository
 from app.repositories.flow_run_repository import FlowRunRepository
 from app.services.audit_service import audit_service
 from app.services.cfo_service import CfoService
+from app.services.mapping_definition_service import mapping_definition_service
 from app.services.orchestrator_service import OrchestratorService
 
 BUILT_IN_FLOW_IDS = {
@@ -140,10 +141,16 @@ class FlowService:
             targetModule=request.target_module,
             status=request.status,
             triggerType=request.trigger_type,
+            mappingDefinitionId=request.mapping_definition_id,
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=request.steps,
         )
+        if request.mapping_definition_id:
+            mapping = mapping_definition_service.get_mapping(request.mapping_definition_id)
+            if mapping.status != "published":
+                raise ValueError("Flow mappingDefinitionId must reference a published mapping.")
+
         with SessionLocal() as session:
             saved = FlowDefinitionRepository(session).upsert(flow)
 
@@ -198,9 +205,11 @@ class FlowService:
         timer_started = perf_counter()
         tools_used: list[str] = []
         success = False
+        mapping_definition_id: str | None = None
 
         try:
             flow = self.get_flow(flow_id)
+            mapping_definition_id = flow.mapping_definition_id
             if flow.status != "published":
                 completed = datetime.now(UTC).isoformat()
                 response = FlowRunResponse(
@@ -255,22 +264,61 @@ class FlowService:
             else:
                 completed = datetime.now(UTC).isoformat()
                 tools_used = [step.approved_tool for step in flow.steps]
+                if flow.mapping_definition_id is None:
+                    response = FlowRunResponse(
+                        requestId=request_id,
+                        flowId=flow_id,
+                        status="failed",
+                        startedAt=started,
+                        completedAt=completed,
+                        toolsUsed=tools_used,
+                        message=(
+                            "Flow definition is saved, but no published mapping definition "
+                            "is attached for custom runtime preview."
+                        ),
+                        data={"steps": [step.model_dump(by_alias=True) for step in flow.steps]},
+                    )
+                    with SessionLocal() as session:
+                        FlowRunRepository(session).append(response)
+                        FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                    return response
+
+                mapping = mapping_definition_service.get_mapping(flow.mapping_definition_id)
+                if mapping.status != "published":
+                    response = FlowRunResponse(
+                        requestId=request_id,
+                        flowId=flow_id,
+                        status="failed",
+                        startedAt=started,
+                        completedAt=completed,
+                        toolsUsed=tools_used,
+                        message="Attached mapping definition must be published before flow runtime preview.",
+                        data={"mappingDefinitionId": flow.mapping_definition_id},
+                    )
+                    with SessionLocal() as session:
+                        FlowRunRepository(session).append(response)
+                        FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                    return response
+
+                simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
+                success = True
                 response = FlowRunResponse(
                     requestId=request_id,
                     flowId=flow_id,
-                    status="failed",
+                    status="succeeded",
                     startedAt=started,
                     completedAt=completed,
                     toolsUsed=tools_used,
-                    message=(
-                        "Flow definition is saved, but executable runtime mapping is not "
-                        "enabled for custom flows yet."
-                    ),
-                    data={"steps": [step.model_dump(by_alias=True) for step in flow.steps]},
+                    message="Custom flow runtime preview completed using the attached published mapping.",
+                    data={
+                        "steps": [step.model_dump(by_alias=True) for step in flow.steps],
+                        "mappingDefinitionId": flow.mapping_definition_id,
+                        "mappingSimulation": simulation.model_dump(by_alias=True),
+                    },
                 )
                 with SessionLocal() as session:
                     FlowRunRepository(session).append(response)
-                    FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                    FlowDefinitionRepository(session).update_last_run(flow_id, completed, "succeeded")
                 return response
 
             completed = datetime.now(UTC).isoformat()
@@ -301,6 +349,7 @@ class FlowService:
                 tools_used=tools_used,
                 success=success,
                 latency_ms=latency_ms,
+                mapping_definition_id=mapping_definition_id,
             )
 
     def clear_for_tests(self) -> None:

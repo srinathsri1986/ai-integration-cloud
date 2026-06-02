@@ -42,6 +42,7 @@ class FlowDefinitionRepository:
             record.target_module = flow.target_module
             record.status = flow.status
             record.trigger_type = flow.trigger_type
+            record.mapping_definition_id = flow.mapping_definition_id
             record.steps = [step.model_dump(by_alias=True) for step in flow.steps]
 
         self.session.commit()
@@ -76,6 +77,7 @@ class FlowDefinitionRepository:
             target_module=flow.target_module,
             status=flow.status,
             trigger_type=flow.trigger_type,
+            mapping_definition_id=flow.mapping_definition_id,
             last_run_at=flow.last_run_at,
             last_run_status=flow.last_run_status,
             steps=[step.model_dump(by_alias=True) for step in flow.steps],
@@ -91,6 +93,7 @@ class FlowDefinitionRepository:
             targetModule=record.target_module,
             status=status,
             triggerType=record.trigger_type,
+            mappingDefinitionId=record.mapping_definition_id,
             lastRunAt=record.last_run_at,
             lastRunStatus=record.last_run_status,
             steps=record.steps,

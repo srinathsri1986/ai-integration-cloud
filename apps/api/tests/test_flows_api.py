@@ -5,6 +5,7 @@ from app.models.flows import FlowSuggestionRequest
 from app.services.audit_service import audit_service
 from app.services.flow_suggestion_service import FlowSuggestionService
 from app.services.flow_service import flow_service
+from app.services.mapping_definition_service import mapping_definition_service
 
 
 client = TestClient(app)
@@ -13,6 +14,44 @@ client = TestClient(app)
 def setup_function() -> None:
     audit_service.clear_for_tests()
     flow_service.clear_for_tests()
+    mapping_definition_service.clear_for_tests()
+
+
+def _mapping_payload(mapping_id: str = "netsuite-project-to-salesforce-opportunity") -> dict:
+    return {
+        "mappingId": mapping_id,
+        "name": "NetSuite Project to Salesforce Opportunity",
+        "description": "Maps approved project fields into Salesforce opportunity fields.",
+        "sourceObjectId": "netsuite-project",
+        "targetObjectId": "salesforce-opportunity",
+        "status": "draft",
+        "mappings": [
+            {
+                "id": "project-to-name",
+                "sourceField": "project_id",
+                "targetField": "Name",
+                "transform": "rename",
+            },
+            {
+                "id": "customer-to-account",
+                "sourceField": "customer_name",
+                "targetField": "AccountName",
+                "transform": "direct",
+            },
+            {
+                "id": "budget-to-amount",
+                "sourceField": "budget_amount",
+                "targetField": "Amount",
+                "transform": "direct",
+            },
+            {
+                "id": "date-to-close",
+                "sourceField": "due_date",
+                "targetField": "CloseDate",
+                "transform": "format_date",
+            },
+        ],
+    }
 
 
 def test_list_flows_returns_mock_catalog() -> None:
@@ -376,8 +415,122 @@ def test_custom_published_flow_run_fails_closed_until_runtime_mapping_exists() -
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "failed"
-    assert "runtime mapping is not enabled" in body["message"]
+    assert "no published mapping definition" in body["message"]
     assert body["toolsUsed"] == ["cfo.dashboard_summary"]
+
+
+def test_flow_definition_rejects_unknown_or_unpublished_mapping_reference() -> None:
+    unknown_response = client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "mapped-flow",
+            "name": "Mapped flow",
+            "description": "Preview a mapped payload through approved actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "salesforce_opportunity",
+            "status": "draft",
+            "triggerType": "manual",
+            "mappingDefinitionId": "missing-mapping",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+    client.post("/api/v1/mappings/definitions", json=_mapping_payload())
+    draft_mapping_response = client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "draft-mapped-flow",
+            "name": "Draft mapped flow",
+            "description": "Preview a mapped payload through approved actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "salesforce_opportunity",
+            "status": "draft",
+            "triggerType": "manual",
+            "mappingDefinitionId": "netsuite-project-to-salesforce-opportunity",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+
+    assert unknown_response.status_code == 404
+    assert draft_mapping_response.status_code == 409
+    assert "published mapping" in draft_mapping_response.json()["detail"]
+
+
+def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
+    client.post("/api/v1/mappings/definitions", json=_mapping_payload())
+    client.post(
+        "/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/lifecycle",
+        json={"action": "submit_for_approval"},
+    )
+    client.post(
+        "/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/lifecycle",
+        json={"action": "approve"},
+    )
+    client.post(
+        "/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/lifecycle",
+        json={"action": "publish"},
+    )
+    client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "mapped-runtime-preview",
+            "name": "Mapped runtime preview",
+            "description": "Preview a mapped payload through approved actions.",
+            "sourceConnector": "netsuite",
+            "targetModule": "salesforce_opportunity",
+            "status": "draft",
+            "triggerType": "manual",
+            "mappingDefinitionId": "netsuite-project-to-salesforce-opportunity",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+    client.post(
+        "/api/v1/flows/mapped-runtime-preview/lifecycle",
+        json={"action": "submit_for_approval"},
+    )
+    client.post("/api/v1/flows/mapped-runtime-preview/lifecycle", json={"action": "approve"})
+    client.post("/api/v1/flows/mapped-runtime-preview/lifecycle", json={"action": "publish"})
+
+    response = client.post("/api/v1/flows/mapped-runtime-preview/run")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "succeeded"
+    assert body["data"]["mappingDefinitionId"] == "netsuite-project-to-salesforce-opportunity"
+    assert body["data"]["mappingSimulation"]["targetPayload"]["AccountName"] == "Acme Manufacturing"
+    assert body["data"]["mappingSimulation"]["targetPayload"]["Name"] == "PRJ-1042"
+    assert body["toolsUsed"] == ["cfo.dashboard_summary"]
+
+    saved_flow = client.get("/api/v1/flows/mapped-runtime-preview").json()
+    assert saved_flow["mappingDefinitionId"] == "netsuite-project-to-salesforce-opportunity"
+    assert saved_flow["lastRunStatus"] == "succeeded"
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["detectedIntent"] == "FLOW_RUN"
+    assert logs[0]["question"] == (
+        "Flow run: mapped-runtime-preview using mapping netsuite-project-to-salesforce-opportunity"
+    )
+    assert "mapping.definition.netsuite-project-to-salesforce-opportunity" in logs[0]["toolsUsed"]
 
 
 def test_run_subsidiary_flow_uses_approved_services_only() -> None:

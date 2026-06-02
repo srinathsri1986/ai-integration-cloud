@@ -159,6 +159,7 @@ export const flowDefinitionSchema = z.object({
   targetModule: z.string(),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
+  mappingDefinitionId: z.string().nullable().optional(),
   lastRunAt: z.string().nullable(),
   lastRunStatus: flowRunStatusSchema,
   steps: z.array(flowStepSchema)
@@ -174,6 +175,7 @@ export const flowDefinitionUpsertRequestSchema = z.object({
   targetModule: z.string().min(3).max(80),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
+  mappingDefinitionId: z.string().max(96).nullable().optional(),
   steps: z.array(flowStepSchema).min(1).max(8)
 });
 

@@ -65,17 +65,26 @@ class AuditService:
         tools_used: list[str],
         success: bool,
         latency_ms: int,
+        mapping_definition_id: str | None = None,
     ) -> None:
+        audit_tools = tools_used.copy()
+        if mapping_definition_id:
+            audit_tools.append(f"mapping.definition.{mapping_definition_id}")
+
         self.record(
             AuditLogEntry(
                 timestamp=datetime.now(UTC).isoformat(),
                 requestId=request_id,
                 user="local-dev-user",
                 channel="web",
-                question=f"Flow run: {flow_id}",
+                question=(
+                    f"Flow run: {flow_id}"
+                    if mapping_definition_id is None
+                    else f"Flow run: {flow_id} using mapping {mapping_definition_id}"
+                ),
                 detectedIntent="FLOW_RUN",
                 confidence=1,
-                toolsUsed=tools_used,
+                toolsUsed=audit_tools,
                 endpointCalled=endpoint_called,
                 fallbackUsed=False,
                 success=success,
