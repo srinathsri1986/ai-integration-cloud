@@ -503,6 +503,21 @@ The flow API exposes lifecycle actions through `POST /api/v1/flows/{flow_id}/lif
 
 Only `published` flows can be run. Built-in mapped flows can execute after publication, while custom published flows still fail closed until explicit runtime mappings are implemented. AI-generated drafts cannot publish themselves; a human lifecycle action is required.
 
+## SaaS-Ready System-Agnostic Integration Workbench v2.2
+
+V2.2 shifts the product experience from a NetSuite-specific MVP toward a SaaS-ready **AI Integration Cloud**. NetSuite CFO Intelligence remains the first packaged solution/template, while the Integration Studio introduces a broader system-agnostic workbench.
+
+The `/flows` page now includes:
+
+- a guided no-code integration path
+- connector marketplace-style system cards
+- visual source-to-target pipeline preview
+- SaaS workspace posture badges for tenant, environment, plan, and governance
+- placeholder systems for NetSuite, Salesforce, Oracle Fusion, ServiceNow, PostgreSQL, REST API, SFTP/CSV, and platform-native actions
+- business-friendly language such as choose a system, pick data, match fields, review, and publish
+
+This release is frontend-first. It does not add real connector credentials, arbitrary SQL, SuiteQL, raw system access, or unrestricted execution. The next natural step is Data Mapping Studio Lite.
+
 ## Tests
 
 Backend:

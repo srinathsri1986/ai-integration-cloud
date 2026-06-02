@@ -12,8 +12,8 @@ export default async function ConnectorsPage() {
   return (
     <PlatformShell
       active="/connectors"
-      subtitle="Configure approved enterprise connectors without exposing credentials, arbitrary SuiteQL, or raw NetSuite access."
-      title="Connector Studio"
+      subtitle="Manage approved systems, APIs, auth posture, and connector readiness without exposing credentials or raw system access."
+      title="Systems and Connector Studio"
     >
       <div className="space-y-6">
         <section className="grid gap-4 lg:grid-cols-3">

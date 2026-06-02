@@ -22,7 +22,7 @@ type PlatformShellProps = {
 export function PlatformShell({
   active,
   children,
-  eyebrow = "NetSuite CFO Intelligence Orchestrator",
+  eyebrow = "AI Integration Cloud",
   subtitle,
   title
 }: PlatformShellProps) {
@@ -91,6 +91,10 @@ export function PlatformShell({
             <div>
               <p className="text-sm font-semibold">{role}</p>
               <p className="mt-1 break-all text-xs leading-5 text-muted-foreground">{email}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge className="bg-white">Tenant: local</Badge>
+                <Badge className="bg-white">Plan: MVP</Badge>
+              </div>
             </div>
           </div>
           <Link href="/login">
@@ -113,6 +117,7 @@ export function PlatformShell({
             <div className="flex flex-wrap gap-2">
               <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">Local MVP</Badge>
               <Badge className="border-sky-200 bg-sky-50 text-sky-900">Ollama ready</Badge>
+              <Badge className="border-violet-200 bg-violet-50 text-violet-900">Tenant workspace</Badge>
               <Badge className="border-slate-200 bg-white text-slate-700">{role}</Badge>
             </div>
           </div>

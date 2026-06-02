@@ -148,8 +148,8 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
     <section className="mx-auto max-w-7xl px-6 pb-12">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Flow Catalog</p>
-          <h2 className="mt-1 text-xl font-semibold">Mock integration flows</h2>
+          <p className="text-sm font-medium text-muted-foreground">Recipe Catalog</p>
+          <h2 className="mt-1 text-xl font-semibold">Approved integration flows</h2>
         </div>
         <Badge className="border-emerald-300 bg-emerald-50 text-emerald-900">
           <Workflow className="mr-1 h-3.5 w-3.5" />
@@ -167,7 +167,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
           <div>
             <CardHeader>
-              <CardTitle>Flow Designer Lite</CardTitle>
+              <CardTitle>Recipe Designer Lite</CardTitle>
             </CardHeader>
             <div className="grid gap-3 md:grid-cols-2">
               <input
@@ -255,7 +255,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
             ) : null}
           </div>
           <div className="rounded-md border border-sky-200 bg-white p-4">
-            <p className="text-sm font-medium">Designer guardrails</p>
+            <p className="text-sm font-medium">Builder guardrails</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge>No raw SQL</Badge>
               <Badge>No SuiteQL input</Badge>

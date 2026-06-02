@@ -34,17 +34,17 @@ export const platformRoutes: PlatformRoute[] = [
     roles: ["CFO", "Finance Controller", "Integration Admin", "Developer"]
   },
   {
-    description: "Design governed integrations",
+    description: "Guided no-code integration builder",
     href: "/flows",
     icon: GitBranch,
-    label: "Flows",
+    label: "Integration Studio",
     roles: ["Integration Admin", "Developer"]
   },
   {
-    description: "Manage enterprise connectors",
+    description: "Systems, APIs, and connector health",
     href: "/connectors",
     icon: Cable,
-    label: "Connectors",
+    label: "Systems",
     roles: ["Integration Admin", "Developer"]
   },
   {

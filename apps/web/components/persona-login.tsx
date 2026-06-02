@@ -38,11 +38,12 @@ export function PersonaLogin() {
             AI-native Integration Cloud
           </Badge>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold leading-tight tracking-normal text-slate-950 md:text-5xl">
-            NetSuite CFO Intelligence Orchestrator
+            AI Integration Cloud
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-            Enter through the persona that matches your work. Finance leaders see executive
-            insight first, while integration teams land directly in governed orchestration tools.
+            Enter your tenant workspace through the persona that matches your work. Finance
+            leaders see executive insight first, while integration teams land directly in
+            governed no-code orchestration tools.
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
