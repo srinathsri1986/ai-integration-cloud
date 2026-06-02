@@ -12,6 +12,8 @@ import type {
   FlowRunResponse,
   FlowSuggestionRequest,
   FlowSuggestionResponse,
+  MappingSuggestionRequest,
+  MappingSuggestionResponse,
   NetSuiteConnectionTestResponse,
   NetSuiteConnectorConfig,
   NetSuiteConnectorConfigUpdate,
@@ -405,6 +407,41 @@ const fallbackFlowSuggestionResponse: FlowSuggestionResponse = {
     triggerType: "manual"
   },
   rationale: "Fallback draft uses only approved NetSuite CFO actions.",
+  suggestionProvider: "template",
+  suggestionModel: null,
+  suggestionGenerated: true,
+  suggestionFallbackUsed: true,
+  modelCallAttempted: false,
+  modelCallSucceeded: false
+};
+
+const fallbackMappingSuggestionResponse: MappingSuggestionResponse = {
+  prompt: "Map project fields into the selected target object.",
+  sourceObjectId: "netsuite-project",
+  targetObjectId: "salesforce-opportunity",
+  suggestions: [
+    {
+      confidence: 0.94,
+      rationale: "Customer names align to the target account reference.",
+      sourceField: "customer_name",
+      targetField: "AccountName",
+      transform: "direct"
+    },
+    {
+      confidence: 0.91,
+      rationale: "Budget and amount fields share numeric finance meaning.",
+      sourceField: "budget_amount",
+      targetField: "Amount",
+      transform: "direct"
+    },
+    {
+      confidence: 0.88,
+      rationale: "Date values need target system date formatting.",
+      sourceField: "due_date",
+      targetField: "CloseDate",
+      transform: "format_date"
+    }
+  ],
   suggestionProvider: "template",
   suggestionModel: null,
   suggestionGenerated: true,
@@ -818,6 +855,51 @@ export async function suggestFlowDefinition(
   } catch (error) {
     return {
       data: fallbackFlowSuggestionResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function suggestMappingDefinition(
+  request: MappingSuggestionRequest
+): Promise<ClientApiResult<MappingSuggestionResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/suggestions`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: {
+          ...fallbackMappingSuggestionResponse,
+          prompt: request.prompt,
+          sourceObjectId: request.sourceObjectId,
+          targetObjectId: request.targetObjectId
+        },
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: body.suggestionFallbackUsed, ok: true };
+  } catch (error) {
+    return {
+      data: {
+        ...fallbackMappingSuggestionResponse,
+        prompt: request.prompt,
+        sourceObjectId: request.sourceObjectId,
+        targetObjectId: request.targetObjectId
+      },
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

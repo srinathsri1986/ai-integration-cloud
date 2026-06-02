@@ -199,6 +199,49 @@ export const flowSuggestionResponseSchema = z.object({
 
 export type FlowSuggestionResponse = z.infer<typeof flowSuggestionResponseSchema>;
 
+export const mappingTransformSchema = z.enum([
+  "direct",
+  "rename",
+  "format_date",
+  "lookup_placeholder",
+  "constant_placeholder"
+]);
+
+export type MappingTransform = z.infer<typeof mappingTransformSchema>;
+
+export const mappingSuggestionRequestSchema = z.object({
+  prompt: z.string().min(10).max(1000),
+  sourceObjectId: z.string().min(3).max(80),
+  targetObjectId: z.string().min(3).max(80)
+});
+
+export type MappingSuggestionRequest = z.infer<typeof mappingSuggestionRequestSchema>;
+
+export const mappingSuggestionItemSchema = z.object({
+  sourceField: z.string(),
+  targetField: z.string(),
+  transform: mappingTransformSchema,
+  confidence: z.number().min(0).max(1),
+  rationale: z.string()
+});
+
+export type MappingSuggestionItem = z.infer<typeof mappingSuggestionItemSchema>;
+
+export const mappingSuggestionResponseSchema = z.object({
+  prompt: z.string(),
+  sourceObjectId: z.string(),
+  targetObjectId: z.string(),
+  suggestions: z.array(mappingSuggestionItemSchema),
+  suggestionProvider: z.string(),
+  suggestionModel: z.string().nullable(),
+  suggestionGenerated: z.boolean(),
+  suggestionFallbackUsed: z.boolean(),
+  modelCallAttempted: z.boolean(),
+  modelCallSucceeded: z.boolean()
+});
+
+export type MappingSuggestionResponse = z.infer<typeof mappingSuggestionResponseSchema>;
+
 export const flowLifecycleRequestSchema = z.object({
   action: flowLifecycleActionSchema,
   note: z.string().max(300).nullable().optional()

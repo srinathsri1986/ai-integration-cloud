@@ -36,6 +36,15 @@ class LLMFlowSuggestionResult:
     provider_name: str
 
 
+@dataclass(frozen=True)
+class LLMMappingSuggestionResult:
+    suggestions: list[dict]
+    model_name: str
+    model_call_attempted: bool
+    model_call_succeeded: bool
+    provider_name: str
+
+
 class LLMProviderError(RuntimeError):
     def __init__(
         self,
@@ -61,6 +70,9 @@ class LLMProvider(Protocol):
 
     def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
         """Return a draft flow definition using approved connectors and actions only."""
+
+    def generate_mapping_suggestion(self, context: dict) -> LLMMappingSuggestionResult:
+        """Return draft field mapping suggestions from approved object metadata only."""
 
 
 class MockLLMProvider:
@@ -130,6 +142,15 @@ class MockLLMProvider:
         return LLMFlowSuggestionResult(
             suggested_flow=suggested_flow,
             rationale="Mock provider selected approved CFO actions from the governed tool catalog.",
+            model_name=self.model_name,
+            model_call_attempted=False,
+            model_call_succeeded=False,
+            provider_name=self.provider_name,
+        )
+
+    def generate_mapping_suggestion(self, context: dict) -> LLMMappingSuggestionResult:
+        return LLMMappingSuggestionResult(
+            suggestions=_template_mapping_suggestions(context),
             model_name=self.model_name,
             model_call_attempted=False,
             model_call_succeeded=False,
@@ -347,6 +368,64 @@ class OpenAIProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_mapping_suggestion(self, context: dict) -> LLMMappingSuggestionResult:
+        if not self.api_key:
+            raise LLMProviderError(
+                "OPENAI_API_KEY is not configured.",
+                model_call_attempted=False,
+            )
+
+        payload = {
+            "model": self.model_name,
+            "input": [
+                {
+                    "role": "system",
+                    "content": _mapping_suggestion_system_prompt(),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(context, separators=(",", ":")),
+                },
+            ],
+            "text": {"format": {"type": "json_object"}},
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            self.endpoint,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=10) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI mapping suggestion request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(_extract_output_text(body))
+            suggestions = _validated_mapping_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "OpenAI mapping suggestion returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMMappingSuggestionResult(
+            suggestions=suggestions,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 class OllamaProvider:
     provider_name = "ollama"
@@ -505,6 +584,51 @@ class OllamaProvider:
             provider_name=self.provider_name,
         )
 
+    def generate_mapping_suggestion(self, context: dict) -> LLMMappingSuggestionResult:
+        prompt = (
+            f"{_mapping_suggestion_system_prompt()}\n\n"
+            f"Approved mapping request context: {json.dumps(context, separators=(',', ':'))}"
+        )
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(
+            f"{self.base_url}/api/generate",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama mapping suggestion request failed.",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(body["response"]))
+            suggestions = _validated_mapping_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Ollama mapping suggestion returned invalid structured output.",
+                model_call_attempted=True,
+            ) from exc
+
+        return LLMMappingSuggestionResult(
+            suggestions=suggestions,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
 
 def _extract_output_text(body: dict) -> str:
     if isinstance(body.get("output_text"), str):
@@ -593,6 +717,37 @@ def _validated_flow_suggestion_payload(parsed: dict) -> tuple[dict, str]:
     return suggested_flow, rationale
 
 
+def _mapping_suggestion_system_prompt() -> str:
+    return (
+        "You are a governed data mapping assistant for an AI-native integration platform. "
+        "Return only JSON with key suggestions. suggestions must be an array of objects with "
+        "sourceField, targetField, transform, confidence, and rationale. Use only source field "
+        "names and target field names provided in the request context. transform must be one of "
+        "direct, rename, format_date, lookup_placeholder, constant_placeholder. confidence must "
+        "be between 0 and 1. Do not include SQL, SuiteQL, raw queries, credentials, secrets, "
+        "arbitrary code, execution commands, save instructions, or publish instructions."
+    )
+
+
+def _validated_mapping_suggestion_payload(parsed: dict) -> list[dict]:
+    suggestions = parsed["suggestions"]
+
+    if not isinstance(suggestions, list):
+        raise ValueError("suggestions must be an array")
+
+    if len(suggestions) > 12:
+        suggestions = suggestions[:12]
+
+    for suggestion in suggestions:
+        if not isinstance(suggestion, dict):
+            raise ValueError("each mapping suggestion must be an object")
+        for key in ["sourceField", "targetField", "transform", "confidence", "rationale"]:
+            if key not in suggestion:
+                raise ValueError(f"mapping suggestion missing {key}")
+
+    return suggestions
+
+
 def _template_flow_suggestion(prompt: str) -> dict:
     normalized = prompt.lower()
     steps = [
@@ -674,6 +829,68 @@ def _template_flow_suggestion(prompt: str) -> dict:
         "triggerType": "schedule_placeholder" if "monthly" in normalized or "schedule" in normalized else "manual",
         "steps": deduped_steps[:8],
     }
+
+
+def _template_mapping_suggestions(context: dict) -> list[dict]:
+    source_fields = {field["name"] for field in context.get("sourceObject", {}).get("fields", [])}
+    target_fields = {field["name"] for field in context.get("targetObject", {}).get("fields", [])}
+    candidates = [
+        {
+            "sourceField": "customer_name",
+            "targetField": "AccountName",
+            "transform": "direct",
+            "confidence": 0.94,
+            "rationale": "Customer names align to the target account reference.",
+        },
+        {
+            "sourceField": "budget_amount",
+            "targetField": "Amount",
+            "transform": "direct",
+            "confidence": 0.91,
+            "rationale": "Budget and amount fields share numeric finance meaning.",
+        },
+        {
+            "sourceField": "due_date",
+            "targetField": "CloseDate",
+            "transform": "format_date",
+            "confidence": 0.88,
+            "rationale": "Date values need target system date formatting.",
+        },
+        {
+            "sourceField": "account_manager",
+            "targetField": "OwnerName",
+            "transform": "direct",
+            "confidence": 0.84,
+            "rationale": "Owner fields represent the responsible business person.",
+        },
+        {
+            "sourceField": "project_id",
+            "targetField": "externalId",
+            "transform": "rename",
+            "confidence": 0.78,
+            "rationale": "The project identifier can seed an external reference.",
+        },
+        {
+            "sourceField": "customer",
+            "targetField": "displayName",
+            "transform": "rename",
+            "confidence": 0.86,
+            "rationale": "Customer text can become the display name.",
+        },
+        {
+            "sourceField": "invoice_number",
+            "targetField": "externalId",
+            "transform": "rename",
+            "confidence": 0.82,
+            "rationale": "Invoice number can be retained as an external identifier.",
+        },
+    ]
+
+    return [
+        suggestion
+        for suggestion in candidates
+        if suggestion["sourceField"] in source_fields and suggestion["targetField"] in target_fields
+    ][:8]
 
 
 def make_llm_provider(

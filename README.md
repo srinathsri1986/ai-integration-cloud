@@ -535,6 +535,26 @@ The mapping workspace includes:
 
 Mappings are validated locally in this release. Persistence, backend mapping definitions, and AI-assisted mapping suggestions are planned next. No arbitrary code transformations, SQL, SuiteQL, credentials, or raw system access are introduced.
 
+## AI-Assisted Mapping Suggestions v2.4
+
+V2.4 adds governed natural-language mapping suggestions to `/mapping`. Integrators can describe the mapping goal, choose source and target objects, and ask the configured AI provider to propose field matches.
+
+The mapping suggestion path supports mock, Ollama, and OpenAI through the existing LLM provider abstraction. Ollama remains the preferred local provider for sensitive mapping work. The model receives only the selected object metadata, field descriptions, allowed transforms, and the user's mapping goal. It never receives credentials, raw transactions, SQL, SuiteQL, raw system access, or arbitrary execution instructions.
+
+The backend exposes:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt":"Map NetSuite project customer, budget, due date, and owner fields into Salesforce opportunity fields.",
+    "sourceObjectId":"netsuite-project",
+    "targetObjectId":"salesforce-opportunity"
+  }'
+```
+
+Every model response is validated against known source fields, known target fields, and approved transforms before the UI sees it. Invalid or unavailable model output falls back to deterministic templates. Suggestions remain human-reviewed drafts only; accepting a suggestion adds it to the local mapping grid, while publishing/runtime persistence is still a future step.
+
 ## Tests
 
 Backend:

@@ -130,6 +130,20 @@ curl -X POST "http://localhost:8000/api/v1/flows/suggestions" \
 
 Suggestions use the configured mock, Ollama, or OpenAI provider only to produce structured draft metadata. The API validates the draft against approved connectors and approved tools, falls back to deterministic templates when model output is invalid, and never publishes or executes the draft automatically.
 
+## AI-assisted mapping suggestions
+
+Field mapping suggestions can be requested from approved object metadata:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Map NetSuite project customer, budget, due date, and owner fields into Salesforce opportunity fields.","sourceObjectId":"netsuite-project","targetObjectId":"salesforce-opportunity"}'
+```
+
+The service can use mock, Ollama, or OpenAI through the shared LLM provider abstraction. The model receives only the selected object metadata, field descriptions, allowed transforms, and the mapping goal. The API validates every suggestion against known source fields, known target fields, and approved transforms before returning it to the UI. Invalid provider output falls back to deterministic templates.
+
+Mapping suggestions are advisory only. They do not save, publish, execute, generate SQL/SuiteQL, access credentials, or access raw systems.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:
