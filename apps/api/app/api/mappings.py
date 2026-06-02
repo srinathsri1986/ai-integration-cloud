@@ -6,6 +6,7 @@ from app.models.mapping import (
     MappingDefinitionUpsertRequest,
     MappingLifecycleRequest,
     MappingLifecycleResponse,
+    MappingSimulationResponse,
     MappingSuggestionRequest,
     MappingSuggestionResponse,
 )
@@ -85,5 +86,24 @@ def transition_mapping_lifecycle(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/definitions/{mapping_id}/simulate", response_model=MappingSimulationResponse)
+def simulate_mapping_definition(
+    mapping_id: str,
+    user=Depends(require_permissions("flow:run")),
+) -> MappingSimulationResponse:
+    try:
+        return mapping_definition_service.simulate_mapping(mapping_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown mapping definition.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc

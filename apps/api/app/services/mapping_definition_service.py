@@ -1,13 +1,18 @@
+from datetime import UTC, datetime
+from time import perf_counter
+from uuid import uuid4
+
 from app.core.database import SessionLocal
 from app.models.mapping import (
     MappingDefinition,
     MappingDefinitionUpsertRequest,
     MappingLifecycleAction,
     MappingLifecycleResponse,
+    MappingSimulationResponse,
 )
 from app.repositories.mapping_definition_repository import MappingDefinitionRepository
 from app.services.audit_service import audit_service
-from app.services.mapping_catalog import get_mapping_object
+from app.services.mapping_catalog import get_mapping_object, sample_payload_for_object
 
 
 class MappingDefinitionService:
@@ -65,6 +70,52 @@ class MappingDefinitionService:
             message=f"{updated.name} moved to {next_status}.{note_suffix}",
         )
 
+    def simulate_mapping(self, mapping_id: str) -> MappingSimulationResponse:
+        request_id = str(uuid4())
+        started = perf_counter()
+        success = False
+
+        try:
+            mapping = self.get_mapping(mapping_id)
+            source_payload = sample_payload_for_object(mapping.source_object_id)
+            target_object = get_mapping_object(mapping.target_object_id)
+            target_payload: dict[str, str | int | float | bool | None] = {}
+            warnings: list[str] = []
+            transforms_applied: list[str] = []
+
+            for row in mapping.mappings:
+                source_value = source_payload.get(row.source_field)
+                if row.source_field not in source_payload:
+                    warnings.append(f"Source field {row.source_field} is missing from the sample payload.")
+                    continue
+
+                target_payload[row.target_field] = self._apply_transform(row.transform, source_value)
+                transforms_applied.append(row.transform)
+
+            for field in target_object.fields:
+                if field.required and field.name not in target_payload:
+                    warnings.append(f"Required target field {field.name} was not populated.")
+
+            success = True
+            return MappingSimulationResponse(
+                mappingId=mapping.mapping_id,
+                status=mapping.status,
+                sourceObjectId=mapping.source_object_id,
+                targetObjectId=mapping.target_object_id,
+                sourcePayload=source_payload,
+                targetPayload=target_payload,
+                warnings=warnings,
+                transformsApplied=transforms_applied,
+                simulatedAt=datetime.now(UTC).isoformat(),
+            )
+        finally:
+            audit_service.record_mapping_simulation_action(
+                request_id=request_id,
+                mapping_id=mapping_id,
+                success=success,
+                latency_ms=int((perf_counter() - started) * 1000),
+            )
+
     def clear_for_tests(self) -> None:
         with SessionLocal() as session:
             MappingDefinitionRepository(session).clear()
@@ -106,6 +157,22 @@ class MappingDefinitionService:
             raise ValueError(f"Cannot apply {action} to a {current_status} mapping.")
 
         return next_status
+
+    def _apply_transform(
+        self,
+        transform: str,
+        source_value: str | int | float | bool | None,
+    ) -> str | int | float | bool | None:
+        if transform in {"direct", "rename", "format_date"}:
+            return source_value
+
+        if transform == "lookup_placeholder":
+            return f"lookup:{source_value}" if source_value is not None else None
+
+        if transform == "constant_placeholder":
+            return "reviewed_constant_placeholder"
+
+        raise ValueError(f"Unsupported mapping transform: {transform}")
 
 
 mapping_definition_service = MappingDefinitionService()

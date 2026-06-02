@@ -316,6 +316,20 @@ export const mappingLifecycleResponseSchema = z.object({
 
 export type MappingLifecycleResponse = z.infer<typeof mappingLifecycleResponseSchema>;
 
+export const mappingSimulationResponseSchema = z.object({
+  mappingId: z.string(),
+  status: mappingDefinitionStatusSchema,
+  sourceObjectId: z.string(),
+  targetObjectId: z.string(),
+  sourcePayload: z.record(z.string(), z.unknown()),
+  targetPayload: z.record(z.string(), z.unknown()),
+  warnings: z.array(z.string()),
+  transformsApplied: z.array(z.string()),
+  simulatedAt: z.string()
+});
+
+export type MappingSimulationResponse = z.infer<typeof mappingSimulationResponseSchema>;
+
 export const flowLifecycleRequestSchema = z.object({
   action: flowLifecycleActionSchema,
   note: z.string().max(300).nullable().optional()

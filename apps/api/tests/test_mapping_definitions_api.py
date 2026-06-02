@@ -153,3 +153,81 @@ def test_mapping_definition_rejects_raw_query_language() -> None:
     response = client.post("/api/v1/mappings/definitions", json=payload)
 
     assert response.status_code == 422
+
+
+def test_mapping_simulation_returns_sample_source_and_target_payloads() -> None:
+    client.post("/api/v1/mappings/definitions", json=_valid_mapping_payload())
+
+    response = client.post(
+        "/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/simulate"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mappingId"] == "netsuite-project-to-salesforce-opportunity"
+    assert body["sourcePayload"]["customer_name"] == "Acme Manufacturing"
+    assert body["targetPayload"]["AccountName"] == "Acme Manufacturing"
+    assert body["targetPayload"]["Amount"] == 420000
+    assert body["targetPayload"]["CloseDate"] == "2026-03-31"
+    assert body["targetPayload"]["Name"] == "PRJ-1042"
+    assert body["warnings"] == []
+    assert "direct" in body["transformsApplied"]
+    assert "format_date" in body["transformsApplied"]
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["detectedIntent"] == "MAPPING_SIMULATION"
+    assert logs[0]["toolsUsed"] == ["mapping.simulate"]
+    assert logs[0]["success"] is True
+
+
+def test_mapping_simulation_returns_404_for_unknown_mapping() -> None:
+    response = client.post("/api/v1/mappings/definitions/missing-mapping/simulate")
+
+    assert response.status_code == 404
+
+
+def test_mapping_simulation_surfaces_required_field_warnings() -> None:
+    payload = _valid_mapping_payload()
+    payload["mappingId"] = "project-to-rest-customer"
+    payload["sourceObjectId"] = "netsuite-project"
+    payload["targetObjectId"] = "rest-customer"
+    payload["mappings"] = [
+        {
+            "id": "project-to-external",
+            "sourceField": "project_id",
+            "targetField": "externalId",
+            "transform": "rename",
+        },
+        {
+            "id": "active-constant",
+            "sourceField": "project_id",
+            "targetField": "isActive",
+            "transform": "constant_placeholder",
+        },
+    ]
+    # Persist directly through the repository-facing model path to exercise runtime warnings
+    # without weakening save-time required-field validation.
+    from app.core.database import SessionLocal
+    from app.models.mapping import MappingDefinition
+    from app.repositories.mapping_definition_repository import MappingDefinitionRepository
+
+    with SessionLocal() as session:
+        MappingDefinitionRepository(session).upsert(
+            MappingDefinition(
+                mappingId="project-to-rest-customer",
+                name="Project to REST Customer",
+                description="Partial mapping used to preview runtime warnings.",
+                sourceObjectId="netsuite-project",
+                targetObjectId="rest-customer",
+                status="draft",
+                mappings=payload["mappings"],
+            )
+        )
+
+    response = client.post("/api/v1/mappings/definitions/project-to-rest-customer/simulate")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["targetPayload"]["externalId"] == "PRJ-1042"
+    assert body["targetPayload"]["isActive"] == "reviewed_constant_placeholder"
+    assert body["warnings"] == ["Required target field displayName was not populated."]

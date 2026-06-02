@@ -164,6 +164,16 @@ curl -X POST "http://localhost:8000/api/v1/mappings/definitions/netsuite-project
 
 The API validates known source and target fields, required target fields, duplicate targets, allowed transforms, and blocked raw-query/secret language. Mapping saves and lifecycle transitions are audited as `MAPPING_DEFINITION`.
 
+## Mapping simulation
+
+Saved mapping definitions can be simulated with approved sample payloads:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/simulate"
+```
+
+Simulation is preview-only. It applies approved transforms to catalog sample values and returns source payload, target payload, transform names, warnings, and simulation timestamp. It does not execute arbitrary code, call external systems, or access secrets. Simulation actions are audited as `MAPPING_SIMULATION`.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

@@ -18,6 +18,7 @@ import type {
   MappingDefinitionUpsertRequest,
   MappingLifecycleAction,
   MappingLifecycleResponse,
+  MappingSimulationResponse,
   NetSuiteConnectionTestResponse,
   NetSuiteConnectorConfig,
   NetSuiteConnectorConfigUpdate,
@@ -472,6 +473,18 @@ const fallbackMappingLifecycleResponse: MappingLifecycleResponse = {
   action: "pause",
   mapping: fallbackMappingDefinition,
   message: "The mapping lifecycle API is unavailable."
+};
+
+const fallbackMappingSimulationResponse: MappingSimulationResponse = {
+  mappingId: "fallback-mapping",
+  simulatedAt: new Date(0).toISOString(),
+  sourceObjectId: "netsuite-project",
+  sourcePayload: {},
+  status: "draft",
+  targetObjectId: "salesforce-opportunity",
+  targetPayload: {},
+  transformsApplied: [],
+  warnings: ["The mapping simulation API is unavailable."]
 };
 
 function snakeToDashboardSummary(body: any): CfoDashboardSummary {
@@ -1024,6 +1037,37 @@ export async function transitionMappingLifecycle(
   } catch (error) {
     return {
       data: fallbackMappingLifecycleResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function simulateMappingDefinition(
+  mappingId: string
+): Promise<ClientApiResult<MappingSimulationResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}/simulate`, {
+      cache: "no-store",
+      headers: authHeaders(),
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: { ...fallbackMappingSimulationResponse, mappingId },
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ...fallbackMappingSimulationResponse, mappingId },
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

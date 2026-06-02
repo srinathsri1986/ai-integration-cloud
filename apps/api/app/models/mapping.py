@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -125,6 +125,18 @@ class MappingLifecycleResponse(BaseModel):
     mapping: MappingDefinition
     action: MappingLifecycleAction
     message: str
+
+
+class MappingSimulationResponse(BaseModel):
+    mapping_id: str = Field(alias="mappingId")
+    status: MappingDefinitionStatus
+    source_object_id: str = Field(alias="sourceObjectId")
+    target_object_id: str = Field(alias="targetObjectId")
+    source_payload: dict[str, Any] = Field(alias="sourcePayload")
+    target_payload: dict[str, Any] = Field(alias="targetPayload")
+    warnings: list[str]
+    transforms_applied: list[str] = Field(alias="transformsApplied")
+    simulated_at: str = Field(alias="simulatedAt")
 
 
 class MappingSuggestionResponse(BaseModel):

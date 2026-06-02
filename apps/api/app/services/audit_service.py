@@ -162,6 +162,41 @@ class AuditService:
             )
         )
 
+    def record_mapping_simulation_action(
+        self,
+        request_id: str,
+        mapping_id: str,
+        success: bool,
+        latency_ms: int,
+    ) -> None:
+        self.record(
+            AuditLogEntry(
+                timestamp=datetime.now(UTC).isoformat(),
+                requestId=request_id,
+                user="local-dev-user",
+                channel="web",
+                question=f"Mapping simulation: {mapping_id}",
+                detectedIntent="MAPPING_SIMULATION",
+                confidence=1,
+                toolsUsed=["mapping.simulate"],
+                endpointCalled=f"/api/v1/mappings/definitions/{mapping_id}/simulate",
+                fallbackUsed=False,
+                success=success,
+                failureReason=None if success else "MappingSimulationFailed",
+                latencyMs=latency_ms,
+                aiProvider="none",
+                aiMode="disabled",
+                modelName=None,
+                modelCallAttempted=False,
+                modelCallSucceeded=False,
+                usedFallbackRouter=False,
+                narrativeProvider="none",
+                narrativeModel=None,
+                narrativeGenerated=False,
+                narrativeFallbackUsed=False,
+            )
+        )
+
     def list_logs(
         self,
         *,

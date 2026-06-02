@@ -584,6 +584,20 @@ curl -X POST "http://localhost:8000/api/v1/mappings/definitions" \
 
 Mapping definitions support `draft`, `pending_approval`, `approved`, `published`, and `paused` states through explicit lifecycle actions. The server validates every saved row against known source fields, known target fields, duplicate target usage, required target fields, and approved transforms. No mapping can introduce arbitrary code, SQL, SuiteQL, credentials, or raw system access.
 
+## Mapping Runtime Simulation v2.6
+
+V2.6 adds safe runtime preview for saved mapping definitions. Integrators can simulate a saved mapping against approved sample payloads and inspect the mapped target output before approving or publishing.
+
+The backend exposes:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity/simulate"
+```
+
+Simulation uses only catalog sample payloads and approved transforms. It does not call external systems, execute code, generate SQL/SuiteQL, or access credentials. The response includes the source sample payload, mapped target output, transform list, warnings for missing required target fields, and an audit event recorded as `MAPPING_SIMULATION`.
+
+The Mapping Studio UI now includes a **Simulate saved mapping** action and a side-by-side source/output preview panel.
+
 ## Tests
 
 Backend:

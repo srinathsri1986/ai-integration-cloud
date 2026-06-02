@@ -188,3 +188,8 @@ def get_mapping_object(object_id: str) -> MappingObject:
             return mapping_object
 
     raise KeyError(object_id)
+
+
+def sample_payload_for_object(object_id: str) -> dict[str, str | int | float | bool | None]:
+    mapping_object = get_mapping_object(object_id)
+    return {field.name: field.sample for field in mapping_object.fields}

@@ -11,13 +11,19 @@ import {
   Link2,
   ListChecks,
   MousePointerClick,
+  PlayCircle,
   Rocket,
   ShieldCheck,
   Sparkles,
   Unlink,
   XCircle
 } from "lucide-react";
-import type { MappingDefinition, MappingLifecycleAction, MappingSuggestionItem } from "@netsuite-cfo/shared";
+import type {
+  MappingDefinition,
+  MappingLifecycleAction,
+  MappingSimulationResponse,
+  MappingSuggestionItem
+} from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +32,7 @@ import { integrationSystems } from "@/lib/integration-catalog";
 import {
   getMappingDefinitions,
   saveMappingDefinition,
+  simulateMappingDefinition,
   suggestMappingDefinition,
   transitionMappingLifecycle
 } from "@/lib/api";
@@ -88,6 +95,8 @@ export function DataMappingStudio() {
   const [savedMappings, setSavedMappings] = useState<MappingDefinition[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingMappings, setIsLoadingMappings] = useState(false);
+  const [simulation, setSimulation] = useState<MappingSimulationResponse | undefined>();
+  const [isSimulating, setIsSimulating] = useState(false);
 
   const sourceObject = useMemo(
     () => mappingObjects.find((object) => object.id === sourceObjectId) ?? sourceObjects[0],
@@ -120,6 +129,7 @@ export function DataMappingStudio() {
     setSelectedSourceField(objects[0]?.fields[0]?.name);
     setMappings([]);
     setSuggestions([]);
+    setSimulation(undefined);
   }
 
   function onTargetSystemChange(systemId: string) {
@@ -128,6 +138,7 @@ export function DataMappingStudio() {
     setTargetObjectId(objects[0]?.id ?? targetObjectId);
     setMappings([]);
     setSuggestions([]);
+    setSimulation(undefined);
   }
 
   function mapToTarget(targetField: MappingField) {
@@ -202,6 +213,7 @@ export function DataMappingStudio() {
       )
     );
     setMessage(`${suggestion.sourceField} accepted for ${suggestion.targetField}.`);
+    setSimulation(undefined);
   }
 
   function rejectSuggestion(suggestion: MappingSuggestionItem) {
@@ -248,6 +260,18 @@ export function DataMappingStudio() {
     await loadSavedMappings();
   }
 
+  async function simulateCurrentMapping() {
+    setIsSimulating(true);
+    const response = await simulateMappingDefinition(mappingId);
+    setSimulation(response.data);
+    setIsSimulating(false);
+    setMessage(
+      response.ok
+        ? `${response.data.mappingId} simulated with ${response.data.transformsApplied.length} transforms.`
+        : response.error ?? "Mapping simulation could not be run."
+    );
+  }
+
   async function applyLifecycle(mapping: MappingDefinition, action: MappingLifecycleAction) {
     const response = await transitionMappingLifecycle(mapping.mappingId, action);
     setMessage(response.data.message);
@@ -272,6 +296,7 @@ export function DataMappingStudio() {
       }))
     );
     setSuggestions([]);
+    setSimulation(undefined);
     setMessage(`${mapping.name} opened in the mapping grid.`);
   }
 
@@ -430,6 +455,15 @@ export function DataMappingStudio() {
                 <ListChecks className="h-4 w-4" />
                 {isSaving ? "Saving..." : "Save mapping draft"}
               </Button>
+              <Button
+                disabled={isSimulating || !savedMappings.some((mapping) => mapping.mappingId === mappingId)}
+                onClick={simulateCurrentMapping}
+                type="button"
+                variant="secondary"
+              >
+                <PlayCircle className="h-4 w-4" />
+                {isSimulating ? "Simulating..." : "Simulate saved mapping"}
+              </Button>
             </div>
           </div>
 
@@ -491,6 +525,42 @@ export function DataMappingStudio() {
           </div>
         </div>
       </Card>
+
+      {simulation ? (
+        <Card className="border-slate-200 bg-white/95 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                <PlayCircle className="mr-1 h-3.5 w-3.5" />
+                Runtime simulation
+              </Badge>
+              <h2 className="mt-4 text-xl font-semibold text-slate-950">Preview mapped sample output</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Simulation uses approved sample payloads only. It does not call external systems or execute arbitrary code.
+              </p>
+            </div>
+            <Badge className={simulation.warnings.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}>
+              {simulation.warnings.length ? `${simulation.warnings.length} warnings` : "No warnings"}
+            </Badge>
+          </div>
+
+          {simulation.warnings.length ? (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-950">Validation warnings</p>
+              <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                {simulation.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <section className="mt-5 grid gap-4 lg:grid-cols-2">
+            <SimulationPreview payload={simulation.sourcePayload} title="Source sample" />
+            <SimulationPreview payload={simulation.targetPayload} title="Mapped target output" />
+          </section>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr_1fr]">
         <FieldTray
@@ -813,6 +883,20 @@ function PayloadPreview({ fields, title }: { fields: MappingField[]; title: stri
       </div>
       <pre className="mt-4 max-h-72 overflow-auto rounded-md border border-border bg-slate-950 p-4 text-xs leading-6 text-slate-100">
         {JSON.stringify(samplePayload(fields), null, 2)}
+      </pre>
+    </Card>
+  );
+}
+
+function SimulationPreview({ payload, title }: { payload: Record<string, unknown>; title: string }) {
+  return (
+    <Card className="bg-white">
+      <div className="flex items-center gap-2">
+        <FileJson2 className="h-4 w-4 text-primary" />
+        <p className="text-sm font-semibold text-slate-950">{title}</p>
+      </div>
+      <pre className="mt-4 max-h-80 overflow-auto rounded-md border border-border bg-slate-950 p-4 text-xs leading-6 text-slate-100">
+        {JSON.stringify(payload, null, 2)}
       </pre>
     </Card>
   );
