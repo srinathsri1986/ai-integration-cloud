@@ -186,6 +186,17 @@ curl -X POST "http://localhost:8000/api/v1/flows/definitions" \
 
 Referenced mappings must exist and be `published`; draft or missing mappings are rejected. Custom published flows with an attached published mapping run a safe runtime preview and return the mapping simulation result in the flow run payload. Custom flows without a mapping remain fail-closed.
 
+## Flow run details and execution timeline
+
+Flow run records include an execution timeline:
+
+```bash
+curl "http://localhost:8000/api/v1/flows/runs"
+curl "http://localhost:8000/api/v1/flows/runs/{request_id}"
+```
+
+Each timeline step includes status, timestamps, latency, approved tool, attached mapping definition ID, and warnings. Built-in flows show approved CFO service steps. Custom mapped flows include both approved action steps and a mapping simulation step.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

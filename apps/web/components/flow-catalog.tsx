@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GitBranch, Link2, Play, Save, Workflow } from "lucide-react";
+import { GitBranch, Link2, Play, Save, TerminalSquare, Workflow } from "lucide-react";
 import type {
   ApprovedFlowTool,
   FlowDefinition,
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   type ApiResult,
+  getFlowRun,
   getMappingDefinitions,
   runFlow,
   saveFlowDefinition,
@@ -64,6 +65,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
   const [runningFlowId, setRunningFlowId] = useState<string | undefined>();
   const [transitioningFlowId, setTransitioningFlowId] = useState<string | undefined>();
   const [lastRun, setLastRun] = useState<Record<string, FlowRunResponse>>({});
+  const [loadingRunDetailId, setLoadingRunDetailId] = useState<string | undefined>();
   const [designerMessage, setDesignerMessage] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
   const [mappingDefinitions, setMappingDefinitions] = useState<MappingDefinition[]>([]);
@@ -104,7 +106,14 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
     setRunningFlowId(flow.flowId);
 
     const response = await runFlow(flow.flowId);
-    setLastRun((current) => ({ ...current, [flow.flowId]: response.data }));
+    let runDetail = response.data;
+    if (response.ok) {
+      const detailResponse = await getFlowRun(response.data.requestId);
+      if (detailResponse.ok) {
+        runDetail = detailResponse.data;
+      }
+    }
+    setLastRun((current) => ({ ...current, [flow.flowId]: runDetail }));
     if (response.ok) {
       setFlows((current) =>
         current.map((item) =>
@@ -121,6 +130,17 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
       setError(response.error ?? "Unable to run flow.");
     }
     setRunningFlowId(undefined);
+  }
+
+  async function refreshRunDetail(flow: FlowDefinition, requestId: string) {
+    setLoadingRunDetailId(requestId);
+    const response = await getFlowRun(requestId);
+    if (response.ok) {
+      setLastRun((current) => ({ ...current, [flow.flowId]: response.data }));
+    } else {
+      setError(response.error ?? "Unable to load run detail.");
+    }
+    setLoadingRunDetailId(undefined);
   }
 
   async function onTransition(flow: FlowDefinition, action: FlowLifecycleAction) {
@@ -370,9 +390,58 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
               </div>
 
               {result ? (
-                <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-                  {result.message} Request {result.requestId}.
-                </p>
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <TerminalSquare className="h-4 w-4 text-primary" />
+                        <p className="text-sm font-semibold text-slate-950">Runtime debug console</p>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        {result.message} Request {result.requestId}.
+                      </p>
+                    </div>
+                    <Badge className={result.status === "succeeded" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-rose-200 bg-rose-50 text-rose-900"}>
+                      {statusLabel(result.status)}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {result.executionTimeline.map((step) => (
+                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3" key={step.id}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-slate-950">{step.name}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {step.approvedTool ?? "runtime check"} · {step.latencyMs}ms
+                            </p>
+                          </div>
+                          <Badge className={step.status === "succeeded" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : step.status === "failed" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-slate-200 bg-white text-slate-700"}>
+                            {statusLabel(step.status)}
+                          </Badge>
+                        </div>
+                        {step.mappingDefinitionId ? (
+                          <p className="mt-2 text-xs text-sky-900">Mapping: {step.mappingDefinitionId}</p>
+                        ) : null}
+                        {step.warnings.length ? (
+                          <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                            {step.warnings.join(" ")}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    className="mt-3 w-full"
+                    disabled={loadingRunDetailId === result.requestId}
+                    onClick={() => refreshRunDetail(flow, result.requestId)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    {loadingRunDetailId === result.requestId ? "Refreshing" : "Refresh run detail"}
+                  </Button>
+                </div>
               ) : null}
               {result?.data && typeof result.data === "object" && "mappingSimulation" in result.data ? (
                 <pre className="mt-3 max-h-56 overflow-auto rounded-md border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-100">

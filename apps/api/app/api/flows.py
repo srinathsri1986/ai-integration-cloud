@@ -38,6 +38,20 @@ def list_flow_runs(
     )
 
 
+@router.get("/runs/{request_id}", response_model=FlowRunResponse)
+def get_flow_run(
+    request_id: str,
+    user=Depends(require_permissions("flow:read")),
+) -> FlowRunResponse:
+    try:
+        return flow_service.get_run(request_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown flow run.",
+        ) from exc
+
+
 @router.post("/definitions", response_model=FlowDefinition)
 def upsert_flow_definition(
     request: FlowDefinitionUpsertRequest,

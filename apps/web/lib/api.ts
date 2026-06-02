@@ -380,7 +380,8 @@ const fallbackFlowRunResponse: FlowRunResponse = {
   completedAt: new Date(0).toISOString(),
   toolsUsed: [],
   message: "The flow API is unavailable.",
-  data: {}
+  data: {},
+  executionTimeline: []
 };
 
 const fallbackFlowLifecycleResponse: FlowLifecycleResponse = {
@@ -790,6 +791,34 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
   } catch (error) {
     return {
       data: { ...fallbackFlowRunResponse, flowId },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function getFlowRun(requestId: string): Promise<ClientApiResult<FlowRunResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/runs/${requestId}`, {
+      cache: "no-store",
+      headers: authHeaders()
+    });
+
+    if (!response.ok) {
+      return {
+        data: { ...fallbackFlowRunResponse, requestId },
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ...fallbackFlowRunResponse, requestId },
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

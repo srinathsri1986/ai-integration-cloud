@@ -19,6 +19,9 @@ class FlowRunRepository:
             tools_used=run.tools_used,
             message=run.message,
             data=run.data,
+            execution_timeline=[
+                step.model_dump(by_alias=True) for step in run.execution_timeline
+            ],
         )
         self.session.add(record)
         self.session.commit()
@@ -50,6 +53,14 @@ class FlowRunRepository:
         ).first()
         return self._to_response(record) if record else None
 
+    def get_by_request_id(self, request_id: str) -> FlowRunResponse:
+        record = self.session.scalars(
+            select(FlowRunRecord).where(FlowRunRecord.request_id == request_id).limit(1)
+        ).first()
+        if record is None:
+            raise KeyError(request_id)
+        return self._to_response(record)
+
     def clear(self) -> None:
         self.session.execute(delete(FlowRunRecord))
         self.session.commit()
@@ -64,4 +75,5 @@ class FlowRunRepository:
             toolsUsed=record.tools_used,
             message=record.message,
             data=record.data,
+            executionTimeline=record.execution_timeline,
         )

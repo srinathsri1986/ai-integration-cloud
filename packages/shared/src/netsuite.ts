@@ -125,6 +125,7 @@ export const flowLifecycleActionSchema = z.enum([
   "pause"
 ]);
 export const flowRunStatusSchema = z.enum(["never_run", "succeeded", "failed"]);
+export const flowRunStepStatusSchema = z.enum(["succeeded", "failed", "skipped"]);
 export const flowTriggerTypeSchema = z.enum(["manual", "schedule_placeholder"]);
 export const approvedFlowToolSchema = z.enum([
   "cfo.dashboard_summary",
@@ -139,6 +140,7 @@ export const approvedFlowToolSchema = z.enum([
 export type FlowStatus = z.infer<typeof flowStatusSchema>;
 export type FlowLifecycleAction = z.infer<typeof flowLifecycleActionSchema>;
 export type FlowRunStatus = z.infer<typeof flowRunStatusSchema>;
+export type FlowRunStepStatus = z.infer<typeof flowRunStepStatusSchema>;
 export type FlowTriggerType = z.infer<typeof flowTriggerTypeSchema>;
 export type ApprovedFlowTool = z.infer<typeof approvedFlowToolSchema>;
 
@@ -332,6 +334,20 @@ export const mappingSimulationResponseSchema = z.object({
 
 export type MappingSimulationResponse = z.infer<typeof mappingSimulationResponseSchema>;
 
+export const flowRunTimelineStepSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: flowRunStepStatusSchema,
+  startedAt: z.string(),
+  completedAt: z.string(),
+  latencyMs: z.number(),
+  approvedTool: z.string().nullable(),
+  mappingDefinitionId: z.string().nullable(),
+  warnings: z.array(z.string())
+});
+
+export type FlowRunTimelineStep = z.infer<typeof flowRunTimelineStepSchema>;
+
 export const flowLifecycleRequestSchema = z.object({
   action: flowLifecycleActionSchema,
   note: z.string().max(300).nullable().optional()
@@ -355,7 +371,8 @@ export const flowRunResponseSchema = z.object({
   completedAt: z.string(),
   toolsUsed: z.array(z.string()),
   message: z.string(),
-  data: z.unknown()
+  data: z.unknown(),
+  executionTimeline: z.array(flowRunTimelineStepSchema)
 });
 
 export type FlowRunResponse = z.infer<typeof flowRunResponseSchema>;

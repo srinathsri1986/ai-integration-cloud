@@ -7,6 +7,7 @@ FlowId = str
 FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
 FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause"]
 FlowRunStatus = Literal["never_run", "succeeded", "failed"]
+FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
 FlowTriggerType = Literal["manual", "schedule_placeholder"]
 ApprovedFlowTool = Literal[
     "cfo.dashboard_summary",
@@ -106,3 +107,16 @@ class FlowRunResponse(BaseModel):
     tools_used: list[str] = Field(alias="toolsUsed")
     message: str
     data: dict[str, Any]
+    execution_timeline: list["FlowRunTimelineStep"] = Field(default_factory=list, alias="executionTimeline")
+
+
+class FlowRunTimelineStep(BaseModel):
+    id: str
+    name: str
+    status: FlowRunStepStatus
+    started_at: str = Field(alias="startedAt")
+    completed_at: str = Field(alias="completedAt")
+    latency_ms: int = Field(alias="latencyMs")
+    approved_tool: str | None = Field(default=None, alias="approvedTool")
+    mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId")
+    warnings: list[str] = Field(default_factory=list)

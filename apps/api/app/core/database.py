@@ -36,9 +36,18 @@ def _ensure_lightweight_columns() -> None:
                 connection.exec_driver_sql(
                     "ALTER TABLE flow_definitions ADD COLUMN mapping_definition_id VARCHAR(96)"
                 )
+            run_rows = connection.exec_driver_sql("PRAGMA table_info(flow_runs)").fetchall()
+            run_columns = {row[1] for row in run_rows}
+            if "execution_timeline" not in run_columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE flow_runs ADD COLUMN execution_timeline JSON DEFAULT '[]' NOT NULL"
+                )
         elif dialect_name == "postgresql":
             connection.exec_driver_sql(
                 "ALTER TABLE flow_definitions ADD COLUMN IF NOT EXISTS mapping_definition_id VARCHAR(96)"
+            )
+            connection.exec_driver_sql(
+                "ALTER TABLE flow_runs ADD COLUMN IF NOT EXISTS execution_timeline JSONB DEFAULT '[]'::jsonb NOT NULL"
             )
 
 

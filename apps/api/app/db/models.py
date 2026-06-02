@@ -71,6 +71,7 @@ class FlowRunRecord(Base):
     tools_used: Mapped[list[str]] = mapped_column(_json_type(), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(_json_type(), nullable=False)
+    execution_timeline: Mapped[list[dict[str, Any]]] = mapped_column(_json_type(), nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

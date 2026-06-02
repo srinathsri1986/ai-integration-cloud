@@ -629,6 +629,28 @@ The backend validates that referenced mappings exist and are `published` before 
 
 The Flow Catalog UI now loads published mappings and exposes a mapping selector in Recipe Designer Lite.
 
+## Runtime Execution Timeline and Debug Console v2.8
+
+V2.8 adds runtime visibility for flow runs. Flow run records now include an `executionTimeline` with step-level status, timestamps, latency, approved tool, mapping ID, and warnings.
+
+The backend exposes flow run detail lookup:
+
+```bash
+curl "http://localhost:8000/api/v1/flows/runs/{request_id}"
+```
+
+Flow Catalog now shows a runtime debug console after a flow run, including:
+
+- run status
+- request ID
+- step timeline
+- approved tool per step
+- mapping definition used
+- warnings
+- mapped payload preview when a mapped custom flow runs
+
+This remains a safe mock/runtime-preview layer. It does not call external systems, execute arbitrary code, or expose SQL/SuiteQL.
+
 ## Tests
 
 Backend:

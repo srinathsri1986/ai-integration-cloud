@@ -99,6 +99,8 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     assert body["status"] == "succeeded"
     assert body["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
     assert body["data"]["dashboardSummary"]["mode"] == "mock"
+    assert [step["status"] for step in body["executionTimeline"]] == ["succeeded", "succeeded"]
+    assert body["executionTimeline"][0]["approvedTool"] == "cfo.dashboard_summary"
 
     flow = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh").json()
     assert flow["lastRunAt"] == body["completedAt"]
@@ -120,6 +122,11 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     assert runs[0]["requestId"] == body["requestId"]
     assert runs[0]["flowId"] == "netsuite-cfo-dashboard-refresh"
     assert runs[0]["status"] == "succeeded"
+    assert runs[0]["executionTimeline"][1]["approvedTool"] == "cfo.pl_vs_budget"
+
+    run_detail = client.get(f"/api/v1/flows/runs/{body['requestId']}").json()
+    assert run_detail["requestId"] == body["requestId"]
+    assert run_detail["executionTimeline"][0]["name"] == "Load CFO summary"
 
 
 def test_flow_run_history_supports_filters_and_pagination() -> None:
@@ -135,6 +142,9 @@ def test_flow_run_history_supports_filters_and_pagination() -> None:
 
     paged = client.get("/api/v1/flows/runs?limit=1&offset=1").json()
     assert len(paged) == 1
+
+    missing = client.get("/api/v1/flows/runs/not-a-real-run")
+    assert missing.status_code == 404
 
 
 def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
@@ -520,6 +530,14 @@ def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
     assert body["data"]["mappingSimulation"]["targetPayload"]["AccountName"] == "Acme Manufacturing"
     assert body["data"]["mappingSimulation"]["targetPayload"]["Name"] == "PRJ-1042"
     assert body["toolsUsed"] == ["cfo.dashboard_summary"]
+    assert body["executionTimeline"][0]["approvedTool"] == "cfo.dashboard_summary"
+    assert body["executionTimeline"][0]["mappingDefinitionId"] == (
+        "netsuite-project-to-salesforce-opportunity"
+    )
+    assert body["executionTimeline"][1]["id"] == "mapping-simulation"
+    assert body["executionTimeline"][1]["mappingDefinitionId"] == (
+        "netsuite-project-to-salesforce-opportunity"
+    )
 
     saved_flow = client.get("/api/v1/flows/mapped-runtime-preview").json()
     assert saved_flow["mappingDefinitionId"] == "netsuite-project-to-salesforce-opportunity"

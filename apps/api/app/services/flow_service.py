@@ -11,6 +11,7 @@ from app.models.flows import (
     FlowLifecycleAction,
     FlowLifecycleResponse,
     FlowRunResponse,
+    FlowRunTimelineStep,
 )
 from app.models.orchestrator import OrchestratorQueryRequest
 from app.repositories.flow_definition_repository import FlowDefinitionRepository
@@ -116,7 +117,6 @@ class FlowService:
         self.cfo_service = cfo_service or CfoService()
         self.orchestrator_service = orchestrator_service or OrchestratorService(self.cfo_service)
         self._lock = Lock()
-        self._seed_flows()
 
     def _seed_flows(self) -> None:
         with SessionLocal() as session:
@@ -206,6 +206,7 @@ class FlowService:
         tools_used: list[str] = []
         success = False
         mapping_definition_id: str | None = None
+        execution_timeline: list[FlowRunTimelineStep] = []
 
         try:
             flow = self.get_flow(flow_id)
@@ -221,6 +222,16 @@ class FlowService:
                     toolsUsed=[],
                     message="Flow must be published before it can be run.",
                     data={},
+                    executionTimeline=[
+                        self._timeline_step(
+                            step_id="publish-check",
+                            name="Require published flow",
+                            status="failed",
+                            started_at=started,
+                            approved_tool=None,
+                            warnings=["Flow must be published before it can be run."],
+                        )
+                    ],
                 )
                 with SessionLocal() as session:
                     FlowRunRepository(session).append(response)
@@ -235,6 +246,7 @@ class FlowService:
                     ).model_dump(),
                 }
                 tools_used = ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
+                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
             elif flow_id == "netsuite-project-risk-refresh":
                 data = {
                     "runningProjects": self.cfo_service.running_projects().model_dump(),
@@ -246,6 +258,7 @@ class FlowService:
                     "cfo.running_projects",
                     "cfo.overdue_projects_by_account_manager",
                 ]
+                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
             elif flow_id == "netsuite-subsidiary-drilldown-refresh":
                 data = {
                     "subsidiaryDrilldown": self.cfo_service.subsidiary_drilldown(
@@ -261,6 +274,7 @@ class FlowService:
                     ).model_dump(),
                 }
                 tools_used = ["cfo.subsidiary_drilldown", "orchestrator.query"]
+                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
             else:
                 completed = datetime.now(UTC).isoformat()
                 tools_used = [step.approved_tool for step in flow.steps]
@@ -277,6 +291,16 @@ class FlowService:
                             "is attached for custom runtime preview."
                         ),
                         data={"steps": [step.model_dump(by_alias=True) for step in flow.steps]},
+                        executionTimeline=[
+                            self._timeline_step(
+                                step_id="mapping-check",
+                                name="Require attached published mapping",
+                                status="failed",
+                                started_at=started,
+                                approved_tool=None,
+                                warnings=["No published mapping definition is attached."],
+                            )
+                        ],
                     )
                     with SessionLocal() as session:
                         FlowRunRepository(session).append(response)
@@ -294,6 +318,17 @@ class FlowService:
                         toolsUsed=tools_used,
                         message="Attached mapping definition must be published before flow runtime preview.",
                         data={"mappingDefinitionId": flow.mapping_definition_id},
+                        executionTimeline=[
+                            self._timeline_step(
+                                step_id="mapping-status-check",
+                                name="Require published mapping",
+                                status="failed",
+                                started_at=started,
+                                approved_tool=None,
+                                mapping_definition_id=flow.mapping_definition_id,
+                                warnings=["Attached mapping definition is not published."],
+                            )
+                        ],
                     )
                     with SessionLocal() as session:
                         FlowRunRepository(session).append(response)
@@ -301,6 +336,23 @@ class FlowService:
                     return response
 
                 simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
+                execution_timeline = self._timeline_for_tools(
+                    flow,
+                    tools_used,
+                    started,
+                    mapping_definition_id=flow.mapping_definition_id,
+                )
+                execution_timeline.append(
+                    self._timeline_step(
+                        step_id="mapping-simulation",
+                        name="Simulate attached mapping",
+                        status="succeeded",
+                        started_at=started,
+                        approved_tool=None,
+                        mapping_definition_id=flow.mapping_definition_id,
+                        warnings=simulation.warnings,
+                    )
+                )
                 success = True
                 response = FlowRunResponse(
                     requestId=request_id,
@@ -315,6 +367,7 @@ class FlowService:
                         "mappingDefinitionId": flow.mapping_definition_id,
                         "mappingSimulation": simulation.model_dump(by_alias=True),
                     },
+                    executionTimeline=execution_timeline,
                 )
                 with SessionLocal() as session:
                     FlowRunRepository(session).append(response)
@@ -335,6 +388,7 @@ class FlowService:
                 toolsUsed=tools_used,
                 message="Mock flow execution completed using approved CFO services only.",
                 data=data,
+                executionTimeline=execution_timeline,
             )
             with SessionLocal() as session:
                 FlowRunRepository(session).append(response)
@@ -374,6 +428,58 @@ class FlowService:
                 limit=limit,
                 offset=offset,
             )
+
+    def get_run(self, request_id: str) -> FlowRunResponse:
+        with SessionLocal() as session:
+            return FlowRunRepository(session).get_by_request_id(request_id)
+
+    def _timeline_for_tools(
+        self,
+        flow: FlowDefinition,
+        tools_used: list[str],
+        started_at: str,
+        mapping_definition_id: str | None = None,
+    ) -> list[FlowRunTimelineStep]:
+        timeline: list[FlowRunTimelineStep] = []
+        used_set = set(tools_used)
+
+        for step in flow.steps:
+            timeline.append(
+                self._timeline_step(
+                    step_id=step.id,
+                    name=step.name,
+                    status="succeeded" if step.approved_tool in used_set else "skipped",
+                    started_at=started_at,
+                    approved_tool=step.approved_tool,
+                    mapping_definition_id=mapping_definition_id,
+                )
+            )
+
+        return timeline
+
+    def _timeline_step(
+        self,
+        *,
+        step_id: str,
+        name: str,
+        status: str,
+        started_at: str,
+        approved_tool: str | None,
+        mapping_definition_id: str | None = None,
+        warnings: list[str] | None = None,
+    ) -> FlowRunTimelineStep:
+        completed_at = datetime.now(UTC).isoformat()
+        return FlowRunTimelineStep(
+            id=step_id,
+            name=name,
+            status=status,
+            startedAt=started_at,
+            completedAt=completed_at,
+            latencyMs=0,
+            approvedTool=approved_tool,
+            mappingDefinitionId=mapping_definition_id,
+            warnings=warnings or [],
+        )
 
 
 flow_service = FlowService()
