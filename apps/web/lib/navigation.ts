@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Gauge,
   GitBranch,
+  Map,
   Settings
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -38,6 +39,13 @@ export const platformRoutes: PlatformRoute[] = [
     href: "/flows",
     icon: GitBranch,
     label: "Integration Studio",
+    roles: ["Integration Admin", "Developer"]
+  },
+  {
+    description: "Match fields between systems",
+    href: "/mapping",
+    icon: Map,
+    label: "Data Mapping",
     roles: ["Integration Admin", "Developer"]
   },
   {

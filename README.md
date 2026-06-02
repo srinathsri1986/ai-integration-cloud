@@ -518,6 +518,23 @@ The `/flows` page now includes:
 
 This release is frontend-first. It does not add real connector credentials, arbitrary SQL, SuiteQL, raw system access, or unrestricted execution. The next natural step is Data Mapping Studio Lite.
 
+## Data Mapping Studio Lite v2.3
+
+V2.3 adds a frontend-first `/mapping` workspace for visually matching fields between systems. The studio is system-agnostic and includes mock object schemas for NetSuite, Salesforce, Oracle Fusion, REST API payloads, and SFTP/CSV files.
+
+The mapping workspace includes:
+
+- source system and object selection
+- target system and object selection
+- source field tray
+- target field tray
+- click-to-map field matching
+- governed transformation choices: direct, rename, format date, lookup placeholder, and constant placeholder
+- required target field validation
+- source and target sample payload previews
+
+Mappings are validated locally in this release. Persistence, backend mapping definitions, and AI-assisted mapping suggestions are planned next. No arbitrary code transformations, SQL, SuiteQL, credentials, or raw system access are introduced.
+
 ## Tests
 
 Backend:
