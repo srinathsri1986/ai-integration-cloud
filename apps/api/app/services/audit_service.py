@@ -1,10 +1,22 @@
 from datetime import UTC, datetime
+from hashlib import sha1
 from threading import Lock
 
 from app.core.database import SessionLocal
 from app.core.security import redact_mapping
 from app.models.audit import AuditLogEntry, AuditLogSummary
 from app.repositories.audit_repository import AuditRepository
+
+
+def _bounded_request_id(prefix: str, identifier: str, action: str | None = None) -> str:
+    raw = f"{prefix}-{identifier}" if action is None else f"{prefix}-{identifier}-{action}"
+    if len(raw) <= 64:
+        return raw
+
+    digest = sha1(raw.encode("utf-8")).hexdigest()[:12]
+    available = 64 - len(prefix) - len(digest) - 2
+    compact_identifier = identifier[:max(8, available)]
+    return f"{prefix}-{compact_identifier}-{digest}"
 
 
 class AuditService:
@@ -112,7 +124,7 @@ class AuditService:
         self.record(
             AuditLogEntry(
                 timestamp=datetime.now(UTC).isoformat(),
-                requestId=f"flow-definition-{flow_id}",
+                requestId=_bounded_request_id("flow-definition", flow_id, action),
                 user="local-dev-user",
                 channel="web",
                 question=f"Flow definition action: {flow_id}.{action}",
@@ -146,7 +158,7 @@ class AuditService:
         self.record(
             AuditLogEntry(
                 timestamp=datetime.now(UTC).isoformat(),
-                requestId=f"mapping-definition-{mapping_id}",
+                requestId=_bounded_request_id("mapping-definition", mapping_id, action),
                 user="local-dev-user",
                 channel="web",
                 question=f"Mapping definition action: {mapping_id}.{action}",

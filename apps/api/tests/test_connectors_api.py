@@ -311,7 +311,7 @@ def test_promote_rest_api_schema_allows_governed_mapping_save_and_simulation() -
     mapping_response = client.post(
         "/api/v1/mappings/definitions",
         json={
-            "mappingId": "rest-customer-event-to-salesforce-opportunity",
+            "mappingId": "rest-governed-customer-event-to-salesforce-opportunity",
             "name": "REST Customer Event to Salesforce Opportunity",
             "description": "Maps promoted REST customer event fields into Salesforce opportunity fields.",
             "sourceObjectId": "rest-governed-customer-event",
@@ -349,7 +349,7 @@ def test_promote_rest_api_schema_allows_governed_mapping_save_and_simulation() -
     assert mapping_response.status_code == 200
 
     simulation = client.post(
-        "/api/v1/mappings/definitions/rest-customer-event-to-salesforce-opportunity/simulate"
+        "/api/v1/mappings/definitions/rest-governed-customer-event-to-salesforce-opportunity/simulate"
     )
     assert simulation.status_code == 200
     simulation_body = simulation.json()
@@ -357,8 +357,21 @@ def test_promote_rest_api_schema_allows_governed_mapping_save_and_simulation() -
     assert simulation_body["targetPayload"]["Name"] == "Acme Manufacturing"
     assert simulation_body["targetPayload"]["Amount"] == 2500.75
 
+    for action, expected_status in [
+        ("submit_for_approval", "pending_approval"),
+        ("approve", "approved"),
+        ("publish", "published"),
+    ]:
+        lifecycle = client.post(
+            "/api/v1/mappings/definitions/rest-governed-customer-event-to-salesforce-opportunity/lifecycle",
+            json={"action": action},
+        )
+        assert lifecycle.status_code == 200
+        assert lifecycle.json()["mapping"]["status"] == expected_status
+
     logs = client.get("/api/v1/audit/logs").json()
     assert any(log["toolsUsed"] == ["connector.rest-api.schema_promotion"] for log in logs)
+    assert all(len(log["requestId"]) <= 64 for log in logs)
 
 
 def test_promote_rest_api_schema_skips_secret_like_fields() -> None:
