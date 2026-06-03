@@ -14,7 +14,12 @@ dependencies = [
   "python-json-logger>=3.2.1",
   "redis>=5.2.1",
   "sqlalchemy>=2.0.36",
-  "uvicorn[standard]>=0.34.0"
+  "uvicorn[standard]>=0.34.0",
+  "bcrypt>=4.0.0",
+  "python-jose[cryptography]>=3.3.0",
+  "resend>=2.0.0",
+  "python-multipart>=0.0.9",
+  "pydantic[email]>=2.0.0"
 ]
 
 [project.optional-dependencies]

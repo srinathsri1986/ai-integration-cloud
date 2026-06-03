@@ -8,7 +8,7 @@ import type { UserRole } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY } from "@/lib/api";
+import { LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, logoutUser } from "@/lib/api";
 import { routesForRole } from "@/lib/navigation";
 
 type PlatformShellProps = {
@@ -97,12 +97,15 @@ export function PlatformShell({
               </div>
             </div>
           </div>
-          <Link href="/login">
-            <Button className="mt-3 w-full" type="button" variant="secondary">
-              <LogOut className="h-4 w-4" />
-              Switch persona
-            </Button>
-          </Link>
+          <Button
+            className="mt-3 w-full"
+            onClick={async () => { await logoutUser(); window.location.href = "/login"; }}
+            type="button"
+            variant="secondary"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
         </div>
       </aside>
 

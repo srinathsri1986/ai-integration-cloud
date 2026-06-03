@@ -43,6 +43,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["Set-Cookie"],
 )
 
 app.include_router(health.router)

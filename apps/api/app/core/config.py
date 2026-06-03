@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     api_cors_origins: str = "http://localhost:3000"
     placeholder_jwt_secret: str = "local-dev-only"
+    jwt_secret_key: str = "local-dev-jwt-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 7
+    resend_api_key: str | None = None
+    app_base_url: str = "http://localhost:3000"
     netsuite_mode: str = "mock"
     netsuite_account_id: str = "placeholder-account"
     netsuite_base_url: str | None = None

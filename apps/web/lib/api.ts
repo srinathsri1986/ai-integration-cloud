@@ -1486,6 +1486,105 @@ export async function submitOrchestratorQuery(
   }
 }
 
+// --- Real auth API calls ---
+
+export type RegisterPayload = { email: string; password: string; role?: string };
+export type LoginPayload = { email: string; password: string };
+
+export async function registerUser(payload: RegisterPayload): Promise<ClientApiResult<{ email: string; message: string }>> {
+  const fallback = { email: payload.email, message: "Registration failed." };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return { data: fallback, error: body?.detail ?? `API returned ${response.status}`, isFallback: true, ok: false };
+    }
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
+}
+
+export async function loginUser(payload: LoginPayload): Promise<ClientApiResult<LoginResponse>> {
+  const fallback: LoginResponse = { accessToken: "", tokenType: "bearer", user: { email: payload.email, role: "Integration Admin", userId: "" } };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return { data: fallback, error: body?.detail ?? `API returned ${response.status}`, isFallback: true, ok: false };
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LOCAL_AUTH_ROLE_KEY, body.user.role);
+      window.localStorage.setItem(LOCAL_AUTH_EMAIL_KEY, body.user.email);
+    }
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include", cache: "no-store" });
+  } catch {
+    // best-effort
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(LOCAL_AUTH_ROLE_KEY);
+    window.localStorage.removeItem(LOCAL_AUTH_EMAIL_KEY);
+    window.localStorage.removeItem(LOCAL_AUTH_STORAGE_KEY);
+  }
+}
+
+export async function forgotPassword(email: string): Promise<ClientApiResult<{ message: string }>> {
+  const fallback = { message: "If that email exists, a reset link has been sent." };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+      body: JSON.stringify({ email }),
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: response.ok };
+  } catch {
+    return { data: fallback, isFallback: true, ok: false };
+  }
+}
+
+export async function resetPassword(token: string, password: string): Promise<ClientApiResult<{ message: string }>> {
+  const fallback = { message: "Password reset failed." };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/reset-password`, {
+      body: JSON.stringify({ token, password }),
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      return { data: fallback, error: body?.detail ?? `API returned ${response.status}`, isFallback: true, ok: false };
+    }
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
+}
+
+// --- Legacy placeholder login (dev / persona picker) ---
+
 export async function loginWithRole(role: LoginResponse["user"]["role"]): Promise<ClientApiResult<LoginResponse>> {
   const fallback: LoginResponse = {
     accessToken: "",
@@ -1498,7 +1597,7 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login/placeholder`, {
       body: JSON.stringify({ email: "local-dev@example.com", role }),
       cache: "no-store",
       headers: {

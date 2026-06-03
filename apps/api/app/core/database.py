@@ -23,7 +23,25 @@ def init_db() -> None:
     from app.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_users_table()
     _ensure_lightweight_columns()
+
+
+def _ensure_users_table() -> None:
+    """Add columns to users table that may be missing from older schemas."""
+    with engine.begin() as connection:
+        dialect_name = connection.dialect.name
+        if dialect_name == "sqlite":
+            rows = connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+            columns = {row[1] for row in rows}
+            if "reset_token_expires_at" not in columns:
+                connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME"
+                )
+        elif dialect_name == "postgresql":
+            connection.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ"
+            )
 
 
 def _ensure_lightweight_columns() -> None:

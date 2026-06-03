@@ -9,6 +9,33 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
 
+class UserRecord(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_email", "email", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False, default="Integration Admin")
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verification_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 def _json_type() -> JSON:
     return JSON().with_variant(JSONB(), "postgresql")
 
