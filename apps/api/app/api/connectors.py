@@ -10,6 +10,8 @@ from app.models.connectors import (
     RestApiConnectionTestResponse,
     RestApiConnectorConfig,
     RestApiConnectorConfigUpdate,
+    RestApiSchemaDiscoveryRequest,
+    RestApiSchemaDiscoveryResponse,
 )
 from app.services.connector_config_service import connector_config_service
 
@@ -47,6 +49,14 @@ def get_rest_api_config(user=Depends(require_permissions("connector:admin"))) ->
 @router.get("/rest-api/objects", response_model=list[RestApiApprovedObject])
 def list_rest_api_objects(user=Depends(require_permissions("connector:admin"))) -> list[RestApiApprovedObject]:
     return connector_config_service.approved_rest_api_objects()
+
+
+@router.post("/rest-api/discover-schema", response_model=RestApiSchemaDiscoveryResponse)
+def discover_rest_api_schema(
+    request: RestApiSchemaDiscoveryRequest,
+    user=Depends(require_permissions("connector:admin")),
+) -> RestApiSchemaDiscoveryResponse:
+    return connector_config_service.discover_rest_api_schema(request)
 
 
 @router.post("/rest-api/test", response_model=RestApiConnectionTestResponse)

@@ -22,7 +22,8 @@ import type {
   MappingDefinition,
   MappingLifecycleAction,
   MappingSimulationResponse,
-  MappingSuggestionItem
+  MappingSuggestionItem,
+  RestApiSchemaDiscoveryResponse
 } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { integrationSystems } from "@/lib/integration-catalog";
 import {
+  discoverRestApiSchema,
   getMappingDefinitions,
   saveMappingDefinition,
   simulateMappingDefinition,
@@ -97,6 +99,25 @@ export function DataMappingStudio() {
   const [isLoadingMappings, setIsLoadingMappings] = useState(false);
   const [simulation, setSimulation] = useState<MappingSimulationResponse | undefined>();
   const [isSimulating, setIsSimulating] = useState(false);
+  const [restObjectLabel, setRestObjectLabel] = useState("Customer Event");
+  const [restSampleJson, setRestSampleJson] = useState(
+    JSON.stringify(
+      {
+        externalId: "CUST-100",
+        displayName: "Acme Manufacturing",
+        amount: 2500.75,
+        invoiceDate: "2026-06-02",
+        isActive: true
+      },
+      null,
+      2
+    )
+  );
+  const [discoveredSchema, setDiscoveredSchema] = useState<
+    RestApiSchemaDiscoveryResponse | undefined
+  >();
+  const [isDiscoveringSchema, setIsDiscoveringSchema] = useState(false);
+  const [schemaDiscoveryStatus, setSchemaDiscoveryStatus] = useState<string | undefined>();
 
   const sourceObject = useMemo(
     () => mappingObjects.find((object) => object.id === sourceObjectId) ?? sourceObjects[0],
@@ -300,6 +321,36 @@ export function DataMappingStudio() {
     setMessage(`${mapping.name} opened in the mapping grid.`);
   }
 
+  async function discoverSchema() {
+    setIsDiscoveringSchema(true);
+    setSchemaDiscoveryStatus(undefined);
+
+    try {
+      const parsed = JSON.parse(restSampleJson) as unknown;
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+        setSchemaDiscoveryStatus("Sample must be a single JSON object.");
+        setIsDiscoveringSchema(false);
+        return;
+      }
+
+      const response = await discoverRestApiSchema({
+        objectLabel: restObjectLabel,
+        samplePayload: parsed as Record<string, unknown>
+      });
+
+      setDiscoveredSchema(response.data);
+      setSchemaDiscoveryStatus(
+        response.ok
+          ? `${response.data.fields.length} safe fields discovered for ${response.data.objectLabel}.`
+          : response.error ?? "REST schema discovery could not be completed."
+      );
+    } catch {
+      setSchemaDiscoveryStatus("Sample JSON is not valid.");
+    } finally {
+      setIsDiscoveringSchema(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden border-white/80 bg-slate-950 p-0 text-white shadow-xl shadow-slate-300/40">
@@ -420,6 +471,126 @@ export function DataMappingStudio() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden border-slate-200 bg-white/95 p-0 shadow-sm">
+        <div className="grid gap-0 lg:grid-cols-[1fr_420px]">
+          <div className="p-5 lg:p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="border-amber-200 bg-amber-50 text-amber-900">
+                <FileJson2 className="mr-1 h-3.5 w-3.5" />
+                REST schema discovery
+              </Badge>
+              <Badge className="border-slate-200 bg-white text-slate-700">Design-time only</Badge>
+            </div>
+            <h2 className="mt-4 text-xl font-semibold text-slate-950">Sample payload field tray</h2>
+            <div className="mt-4 grid gap-3">
+              <label className="text-sm font-semibold text-slate-950" htmlFor="rest-object-label">
+                Object label
+              </label>
+              <input
+                className="h-10 rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                id="rest-object-label"
+                maxLength={80}
+                minLength={3}
+                onChange={(event) => setRestObjectLabel(event.target.value)}
+                value={restObjectLabel}
+              />
+              <label className="text-sm font-semibold text-slate-950" htmlFor="rest-sample-json">
+                Sample JSON
+              </label>
+              <textarea
+                className="min-h-56 rounded-lg border border-slate-200 bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-100 outline-none focus:border-amber-300"
+                id="rest-sample-json"
+                onChange={(event) => setRestSampleJson(event.target.value)}
+                spellCheck={false}
+                value={restSampleJson}
+              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Discovery reads pasted sample structure only. It does not call external APIs.
+                </p>
+                <Button
+                  disabled={isDiscoveringSchema || restObjectLabel.length < 3}
+                  onClick={discoverSchema}
+                  type="button"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {isDiscoveringSchema ? "Discovering..." : "Discover schema"}
+                </Button>
+              </div>
+              {schemaDiscoveryStatus ? (
+                <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+                  {schemaDiscoveryStatus}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 bg-slate-950 p-5 text-white lg:border-l lg:border-t-0 lg:p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Discovered fields</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Safe scalar fields appear here for mapping review.
+                </p>
+              </div>
+              <Badge className="border-white/10 bg-white/10 text-white">
+                {discoveredSchema?.executable === false ? "Not executable" : "Waiting"}
+              </Badge>
+            </div>
+
+            {discoveredSchema ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-lg border border-white/10 bg-white/10 p-3">
+                  <p className="text-sm font-semibold">{discoveredSchema.objectLabel}</p>
+                  <p className="mt-1 text-xs text-slate-400">{discoveredSchema.objectId}</p>
+                </div>
+                {discoveredSchema.fields.length > 0 ? (
+                  discoveredSchema.fields.map((field) => (
+                    <div className="rounded-lg border border-white/10 bg-white/10 p-3" key={field.name}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">{field.label}</p>
+                          <p className="mt-1 text-xs text-slate-400">{field.name}</p>
+                        </div>
+                        {field.required ? (
+                          <Badge className="border-white/10 bg-white text-slate-950">Required</Badge>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge className="border-white/10 bg-white/10 text-white">{field.type}</Badge>
+                        <Badge className="border-white/10 bg-white/10 text-white">
+                          {String(field.sample ?? "null")}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-lg border border-dashed border-white/15 p-5 text-center text-sm text-slate-300">
+                    No safe scalar fields discovered.
+                  </p>
+                )}
+
+                {discoveredSchema.warnings.length > 0 ? (
+                  <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3">
+                    <p className="text-sm font-semibold text-amber-100">Warnings</p>
+                    <ul className="mt-2 space-y-1 text-xs leading-5 text-amber-100">
+                      {discoveredSchema.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-white/15 p-8 text-center">
+                <FileJson2 className="mx-auto h-7 w-7 text-amber-300" />
+                <p className="mt-3 text-sm font-medium">No sample schema discovered yet.</p>
+              </div>
+            )}
           </div>
         </div>
       </Card>

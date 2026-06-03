@@ -204,6 +204,9 @@ The API exposes a governed mock REST connector for system-agnostic integration d
 ```bash
 curl "http://localhost:8000/api/v1/connectors/rest-api"
 curl "http://localhost:8000/api/v1/connectors/rest-api/objects"
+curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/discover-schema" \
+  -H "Content-Type: application/json" \
+  -d '{"objectLabel":"Customer Event","samplePayload":{"externalId":"CUST-100","displayName":"Acme Manufacturing","amount":2500.75,"invoiceDate":"2026-06-02","isActive":true}}'
 curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/test"
 curl -X PUT "http://localhost:8000/api/v1/connectors/rest-api/config" \
   -H "Content-Type: application/json" \
@@ -211,6 +214,8 @@ curl -X PUT "http://localhost:8000/api/v1/connectors/rest-api/config" \
 ```
 
 The connector returns approved object metadata for `customer`, `invoice`, and `opportunity`. The mock test action writes a connector audit event but does not perform an outbound HTTP call. Config updates accept placeholder metadata only and reject non-placeholder auth modes. Secret-like fields such as API keys, bearer tokens, passwords, and secrets are not part of the response model.
+
+Schema discovery is design-time only. It infers top-level scalar fields from pasted sample JSON, skips secret-like field names, warns on nested values, and returns `executable:false`. Discovery does not save connector credentials, execute HTTP requests, or create runtime mappings automatically.
 
 ## Flow approval and publishing
 

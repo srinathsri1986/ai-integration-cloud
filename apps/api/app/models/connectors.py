@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 ConnectorEnvironment = Literal["sandbox", "production"]
@@ -101,3 +101,47 @@ class RestApiConnectionTestResponse(BaseModel):
     credentials_configured: bool = Field(alias="credentialsConfigured")
     approved_objects: list[RestApiObjectId] = Field(alias="approvedObjects")
     approved_actions: list[RestApiActionId] = Field(alias="approvedActions")
+
+
+class RestApiSchemaDiscoveryRequest(BaseModel):
+    object_label: str = Field(alias="objectLabel", min_length=3, max_length=80)
+    sample_payload: dict[str, Any] = Field(alias="samplePayload")
+
+    @field_validator("object_label")
+    @classmethod
+    def reject_sensitive_label(cls, value: str) -> str:
+        normalized = value.lower()
+        blocked = ["password", "secret", "token", "api key", "authorization", "bearer"]
+        if any(term in normalized for term in blocked):
+            raise ValueError("REST object labels cannot contain secret-like terms.")
+
+        return value
+
+    @field_validator("sample_payload")
+    @classmethod
+    def require_bounded_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if not value:
+            raise ValueError("Sample payload must include at least one field.")
+        if len(value) > 50:
+            raise ValueError("Sample payload can include at most 50 top-level fields.")
+
+        return value
+
+
+class RestApiDiscoveredField(BaseModel):
+    name: str
+    label: str
+    type: Literal["string", "number", "boolean", "date"]
+    required: bool
+    sample: str | int | float | bool | None = None
+
+
+class RestApiSchemaDiscoveryResponse(BaseModel):
+    connector_id: Literal["rest-api"] = Field(alias="connectorId")
+    object_id: str = Field(alias="objectId")
+    object_label: str = Field(alias="objectLabel")
+    mode: Literal["schema_discovery"]
+    fields: list[RestApiDiscoveredField]
+    warnings: list[str]
+    generated_from_sample: bool = Field(alias="generatedFromSample")
+    executable: bool

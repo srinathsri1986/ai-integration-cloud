@@ -180,6 +180,40 @@ export type RestApiConnectionTestResponse = z.infer<
   typeof restApiConnectionTestResponseSchema
 >;
 
+export const restApiSchemaDiscoveryRequestSchema = z.object({
+  objectLabel: z.string().min(3).max(80),
+  samplePayload: z.record(z.string(), z.unknown())
+});
+
+export type RestApiSchemaDiscoveryRequest = z.infer<
+  typeof restApiSchemaDiscoveryRequestSchema
+>;
+
+export const restApiDiscoveredFieldSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  type: z.enum(["string", "number", "boolean", "date"]),
+  required: z.boolean(),
+  sample: z.union([z.string(), z.number(), z.boolean()]).nullable().optional()
+});
+
+export type RestApiDiscoveredField = z.infer<typeof restApiDiscoveredFieldSchema>;
+
+export const restApiSchemaDiscoveryResponseSchema = z.object({
+  connectorId: z.literal("rest-api"),
+  objectId: z.string(),
+  objectLabel: z.string(),
+  mode: z.literal("schema_discovery"),
+  fields: z.array(restApiDiscoveredFieldSchema),
+  warnings: z.array(z.string()),
+  generatedFromSample: z.boolean(),
+  executable: z.boolean()
+});
+
+export type RestApiSchemaDiscoveryResponse = z.infer<
+  typeof restApiSchemaDiscoveryResponseSchema
+>;
+
 export const flowIds = [
   "netsuite-cfo-dashboard-refresh",
   "netsuite-project-risk-refresh",

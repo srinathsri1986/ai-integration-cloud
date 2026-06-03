@@ -30,6 +30,8 @@ import type {
   RestApiConnectionTestResponse,
   RestApiConnectorConfig,
   RestApiConnectorConfigUpdate,
+  RestApiSchemaDiscoveryRequest,
+  RestApiSchemaDiscoveryResponse,
   RunningProjectsResponse,
   SubsidiaryDrilldownResponse,
   YoyComparisonResponse
@@ -367,6 +369,17 @@ const fallbackRestApiObjects: RestApiApprovedObject[] = [
     ]
   }
 ];
+
+const fallbackRestApiSchemaDiscoveryResponse: RestApiSchemaDiscoveryResponse = {
+  connectorId: "rest-api",
+  objectId: "rest-discovered-fallback-object",
+  objectLabel: "Fallback Object",
+  mode: "schema_discovery",
+  fields: [],
+  warnings: ["The REST schema discovery API is unavailable."],
+  generatedFromSample: false,
+  executable: false
+};
 
 const fallbackFlows: FlowDefinition[] = [
   {
@@ -790,6 +803,41 @@ export async function getRestApiObjects(): Promise<ApiResult<RestApiApprovedObje
     fallbackRestApiObjects,
     (body) => body
   );
+}
+
+export async function discoverRestApiSchema(
+  request: RestApiSchemaDiscoveryRequest
+): Promise<ClientApiResult<RestApiSchemaDiscoveryResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/discover-schema`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackRestApiSchemaDiscoveryResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackRestApiSchemaDiscoveryResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
 }
 
 export async function testNetSuiteConnection(): Promise<

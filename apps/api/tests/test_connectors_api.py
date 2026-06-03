@@ -185,6 +185,92 @@ def test_list_rest_api_objects_returns_approved_schema_catalog() -> None:
     }
 
 
+def test_discover_rest_api_schema_infers_safe_top_level_fields() -> None:
+    response = client.post(
+        "/api/v1/connectors/rest-api/discover-schema",
+        json={
+            "objectLabel": "Customer Event",
+            "samplePayload": {
+                "externalId": "CUST-100",
+                "amount": 2500.75,
+                "invoiceDate": "2026-06-02",
+                "isActive": True,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["connectorId"] == "rest-api"
+    assert body["objectId"] == "rest-discovered-customer-event"
+    assert body["objectLabel"] == "Customer Event"
+    assert body["mode"] == "schema_discovery"
+    assert body["generatedFromSample"] is True
+    assert body["executable"] is False
+    assert body["warnings"] == []
+    assert body["fields"] == [
+        {
+            "name": "externalId",
+            "label": "External Id",
+            "type": "string",
+            "required": True,
+            "sample": "CUST-100",
+        },
+        {
+            "name": "amount",
+            "label": "Amount",
+            "type": "number",
+            "required": True,
+            "sample": 2500.75,
+        },
+        {
+            "name": "invoiceDate",
+            "label": "Invoice Date",
+            "type": "date",
+            "required": True,
+            "sample": "2026-06-02",
+        },
+        {
+            "name": "isActive",
+            "label": "Is Active",
+            "type": "boolean",
+            "required": True,
+            "sample": True,
+        },
+    ]
+
+
+def test_discover_rest_api_schema_skips_secret_and_nested_fields() -> None:
+    response = client.post(
+        "/api/v1/connectors/rest-api/discover-schema",
+        json={
+            "objectLabel": "Payment Event",
+            "samplePayload": {
+                "customerId": "CUST-100",
+                "apiKey": "do-not-discover",
+                "nested": {"raw": "unsupported"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [field["name"] for field in body["fields"]] == ["customerId"]
+    assert len(body["warnings"]) == 2
+    assert "apiKey was skipped" in body["warnings"][0]
+    assert "nested was skipped" in body["warnings"][1]
+    assert "do-not-discover" not in str(body)
+
+
+def test_discover_rest_api_schema_rejects_empty_payload() -> None:
+    response = client.post(
+        "/api/v1/connectors/rest-api/discover-schema",
+        json={"objectLabel": "Empty Event", "samplePayload": {}},
+    )
+
+    assert response.status_code == 422
+
+
 def test_test_rest_api_connection_updates_status_and_writes_audit_log() -> None:
     response = client.post("/api/v1/connectors/rest-api/test")
 

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
+import re
 from threading import Lock
 from time import perf_counter
+from typing import Any
 from uuid import uuid4
 
 from app.models.connectors import (
@@ -12,6 +14,9 @@ from app.models.connectors import (
     RestApiConnectionTestResponse,
     RestApiConnectorConfig,
     RestApiConnectorConfigUpdate,
+    RestApiDiscoveredField,
+    RestApiSchemaDiscoveryRequest,
+    RestApiSchemaDiscoveryResponse,
 )
 from app.connectors.netsuite.sandbox_connector import (
     NetSuiteSandboxConnectionConfig,
@@ -19,6 +24,10 @@ from app.connectors.netsuite.sandbox_connector import (
 )
 from app.core.config import get_settings
 from app.services.audit_service import audit_service
+
+
+_SECRET_FIELD_TERMS = ("password", "secret", "token", "apikey", "api_key", "authorization", "bearer")
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
 class ConnectorConfigService:
@@ -109,6 +118,65 @@ class ConnectorConfigService:
                 ],
             ),
         ]
+
+    def discover_rest_api_schema(
+        self,
+        request: RestApiSchemaDiscoveryRequest,
+    ) -> RestApiSchemaDiscoveryResponse:
+        fields: list[RestApiDiscoveredField] = []
+        warnings: list[str] = []
+
+        for name, sample in list(request.sample_payload.items())[:50]:
+            normalized_name = name.lower().replace("-", "_")
+            compact_name = normalized_name.replace("_", "")
+            if any(term in compact_name or term in normalized_name for term in _SECRET_FIELD_TERMS):
+                warnings.append(f"{name} was skipped because it looks like a secret or credential field.")
+                continue
+
+            if isinstance(sample, dict | list):
+                warnings.append(f"{name} was skipped because V3.0 discovery supports top-level scalar fields only.")
+                continue
+
+            fields.append(
+                RestApiDiscoveredField(
+                    name=name,
+                    label=self._label_from_field_name(name),
+                    type=self._infer_rest_field_type(sample),
+                    required=sample is not None,
+                    sample=sample,
+                )
+            )
+
+        if len(fields) == 0:
+            warnings.append("No usable scalar fields were discovered from the sample payload.")
+
+        return RestApiSchemaDiscoveryResponse(
+            connectorId="rest-api",
+            objectId=self._object_id_from_label(request.object_label),
+            objectLabel=request.object_label,
+            mode="schema_discovery",
+            fields=fields[:24],
+            warnings=warnings,
+            generatedFromSample=True,
+            executable=False,
+        )
+
+    def _infer_rest_field_type(self, sample: Any) -> str:
+        if isinstance(sample, bool):
+            return "boolean"
+        if isinstance(sample, int | float) and not isinstance(sample, bool):
+            return "number"
+        if isinstance(sample, str) and _DATE_PATTERN.match(sample):
+            return "date"
+        return "string"
+
+    def _label_from_field_name(self, name: str) -> str:
+        words = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).replace("_", " ").replace("-", " ")
+        return words.strip().title() or name
+
+    def _object_id_from_label(self, label: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+        return f"rest-discovered-{slug or 'object'}"
 
     def list_connectors(self) -> list[ConnectorListItem]:
         netsuite_config = self.get_netsuite_config()

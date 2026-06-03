@@ -651,6 +651,18 @@ The REST connector is mock-first and exposes approved object schemas for `custom
 
 The Connector Studio UI now includes both NetSuite and REST API gateways, with an approved REST object tray for future drag-and-drop mapping and flow design.
 
+## Connector Schema Discovery and Mapping Tray v3.0
+
+V3.0 adds design-time schema discovery for REST sample payloads and surfaces discovered fields in the Mapping Studio.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/discover-schema" \
+  -H "Content-Type: application/json" \
+  -d '{"objectLabel":"Customer Event","samplePayload":{"externalId":"CUST-100","displayName":"Acme Manufacturing","amount":2500.75,"invoiceDate":"2026-06-02","isActive":true}}'
+```
+
+Discovery reads pasted sample JSON only. It infers top-level scalar fields, skips secret-like fields, reports warnings for nested values, and returns `executable:false`. It does not call external APIs, does not store credentials, and does not enable arbitrary URL or payload execution.
+
 The backend exposes flow run detail lookup:
 
 ```bash
