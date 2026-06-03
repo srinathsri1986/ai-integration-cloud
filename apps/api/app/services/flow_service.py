@@ -275,7 +275,7 @@ class FlowService:
         execution_timeline: list[FlowRunTimelineStep] = []
 
         try:
-            flow = self.get_flow(flow_id)
+            flow = self.get_flow(flow_id, tenant_id)
             mapping_definition_id = flow.mapping_definition_id
             if flow.status != "published":
                 completed = datetime.now(UTC).isoformat()
