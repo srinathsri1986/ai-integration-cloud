@@ -185,6 +185,24 @@ class FlowService:
             message=f"{updated.name} moved to {next_status}.{note_suffix}",
         )
 
+    def delete_flow(self, flow_id: str) -> dict[str, str]:
+        if flow_id in BUILT_IN_FLOW_IDS:
+            raise ValueError("Built-in demo integrations cannot be deleted.")
+
+        flow = self.get_flow(flow_id)
+        with SessionLocal() as session:
+            FlowDefinitionRepository(session).delete_flow(flow_id)
+
+        audit_service.record_flow_definition_action(
+            flow_id=flow.flow_id,
+            action="delete",
+            tools_used=[step.approved_tool for step in flow.steps],
+        )
+        return {
+            "flowId": flow_id,
+            "message": "Integration deleted.",
+        }
+
     def _next_status(self, current_status: str, action: FlowLifecycleAction) -> str:
         allowed = {
             "draft": {"submit_for_approval": "pending_approval", "pause": "paused"},

@@ -1,6 +1,4 @@
-import { FlowCanvasWorkbench } from "@/components/flow-canvas-workbench";
-import { FlowCatalog } from "@/components/flow-catalog";
-import { IntegrationWorkbench } from "@/components/integration-workbench";
+import { IntegrationManagementConsole } from "@/components/integration-management-console";
 import { PlatformShell } from "@/components/platform-shell";
 import { getFlows } from "@/lib/api";
 
@@ -15,10 +13,8 @@ export default async function FlowsPage() {
       subtitle="Choose systems, pick data, match fields, add governed AI help, review controls, and publish approved integrations."
       title="Integration Studio"
     >
-      <div className="-mx-5 space-y-2 lg:-mx-8">
-        <IntegrationWorkbench />
-        <FlowCanvasWorkbench initialFlows={flowsResult} />
-        <FlowCatalog initialFlows={flowsResult} />
+      <div className="-mx-5 lg:-mx-8">
+        <IntegrationManagementConsole initialFlows={flowsResult} />
       </div>
     </PlatformShell>
   );

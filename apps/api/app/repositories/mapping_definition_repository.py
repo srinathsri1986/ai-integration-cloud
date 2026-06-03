@@ -55,6 +55,13 @@ class MappingDefinitionRepository:
         self.session.commit()
         return self.get_mapping(mapping_id)
 
+    def delete_mapping(self, mapping_id: str) -> None:
+        record = self.session.get(MappingDefinitionRecord, mapping_id)
+        if record is None:
+            raise KeyError(mapping_id)
+        self.session.delete(record)
+        self.session.commit()
+
     def clear(self) -> None:
         self.session.execute(delete(MappingDefinitionRecord))
         self.session.commit()

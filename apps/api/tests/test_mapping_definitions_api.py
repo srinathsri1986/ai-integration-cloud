@@ -186,6 +186,23 @@ def test_mapping_simulation_returns_404_for_unknown_mapping() -> None:
     assert response.status_code == 404
 
 
+def test_delete_mapping_definition_writes_audit_log() -> None:
+    client.post("/api/v1/mappings/definitions", json=_valid_mapping_payload())
+
+    deleted = client.delete("/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity")
+    assert deleted.status_code == 200
+    assert deleted.json()["mappingId"] == "netsuite-project-to-salesforce-opportunity"
+
+    missing = client.get("/api/v1/mappings/definitions/netsuite-project-to-salesforce-opportunity")
+    assert missing.status_code == 404
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["question"] == (
+        "Mapping definition action: netsuite-project-to-salesforce-opportunity.delete"
+    )
+    assert logs[0]["toolsUsed"] == ["mapping.definition.delete"]
+
+
 def test_mapping_simulation_surfaces_required_field_warnings() -> None:
     payload = _valid_mapping_payload()
     payload["mappingId"] = "project-to-rest-customer"

@@ -1121,6 +1121,38 @@ export async function transitionFlowLifecycle(
   }
 }
 
+export async function deleteFlowDefinition(
+  flowId: FlowId
+): Promise<ClientApiResult<{ flowId: string; message: string }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}`, {
+      cache: "no-store",
+      headers: authHeaders(),
+      method: "DELETE"
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
+      return {
+        data: { flowId, message: "Integration could not be deleted." },
+        error: body?.detail ? String(body.detail) : `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { flowId, message: "Integration could not be deleted." },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
 export async function saveFlowDefinition(
   request: FlowDefinitionUpsertRequest
 ): Promise<ClientApiResult<FlowDefinition>> {
@@ -1335,6 +1367,38 @@ export async function transitionMappingLifecycle(
   } catch (error) {
     return {
       data: fallbackMappingLifecycleResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function deleteMappingDefinition(
+  mappingId: string
+): Promise<ClientApiResult<{ mappingId: string; message: string }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}`, {
+      cache: "no-store",
+      headers: authHeaders(),
+      method: "DELETE"
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
+      return {
+        data: { mappingId, message: "Mapping definition could not be deleted." },
+        error: body?.detail ? String(body.detail) : `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { mappingId, message: "Mapping definition could not be deleted." },
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

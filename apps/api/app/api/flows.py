@@ -99,6 +99,25 @@ def transition_flow_lifecycle(
         ) from exc
 
 
+@router.delete("/{flow_id}", response_model=dict[str, str])
+def delete_flow_definition(
+    flow_id: FlowId,
+    user=Depends(require_permissions("flow:run")),
+) -> dict[str, str]:
+    try:
+        return flow_service.delete_flow(flow_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown mock integration flow.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
 @router.get("/{flow_id}", response_model=FlowDefinition)
 def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) -> FlowDefinition:
     try:

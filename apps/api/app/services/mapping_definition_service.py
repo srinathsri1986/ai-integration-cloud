@@ -116,6 +116,20 @@ class MappingDefinitionService:
                 latency_ms=int((perf_counter() - started) * 1000),
             )
 
+    def delete_mapping(self, mapping_id: str) -> dict[str, str]:
+        with SessionLocal() as session:
+            MappingDefinitionRepository(session).delete_mapping(mapping_id)
+
+        audit_service.record_mapping_definition_action(
+            mapping_id=mapping_id,
+            action="delete",
+            tools_used=["mapping.definition.delete"],
+        )
+        return {
+            "mappingId": mapping_id,
+            "message": "Mapping definition deleted.",
+        }
+
     def clear_for_tests(self) -> None:
         with SessionLocal() as session:
             MappingDefinitionRepository(session).clear()

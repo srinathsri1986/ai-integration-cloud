@@ -107,3 +107,17 @@ def simulate_mapping_definition(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+
+
+@router.delete("/definitions/{mapping_id}", response_model=dict[str, str])
+def delete_mapping_definition(
+    mapping_id: str,
+    user=Depends(require_permissions("flow:run")),
+) -> dict[str, str]:
+    try:
+        return mapping_definition_service.delete_mapping(mapping_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown mapping definition.",
+        ) from exc

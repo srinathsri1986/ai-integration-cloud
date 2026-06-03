@@ -718,6 +718,30 @@ Flow Catalog now shows a runtime debug console after a flow run, including:
 
 This remains a safe mock/runtime-preview layer. It does not call external systems, execute arbitrary code, or expose SQL/SuiteQL.
 
+## Active Integration Management Console v3.4
+
+V3.4 turns the Integration Studio into an operating console for real saved integrations instead of a stack of placeholder cards.
+
+The `/flows` page now shows:
+
+- active and draft integrations in one list
+- status filters for draft, pending approval, approved, published, and paused
+- selected integration review pane
+- real lifecycle actions
+- real run action for published integrations
+- linked mapping review and simulation
+- delete action for user-created integrations
+- delete action for saved mapping definitions from the review pane
+
+The backend adds governed delete endpoints:
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/flows/customer-event-to-salesforce-opportunity"
+curl -X DELETE "http://localhost:8000/api/v1/mappings/definitions/rest-governed-customer-event-to-salesforce-opportunity"
+```
+
+Built-in demo integrations are protected from deletion. User-created integrations and mapping definitions can be deleted, and delete actions are written to the audit log. Deletion does not introduce external execution, arbitrary SQL, SuiteQL, raw system access, or credential storage.
+
 ## Tests
 
 Backend:

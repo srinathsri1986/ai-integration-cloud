@@ -226,6 +226,19 @@ The V3.2 web Mapping Studio presents discovery, mapping, and review as separate 
 
 V3.3 adds schema promotion. Promoted REST schemas are registered as governed mapping catalog objects in the local backend runtime, allowing mapping drafts to be saved against them. Promotion revalidates fields, skips secret-like field names, records a connector audit event, and still performs no outbound HTTP calls.
 
+## Active integration management
+
+Saved integrations and mapping definitions can be managed with real API actions:
+
+```bash
+curl "http://localhost:8000/api/v1/flows"
+curl -X DELETE "http://localhost:8000/api/v1/flows/customer-event-to-salesforce-opportunity"
+curl "http://localhost:8000/api/v1/mappings/definitions"
+curl -X DELETE "http://localhost:8000/api/v1/mappings/definitions/rest-governed-customer-event-to-salesforce-opportunity"
+```
+
+Delete actions are audited. Built-in demo integrations are protected from deletion, while user-created flow definitions can be removed. Mapping definitions can also be deleted from the saved definition registry. These operations do not call external systems and do not access credentials.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:
@@ -244,7 +257,7 @@ curl -X POST "http://localhost:8000/api/v1/flows/custom-cfo-refresh/lifecycle" \
   -d '{"action":"publish"}'
 ```
 
-Only `published` flows can be run. Built-in mapped flows can execute after publication. Custom flows remain fail-closed even after publication until explicit runtime mappings are implemented.
+Only `published` flows can be run. Built-in flows execute approved CFO service steps. Custom published flows with an attached published mapping run a safe runtime preview and include the mapping simulation payload. Custom flows without a published mapping remain fail-closed.
 
 ## Safety model
 

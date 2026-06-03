@@ -256,6 +256,44 @@ def test_flow_lifecycle_rejects_invalid_transition() -> None:
     assert "Cannot apply publish" in response.json()["detail"]
 
 
+def test_delete_custom_flow_definition_and_protect_builtin_flows() -> None:
+    client.post(
+        "/api/v1/flows/definitions",
+        json={
+            "flowId": "delete-me-flow",
+            "name": "Delete me flow",
+            "description": "Temporary integration used to validate deletion.",
+            "sourceConnector": "netsuite",
+            "targetModule": "cfo_dashboard",
+            "status": "draft",
+            "triggerType": "manual",
+            "steps": [
+                {
+                    "id": "summary",
+                    "name": "Load summary",
+                    "description": "Load approved CFO summary data.",
+                    "approvedTool": "cfo.dashboard_summary",
+                }
+            ],
+        },
+    )
+
+    deleted = client.delete("/api/v1/flows/delete-me-flow")
+    assert deleted.status_code == 200
+    assert deleted.json()["flowId"] == "delete-me-flow"
+
+    missing = client.get("/api/v1/flows/delete-me-flow")
+    assert missing.status_code == 404
+
+    protected = client.delete("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+    assert protected.status_code == 409
+    assert "Built-in demo integrations" in protected.json()["detail"]
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert logs[0]["question"] == "Flow definition action: delete-me-flow.delete"
+    assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary"]
+
+
 def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
     response = client.post(
         "/api/v1/flows/suggestions",

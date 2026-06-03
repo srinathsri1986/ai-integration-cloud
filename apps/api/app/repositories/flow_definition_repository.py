@@ -64,6 +64,13 @@ class FlowDefinitionRepository:
         self.session.commit()
         return self.get_flow(flow_id)
 
+    def delete_flow(self, flow_id: str) -> None:
+        record = self.session.get(FlowDefinitionRecord, flow_id)
+        if record is None:
+            raise KeyError(flow_id)
+        self.session.delete(record)
+        self.session.commit()
+
     def clear(self) -> None:
         self.session.execute(delete(FlowDefinitionRecord))
         self.session.commit()
