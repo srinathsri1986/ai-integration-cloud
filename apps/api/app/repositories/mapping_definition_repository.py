@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import MappingDefinitionRecord
@@ -6,12 +6,15 @@ from app.models.mapping import MappingDefinition
 
 
 class MappingDefinitionRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, tenant_id: int | None = None) -> None:
         self.session = session
+        self._tenant_id = tenant_id
 
     def list_mappings(self) -> list[MappingDefinition]:
         records = self.session.scalars(
-            select(MappingDefinitionRecord).order_by(MappingDefinitionRecord.updated_at.desc())
+            self._scope(
+                select(MappingDefinitionRecord).order_by(MappingDefinitionRecord.updated_at.desc())
+            )
         ).all()
         return [self._to_model(record) for record in records]
 
@@ -19,6 +22,7 @@ class MappingDefinitionRepository:
         record = self.session.get(MappingDefinitionRecord, mapping_id)
         if record is None:
             raise KeyError(mapping_id)
+        self._assert_visible(record)
         return self._to_model(record)
 
     def upsert(self, mapping: MappingDefinition) -> MappingDefinition:
@@ -27,6 +31,7 @@ class MappingDefinitionRepository:
 
         if record is None:
             record = MappingDefinitionRecord(
+                tenant_id=self._tenant_id,
                 mapping_id=mapping.mapping_id,
                 name=mapping.name,
                 description=mapping.description,
@@ -65,6 +70,21 @@ class MappingDefinitionRepository:
     def clear(self) -> None:
         self.session.execute(delete(MappingDefinitionRecord))
         self.session.commit()
+
+    def _scope(self, statement):
+        if self._tenant_id is not None:
+            statement = statement.where(
+                or_(
+                    MappingDefinitionRecord.tenant_id == self._tenant_id,
+                    MappingDefinitionRecord.tenant_id.is_(None),
+                )
+            )
+        return statement
+
+    def _assert_visible(self, record: MappingDefinitionRecord) -> None:
+        if self._tenant_id is not None:
+            if record.tenant_id is not None and record.tenant_id != self._tenant_id:
+                raise KeyError(record.mapping_id)
 
     def _to_model(self, record: MappingDefinitionRecord) -> MappingDefinition:
         return MappingDefinition(

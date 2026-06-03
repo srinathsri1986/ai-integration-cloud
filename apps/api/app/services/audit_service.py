@@ -24,10 +24,10 @@ class AuditService:
         self._logs: list[AuditLogEntry] = []
         self._lock = Lock()
 
-    def record(self, entry: AuditLogEntry) -> None:
+    def record(self, entry: AuditLogEntry, tenant_id: int | None = None) -> None:
         safe_entry = AuditLogEntry.model_validate(redact_mapping(entry.model_dump(by_alias=True)))
         with SessionLocal() as session:
-            AuditRepository(session).append(safe_entry)
+            AuditRepository(session, tenant_id).append(safe_entry)
 
         with self._lock:
             self._logs.append(safe_entry)
@@ -220,6 +220,7 @@ class AuditService:
 
     def list_logs(
         self,
+        tenant_id: int | None = None,
         *,
         request_id: str | None = None,
         intent: str | None = None,
@@ -229,7 +230,7 @@ class AuditService:
         offset: int = 0,
     ) -> list[AuditLogEntry]:
         with SessionLocal() as session:
-            return AuditRepository(session).list_logs(
+            return AuditRepository(session, tenant_id).list_logs(
                 request_id=request_id,
                 intent=intent,
                 provider=provider,
@@ -238,13 +239,13 @@ class AuditService:
                 offset=offset,
             )
 
-    def summary(self) -> AuditLogSummary:
+    def summary(self, tenant_id: int | None = None) -> AuditLogSummary:
         with SessionLocal() as session:
-            return AuditRepository(session).summary()
+            return AuditRepository(session, tenant_id).summary()
 
-    def clear_for_tests(self) -> None:
+    def clear_for_tests(self, tenant_id: int | None = None) -> None:
         with SessionLocal() as session:
-            AuditRepository(session).clear()
+            AuditRepository(session, tenant_id).clear()
 
         with self._lock:
             self._logs.clear()

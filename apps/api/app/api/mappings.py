@@ -20,7 +20,7 @@ router = APIRouter(prefix="/mappings", tags=["mappings"])
 def list_mapping_definitions(
     user=Depends(require_permissions("flow:read")),
 ) -> list[MappingDefinition]:
-    return mapping_definition_service.list_mappings()
+    return mapping_definition_service.list_mappings(tenant_id=user.tenant_id)
 
 
 @router.post("/definitions", response_model=MappingDefinition)
@@ -29,7 +29,7 @@ def upsert_mapping_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> MappingDefinition:
     try:
-        return mapping_definition_service.upsert_mapping(request)
+        return mapping_definition_service.upsert_mapping(request, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -67,7 +67,7 @@ def get_mapping_definition(
     user=Depends(require_permissions("flow:read")),
 ) -> MappingDefinition:
     try:
-        return mapping_definition_service.get_mapping(mapping_id)
+        return mapping_definition_service.get_mapping(mapping_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,7 +82,7 @@ def transition_mapping_lifecycle(
     user=Depends(require_permissions("flow:run")),
 ) -> MappingLifecycleResponse:
     try:
-        return mapping_definition_service.transition_mapping(mapping_id, request.action, request.note)
+        return mapping_definition_service.transition_mapping(mapping_id, request.action, request.note, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -101,7 +101,7 @@ def simulate_mapping_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> MappingSimulationResponse:
     try:
-        return mapping_definition_service.simulate_mapping(mapping_id)
+        return mapping_definition_service.simulate_mapping(mapping_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -120,7 +120,7 @@ def delete_mapping_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> dict[str, str]:
     try:
-        return mapping_definition_service.delete_mapping(mapping_id)
+        return mapping_definition_service.delete_mapping(mapping_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

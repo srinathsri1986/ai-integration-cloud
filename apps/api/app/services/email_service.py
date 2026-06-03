@@ -36,6 +36,18 @@ class EmailService:
         """
         self._send(to=email, subject=subject, html=html)
 
+    def send_invite_email(self, email: str, tenant_name: str, role: str, token: str) -> None:
+        accept_url = f"{self._settings.app_base_url}/accept-invite?token={token}"
+        subject = f"You're invited to join {tenant_name} on AI Integration Cloud"
+        html = f"""
+        <h2>You're invited!</h2>
+        <p>You've been invited to join <strong>{tenant_name}</strong> as <strong>{role}</strong>.</p>
+        <p>Click the link below to accept the invitation:</p>
+        <p><a href="{accept_url}">{accept_url}</a></p>
+        <p>This invite expires in 7 days.</p>
+        """
+        self._send(to=email, subject=subject, html=html)
+
     def _send(self, to: str, subject: str, html: str) -> None:
         if self._resend_client:
             try:

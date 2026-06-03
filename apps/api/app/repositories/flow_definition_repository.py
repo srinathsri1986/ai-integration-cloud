@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import FlowDefinitionRecord
@@ -6,21 +6,26 @@ from app.models.flows import FlowDefinition
 
 
 class FlowDefinitionRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, tenant_id: int | None = None) -> None:
         self.session = session
+        self._tenant_id = tenant_id
 
     def seed_missing(self, flows: list[FlowDefinition]) -> None:
         for flow in flows:
             existing = self.session.get(FlowDefinitionRecord, flow.flow_id)
             if existing is None:
-                self.session.add(self._to_record(flow))
+                record = self._to_record(flow)
+                record.tenant_id = None  # built-ins are global (no tenant)
+                self.session.add(record)
             elif existing.status == "active":
                 existing.status = flow.status
         self.session.commit()
 
     def list_flows(self) -> list[FlowDefinition]:
         records = self.session.scalars(
-            select(FlowDefinitionRecord).order_by(FlowDefinitionRecord.created_at.asc())
+            self._scope(
+                select(FlowDefinitionRecord).order_by(FlowDefinitionRecord.created_at.asc())
+            )
         ).all()
         return [self._to_model(record) for record in records]
 
@@ -28,12 +33,14 @@ class FlowDefinitionRepository:
         record = self.session.get(FlowDefinitionRecord, flow_id)
         if record is None:
             raise KeyError(flow_id)
+        self._assert_visible(record)
         return self._to_model(record)
 
     def upsert(self, flow: FlowDefinition) -> FlowDefinition:
         record = self.session.get(FlowDefinitionRecord, flow.flow_id)
         if record is None:
             record = self._to_record(flow)
+            record.tenant_id = self._tenant_id
             self.session.add(record)
         else:
             record.name = flow.name
@@ -74,6 +81,21 @@ class FlowDefinitionRepository:
     def clear(self) -> None:
         self.session.execute(delete(FlowDefinitionRecord))
         self.session.commit()
+
+    def _scope(self, statement):
+        if self._tenant_id is not None:
+            statement = statement.where(
+                or_(
+                    FlowDefinitionRecord.tenant_id == self._tenant_id,
+                    FlowDefinitionRecord.tenant_id.is_(None),
+                )
+            )
+        return statement
+
+    def _assert_visible(self, record: FlowDefinitionRecord) -> None:
+        if self._tenant_id is not None:
+            if record.tenant_id is not None and record.tenant_id != self._tenant_id:
+                raise KeyError(record.flow_id)
 
     def _to_record(self, flow: FlowDefinition) -> FlowDefinitionRecord:
         return FlowDefinitionRecord(

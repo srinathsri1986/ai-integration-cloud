@@ -119,21 +119,21 @@ class FlowService:
         self.orchestrator_service = orchestrator_service or OrchestratorService(self.cfo_service)
         self._lock = Lock()
 
-    def _seed_flows(self) -> None:
+    def _seed_flows(self, tenant_id: int | None = None) -> None:
         with SessionLocal() as session:
-            FlowDefinitionRepository(session).seed_missing(list(_initial_flows().values()))
+            FlowDefinitionRepository(session, tenant_id).seed_missing(list(_initial_flows().values()))
 
-    def list_flows(self) -> list[FlowDefinition]:
+    def list_flows(self, tenant_id: int | None = None) -> list[FlowDefinition]:
         self._seed_flows()
         with SessionLocal() as session:
-            return FlowDefinitionRepository(session).list_flows()
+            return FlowDefinitionRepository(session, tenant_id).list_flows()
 
-    def get_flow(self, flow_id: str) -> FlowDefinition:
+    def get_flow(self, flow_id: str, tenant_id: int | None = None) -> FlowDefinition:
         self._seed_flows()
         with SessionLocal() as session:
-            return FlowDefinitionRepository(session).get_flow(flow_id)
+            return FlowDefinitionRepository(session, tenant_id).get_flow(flow_id)
 
-    def upsert_flow(self, request: FlowDefinitionUpsertRequest) -> FlowDefinition:
+    def upsert_flow(self, request: FlowDefinitionUpsertRequest, tenant_id: int | None = None) -> FlowDefinition:
         flow = FlowDefinition(
             flowId=request.flow_id,
             name=request.name,
@@ -153,7 +153,7 @@ class FlowService:
                 raise ValueError("Flow mappingDefinitionId must reference a published mapping.")
 
         with SessionLocal() as session:
-            saved = FlowDefinitionRepository(session).upsert(flow)
+            saved = FlowDefinitionRepository(session, tenant_id).upsert(flow)
 
         audit_service.record_flow_definition_action(
             flow_id=saved.flow_id,
@@ -167,12 +167,13 @@ class FlowService:
         flow_id: str,
         action: FlowLifecycleAction,
         note: str | None = None,
+        tenant_id: int | None = None,
     ) -> FlowLifecycleResponse:
-        flow = self.get_flow(flow_id)
+        flow = self.get_flow(flow_id, tenant_id)
         next_status = self._next_status(flow.status, action)
 
         with SessionLocal() as session:
-            updated = FlowDefinitionRepository(session).update_status(flow_id, next_status)
+            updated = FlowDefinitionRepository(session, tenant_id).update_status(flow_id, next_status)
 
         audit_service.record_flow_definition_action(
             flow_id=updated.flow_id,
@@ -186,13 +187,13 @@ class FlowService:
             message=f"{updated.name} moved to {next_status}.{note_suffix}",
         )
 
-    def delete_flow(self, flow_id: str) -> dict[str, str]:
+    def delete_flow(self, flow_id: str, tenant_id: int | None = None) -> dict[str, str]:
         if flow_id in BUILT_IN_FLOW_IDS:
             raise ValueError("Built-in demo integrations cannot be deleted.")
 
-        flow = self.get_flow(flow_id)
+        flow = self.get_flow(flow_id, tenant_id)
         with SessionLocal() as session:
-            FlowDefinitionRepository(session).delete_flow(flow_id)
+            FlowDefinitionRepository(session, tenant_id).delete_flow(flow_id)
 
         audit_service.record_flow_definition_action(
             flow_id=flow.flow_id,
@@ -218,7 +219,7 @@ class FlowService:
 
         return next_status
 
-    def run_flow(self, flow_id: FlowId) -> FlowRunResponse:
+    def run_flow(self, flow_id: FlowId, tenant_id: int | None = None) -> FlowRunResponse:
         request_id = str(uuid4())
         started = datetime.now(UTC).isoformat()
         timer_started = perf_counter()
@@ -253,7 +254,7 @@ class FlowService:
                     ],
                 )
                 with SessionLocal() as session:
-                    FlowRunRepository(session).append(response)
+                    FlowRunRepository(session, tenant_id).append(response)
                 return self._with_inspection(response)
 
             if flow_id == "netsuite-cfo-dashboard-refresh":
@@ -322,8 +323,8 @@ class FlowService:
                         ],
                     )
                     with SessionLocal() as session:
-                        FlowRunRepository(session).append(response)
-                        FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                        FlowRunRepository(session, tenant_id).append(response)
+                        FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "failed")
                     return self._with_inspection(response)
 
                 mapping = mapping_definition_service.get_mapping(flow.mapping_definition_id)
@@ -350,8 +351,8 @@ class FlowService:
                         ],
                     )
                     with SessionLocal() as session:
-                        FlowRunRepository(session).append(response)
-                        FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
+                        FlowRunRepository(session, tenant_id).append(response)
+                        FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "failed")
                     return self._with_inspection(response)
 
                 simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
@@ -389,13 +390,13 @@ class FlowService:
                     executionTimeline=execution_timeline,
                 )
                 with SessionLocal() as session:
-                    FlowRunRepository(session).append(response)
-                    FlowDefinitionRepository(session).update_last_run(flow_id, completed, "succeeded")
+                    FlowRunRepository(session, tenant_id).append(response)
+                    FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "succeeded")
                 return self._with_inspection(response)
 
             completed = datetime.now(UTC).isoformat()
             with SessionLocal() as session:
-                FlowDefinitionRepository(session).update_last_run(flow_id, completed, "succeeded")
+                FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "succeeded")
 
             success = True
             response = FlowRunResponse(
@@ -410,7 +411,7 @@ class FlowService:
                 executionTimeline=execution_timeline,
             )
             with SessionLocal() as session:
-                FlowRunRepository(session).append(response)
+                FlowRunRepository(session, tenant_id).append(response)
 
             return self._with_inspection(response)
         finally:
@@ -425,15 +426,16 @@ class FlowService:
                 mapping_definition_id=mapping_definition_id,
             )
 
-    def clear_for_tests(self) -> None:
+    def clear_for_tests(self, tenant_id: int | None = None) -> None:
         with SessionLocal() as session:
-            FlowRunRepository(session).clear()
-            FlowDefinitionRepository(session).clear()
+            FlowRunRepository(session, tenant_id).clear()
+            FlowDefinitionRepository(session, tenant_id).clear()
 
         self._seed_flows()
 
     def list_runs(
         self,
+        tenant_id: int | None = None,
         *,
         flow_id: str | None = None,
         status: str | None = None,
@@ -441,16 +443,16 @@ class FlowService:
         offset: int = 0,
     ) -> list[FlowRunResponse]:
         with SessionLocal() as session:
-            return FlowRunRepository(session).list_runs(
+            return FlowRunRepository(session, tenant_id).list_runs(
                 flow_id=flow_id,
                 status=status,
                 limit=limit,
                 offset=offset,
             )
 
-    def get_run(self, request_id: str) -> FlowRunResponse:
+    def get_run(self, request_id: str, tenant_id: int | None = None) -> FlowRunResponse:
         with SessionLocal() as session:
-            return FlowRunRepository(session).get_by_request_id(request_id)
+            return FlowRunRepository(session, tenant_id).get_by_request_id(request_id)
 
     def _with_inspection(self, response: FlowRunResponse) -> FlowRunResponse:
         mapping_simulation = response.data.get("mappingSimulation") if isinstance(response.data, dict) else None

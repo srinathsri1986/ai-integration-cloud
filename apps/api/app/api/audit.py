@@ -19,7 +19,7 @@ def logs(
     offset: int = 0,
     user=Depends(require_permissions("audit:read")),
 ) -> list[AuditLogEntry]:
-    return audit_service.list_logs(
+    return audit_service.list_logs(tenant_id=user.tenant_id,
         request_id=request_id,
         intent=intent,
         provider=provider,
@@ -31,4 +31,4 @@ def logs(
 
 @router.get("/summary", response_model=AuditLogSummary)
 def summary(user=Depends(require_permissions("audit:read"))) -> AuditLogSummary:
-    return audit_service.summary()
+    return audit_service.summary(tenant_id=user.tenant_id)

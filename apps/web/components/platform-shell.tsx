@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrainCircuit, LogOut, ShieldCheck } from "lucide-react";
+import { BrainCircuit, Building2, LogOut, ShieldCheck } from "lucide-react";
 import type { UserRole } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, logoutUser } from "@/lib/api";
+import { getCurrentTenant, LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, logoutUser, type TenantInfo } from "@/lib/api";
 import { routesForRole } from "@/lib/navigation";
 
 type PlatformShellProps = {
@@ -29,21 +29,22 @@ export function PlatformShell({
   const pathname = usePathname();
   const [role, setRole] = useState<UserRole>("Integration Admin");
   const [email, setEmail] = useState("local-dev@example.com");
+  const [tenant, setTenant] = useState<TenantInfo | null>(null);
 
   useEffect(() => {
     const storedRole = window.localStorage.getItem(LOCAL_AUTH_ROLE_KEY) as UserRole | null;
     const storedEmail = window.localStorage.getItem(LOCAL_AUTH_EMAIL_KEY);
+    if (storedRole) setRole(storedRole);
+    if (storedEmail) setEmail(storedEmail);
 
-    if (storedRole) {
-      setRole(storedRole);
-    }
-
-    if (storedEmail) {
-      setEmail(storedEmail);
-    }
+    getCurrentTenant().then((result) => {
+      if (result.ok) setTenant(result.data);
+    });
   }, []);
 
   const routes = routesForRole(role);
+  const tenantName = tenant?.name ?? "Local Workspace";
+  const plan = tenant?.plan ? tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1) : "MVP";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_34rem),linear-gradient(180deg,#f8fafc_0%,#eef2f6_100%)]">
@@ -54,7 +55,7 @@ export function PlatformShell({
           </span>
           <span>
             <span className="block text-sm font-semibold leading-5">AI Integration Cloud</span>
-            <span className="block text-xs text-muted-foreground">Governed iPaaS MVP</span>
+            <span className="block text-xs text-muted-foreground">Governed iPaaS</span>
           </span>
         </Link>
 
@@ -85,27 +86,37 @@ export function PlatformShell({
           })}
         </div>
 
-        <div className="absolute bottom-5 left-4 right-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
-            <div>
-              <p className="text-sm font-semibold">{role}</p>
-              <p className="mt-1 break-all text-xs leading-5 text-muted-foreground">{email}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Badge className="bg-white">Tenant: local</Badge>
-                <Badge className="bg-white">Plan: MVP</Badge>
+        <div className="absolute bottom-5 left-4 right-4 space-y-2">
+          {/* Workspace card */}
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 shrink-0 text-slate-500" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{tenantName}</p>
+                <p className="text-xs text-muted-foreground">{plan} plan</p>
               </div>
             </div>
           </div>
-          <Button
-            className="mt-3 w-full"
-            onClick={async () => { await logoutUser(); window.location.href = "/login"; }}
-            type="button"
-            variant="secondary"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign out
-          </Button>
+
+          {/* User card */}
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{role}</p>
+                <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">{email}</p>
+              </div>
+            </div>
+            <Button
+              className="mt-3 w-full"
+              onClick={async () => { await logoutUser(); window.location.href = "/login"; }}
+              type="button"
+              variant="secondary"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -118,9 +129,8 @@ export function PlatformShell({
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">Local MVP</Badge>
-              <Badge className="border-sky-200 bg-sky-50 text-sky-900">Ollama ready</Badge>
-              <Badge className="border-violet-200 bg-violet-50 text-violet-900">Tenant workspace</Badge>
+              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">{tenantName}</Badge>
+              <Badge className="border-sky-200 bg-sky-50 text-sky-900">{plan} plan</Badge>
               <Badge className="border-slate-200 bg-white text-slate-700">{role}</Badge>
             </div>
           </div>

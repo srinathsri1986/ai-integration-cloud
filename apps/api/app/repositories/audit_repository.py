@@ -8,11 +8,13 @@ from app.models.audit import AuditLogEntry, AuditLogSummary
 
 
 class AuditRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, tenant_id: int | None = None) -> None:
         self.session = session
+        self._tenant_id = tenant_id
 
     def append(self, entry: AuditLogEntry) -> None:
         record = AuditLogRecord(
+            tenant_id=self._tenant_id,
             timestamp=entry.timestamp,
             request_id=entry.request_id,
             user=entry.user,
@@ -52,6 +54,7 @@ class AuditRepository:
         offset: int = 0,
     ) -> list[AuditLogEntry]:
         statement = select(AuditLogRecord).order_by(AuditLogRecord.created_at.desc())
+        statement = self._scope(statement)
 
         if request_id:
             statement = statement.where(AuditLogRecord.request_id == request_id)
@@ -67,7 +70,8 @@ class AuditRepository:
         return [self._to_entry(record) for record in records]
 
     def summary(self) -> AuditLogSummary:
-        records = self.session.scalars(select(AuditLogRecord)).all()
+        statement = self._scope(select(AuditLogRecord))
+        records = self.session.scalars(statement).all()
         total = len(records)
         successes = sum(1 for record in records if record.success)
         failures = total - successes
@@ -92,6 +96,13 @@ class AuditRepository:
 
     def count(self) -> int:
         return self.session.scalar(select(func.count()).select_from(AuditLogRecord)) or 0
+
+    def _scope(self, statement):
+        if self._tenant_id is not None:
+            statement = statement.where(
+                (AuditLogRecord.tenant_id == self._tenant_id) | AuditLogRecord.tenant_id.is_(None)
+            )
+        return statement
 
     def _to_entry(self, record: AuditLogRecord) -> AuditLogEntry:
         return AuditLogEntry(

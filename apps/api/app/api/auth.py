@@ -23,6 +23,7 @@ from app.models.auth import (
     RegisterResponse,
     ResetPasswordRequest,
 )
+from app.repositories.tenant_repository import TenantRepository
 from app.repositories.user_repository import UserRepository
 from app.services.email_service import EmailService
 
@@ -53,11 +54,18 @@ def verify_email(
     token: str,
     session: Session = Depends(get_session),
 ) -> MessageResponse:
-    repo = UserRepository(session)
-    user = repo.get_by_verification_token(token)
+    user_repo = UserRepository(session)
+    user = user_repo.get_by_verification_token(token)
     if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification link.")
-    repo.verify_email(user)
+    user_repo.verify_email(user)
+
+    # Auto-provision a personal workspace for new users
+    tenant_repo = TenantRepository(session)
+    name = user.email.split("@")[0].replace(".", " ").title() + "'s Workspace"
+    tenant = tenant_repo.create_tenant(name=name)
+    tenant_repo.add_member(tenant_id=tenant.id, user_id=user.id, role=user.role)
+
     return MessageResponse(message="Email verified. You can now log in.")
 
 
@@ -75,7 +83,12 @@ def login(
     if not user.is_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not verified. Check your inbox.")
 
-    access_token = create_access_token(user_id=user.id, email=user.email, role=user.role)
+    # Look up which tenant this user belongs to (first membership)
+    tenant_repo = TenantRepository(session)
+    members = tenant_repo.list_members_for_user(user_id=user.id)
+    tenant_id = members[0].tenant_id if members else None
+
+    access_token = create_access_token(user_id=user.id, email=user.email, role=user.role, tenant_id=tenant_id)
     refresh_token = create_refresh_token(user_id=user.id)
 
     response.set_cookie(
@@ -96,7 +109,7 @@ def login(
         path="/api/v1/auth/refresh",
     )
 
-    auth_user = AuthUser(userId=str(user.id), email=user.email, role=user.role)  # type: ignore[arg-type]
+    auth_user = AuthUser(userId=str(user.id), email=user.email, role=user.role, tenantId=tenant_id)  # type: ignore[arg-type]
     return LoginResponse(accessToken=access_token, user=auth_user)
 
 
@@ -115,7 +128,11 @@ def refresh(
     if not user or not user.is_verified:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or unverified.")
 
-    access_token = create_access_token(user_id=user.id, email=user.email, role=user.role)
+    tenant_repo = TenantRepository(session)
+    members = tenant_repo.list_members_for_user(user_id=user.id)
+    tenant_id = members[0].tenant_id if members else None
+
+    access_token = create_access_token(user_id=user.id, email=user.email, role=user.role, tenant_id=tenant_id)
     new_refresh_token = create_refresh_token(user_id=user.id)
 
     response.set_cookie(
@@ -136,7 +153,7 @@ def refresh(
         path="/api/v1/auth/refresh",
     )
 
-    auth_user = AuthUser(userId=str(user.id), email=user.email, role=user.role)  # type: ignore[arg-type]
+    auth_user = AuthUser(userId=str(user.id), email=user.email, role=user.role, tenantId=tenant_id)  # type: ignore[arg-type]
     return LoginResponse(accessToken=access_token, user=auth_user)
 
 

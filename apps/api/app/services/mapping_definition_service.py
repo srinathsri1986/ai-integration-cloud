@@ -16,15 +16,15 @@ from app.services.mapping_catalog import get_mapping_object, sample_payload_for_
 
 
 class MappingDefinitionService:
-    def list_mappings(self) -> list[MappingDefinition]:
+    def list_mappings(self, tenant_id: int | None = None) -> list[MappingDefinition]:
         with SessionLocal() as session:
-            return MappingDefinitionRepository(session).list_mappings()
+            return MappingDefinitionRepository(session, tenant_id).list_mappings()
 
-    def get_mapping(self, mapping_id: str) -> MappingDefinition:
+    def get_mapping(self, mapping_id: str, tenant_id: int | None = None) -> MappingDefinition:
         with SessionLocal() as session:
-            return MappingDefinitionRepository(session).get_mapping(mapping_id)
+            return MappingDefinitionRepository(session, tenant_id).get_mapping(mapping_id)
 
-    def upsert_mapping(self, request: MappingDefinitionUpsertRequest) -> MappingDefinition:
+    def upsert_mapping(self, request: MappingDefinitionUpsertRequest, tenant_id: int | None = None) -> MappingDefinition:
         self._validate_rows(request)
         mapping = MappingDefinition(
             mappingId=request.mapping_id,
@@ -37,7 +37,7 @@ class MappingDefinitionService:
         )
 
         with SessionLocal() as session:
-            saved = MappingDefinitionRepository(session).upsert(mapping)
+            saved = MappingDefinitionRepository(session, tenant_id).upsert(mapping)
 
         audit_service.record_mapping_definition_action(
             mapping_id=saved.mapping_id,
@@ -51,12 +51,13 @@ class MappingDefinitionService:
         mapping_id: str,
         action: MappingLifecycleAction,
         note: str | None = None,
+        tenant_id: int | None = None,
     ) -> MappingLifecycleResponse:
-        mapping = self.get_mapping(mapping_id)
+        mapping = self.get_mapping(mapping_id, tenant_id)
         next_status = self._next_status(mapping.status, action)
 
         with SessionLocal() as session:
-            updated = MappingDefinitionRepository(session).update_status(mapping_id, next_status)
+            updated = MappingDefinitionRepository(session, tenant_id).update_status(mapping_id, next_status)
 
         audit_service.record_mapping_definition_action(
             mapping_id=updated.mapping_id,
@@ -70,7 +71,7 @@ class MappingDefinitionService:
             message=f"{updated.name} moved to {next_status}.{note_suffix}",
         )
 
-    def simulate_mapping(self, mapping_id: str) -> MappingSimulationResponse:
+    def simulate_mapping(self, mapping_id: str, tenant_id: int | None = None) -> MappingSimulationResponse:
         request_id = str(uuid4())
         started = perf_counter()
         success = False
@@ -116,9 +117,9 @@ class MappingDefinitionService:
                 latency_ms=int((perf_counter() - started) * 1000),
             )
 
-    def delete_mapping(self, mapping_id: str) -> dict[str, str]:
+    def delete_mapping(self, mapping_id: str, tenant_id: int | None = None) -> dict[str, str]:
         with SessionLocal() as session:
-            MappingDefinitionRepository(session).delete_mapping(mapping_id)
+            MappingDefinitionRepository(session, tenant_id).delete_mapping(mapping_id)
 
         audit_service.record_mapping_definition_action(
             mapping_id=mapping_id,
@@ -130,9 +131,9 @@ class MappingDefinitionService:
             "message": "Mapping definition deleted.",
         }
 
-    def clear_for_tests(self) -> None:
+    def clear_for_tests(self, tenant_id: int | None = None) -> None:
         with SessionLocal() as session:
-            MappingDefinitionRepository(session).clear()
+            MappingDefinitionRepository(session, tenant_id).clear()
 
     def _validate_rows(self, request: MappingDefinitionUpsertRequest) -> None:
         source_object = get_mapping_object(request.source_object_id)

@@ -16,6 +16,7 @@ class AuthUser(BaseModel):
     user_id: str = Field(alias="userId")
     email: str
     role: UserRole
+    tenant_id: int | None = Field(default=None, alias="tenantId")
 
 
 # --- Registration ---

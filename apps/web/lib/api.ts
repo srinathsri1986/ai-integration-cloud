@@ -1643,3 +1643,89 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
     };
   }
 }
+
+// --- Tenant API ---
+
+export type TenantInfo = { id: number; name: string; slug: string; plan: string };
+export type TenantMember = { userId: number; email: string; role: string };
+export type PendingInvite = { id: number; email: string; role: string };
+
+export async function getCurrentTenant(): Promise<ClientApiResult<TenantInfo>> {
+  const fallback: TenantInfo = { id: 0, name: "Local Workspace", slug: "local", plan: "MVP" };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: authHeaders()
+    });
+    if (!response.ok) return { data: fallback, error: `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: await response.json(), isFallback: false, ok: true };
+  } catch {
+    return { data: fallback, isFallback: true, ok: false };
+  }
+}
+
+export async function getTenantMembers(): Promise<ClientApiResult<TenantMember[]>> {
+  const fallback: TenantMember[] = [];
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: authHeaders()
+    });
+    if (!response.ok) return { data: fallback, error: `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: await response.json(), isFallback: false, ok: true };
+  } catch {
+    return { data: fallback, isFallback: true, ok: false };
+  }
+}
+
+export async function getPendingInvites(): Promise<ClientApiResult<PendingInvite[]>> {
+  const fallback: PendingInvite[] = [];
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/invites`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: authHeaders()
+    });
+    if (!response.ok) return { data: fallback, error: `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: await response.json(), isFallback: false, ok: true };
+  } catch {
+    return { data: fallback, isFallback: true, ok: false };
+  }
+}
+
+export async function inviteMember(email: string, role: string): Promise<ClientApiResult<{ message: string; email: string; role: string }>> {
+  const fallback = { message: "Invite failed.", email, role };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/invite`, {
+      body: JSON.stringify({ email, role }),
+      cache: "no-store",
+      credentials: "include",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      method: "POST"
+    });
+    const body = await response.json();
+    if (!response.ok) return { data: fallback, error: body?.detail ?? `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
+}
+
+export async function removeMember(userId: number): Promise<ClientApiResult<{ message: string }>> {
+  const fallback = { message: "Remove failed." };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/${userId}`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: authHeaders(),
+      method: "DELETE"
+    });
+    const body = await response.json();
+    if (!response.ok) return { data: fallback, error: body?.detail ?? `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
+}

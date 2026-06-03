@@ -19,7 +19,7 @@ router = APIRouter(prefix="/flows", tags=["flows"])
 
 @router.get("", response_model=list[FlowDefinition])
 def list_flows(user=Depends(require_permissions("flow:read"))) -> list[FlowDefinition]:
-    return flow_service.list_flows()
+    return flow_service.list_flows(tenant_id=user.tenant_id)
 
 
 @router.get("/runs", response_model=list[FlowRunResponse])
@@ -30,7 +30,7 @@ def list_flow_runs(
     offset: int = 0,
     user=Depends(require_permissions("flow:read")),
 ) -> list[FlowRunResponse]:
-    return flow_service.list_runs(
+    return flow_service.list_runs(tenant_id=user.tenant_id,
         flow_id=flow_id,
         status=run_status,
         limit=min(max(limit, 1), 500),
@@ -44,7 +44,7 @@ def get_flow_run(
     user=Depends(require_permissions("flow:read")),
 ) -> FlowRunResponse:
     try:
-        return flow_service.get_run(request_id)
+        return flow_service.get_run(request_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -58,7 +58,7 @@ def upsert_flow_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> FlowDefinition:
     try:
-        return flow_service.upsert_flow(request)
+        return flow_service.upsert_flow(request, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -92,7 +92,7 @@ def transition_flow_lifecycle(
     user=Depends(require_permissions("flow:run")),
 ) -> FlowLifecycleResponse:
     try:
-        return flow_service.transition_flow(flow_id, request.action, request.note)
+        return flow_service.transition_flow(flow_id, request.action, request.note, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -111,7 +111,7 @@ def delete_flow_definition(
     user=Depends(require_permissions("flow:run")),
 ) -> dict[str, str]:
     try:
-        return flow_service.delete_flow(flow_id)
+        return flow_service.delete_flow(flow_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -127,7 +127,7 @@ def delete_flow_definition(
 @router.get("/{flow_id}", response_model=FlowDefinition)
 def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) -> FlowDefinition:
     try:
-        return flow_service.get_flow(flow_id)
+        return flow_service.get_flow(flow_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -138,7 +138,7 @@ def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) ->
 @router.post("/{flow_id}/run", response_model=FlowRunResponse)
 def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> FlowRunResponse:
     try:
-        return flow_service.run_flow(flow_id)
+        return flow_service.run_flow(flow_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

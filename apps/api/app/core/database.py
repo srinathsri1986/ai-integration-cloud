@@ -23,8 +23,34 @@ def init_db() -> None:
     from app.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_tenant_columns()
     _ensure_users_table()
     _ensure_lightweight_columns()
+
+
+def _ensure_tenant_columns() -> None:
+    """Add tenant_id columns to existing tables for older schemas."""
+    with engine.begin() as connection:
+        dialect_name = connection.dialect.name
+        tables_needing_tenant_id = [
+            "audit_logs",
+            "flow_runs",
+            "flow_definitions",
+            "mapping_definitions",
+        ]
+        if dialect_name == "sqlite":
+            for table in tables_needing_tenant_id:
+                rows = connection.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+                columns = {row[1] for row in rows}
+                if "tenant_id" not in columns:
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER REFERENCES tenants(id)"
+                    )
+        elif dialect_name == "postgresql":
+            for table in tables_needing_tenant_id:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id)"
+                )
 
 
 def _ensure_users_table() -> None:

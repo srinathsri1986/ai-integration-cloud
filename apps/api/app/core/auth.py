@@ -57,13 +57,14 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # --- JWT helpers ---
 
-def create_access_token(user_id: int, email: str, role: str) -> str:
+def create_access_token(user_id: int, email: str, role: str, tenant_id: int | None = None) -> str:
     settings = get_settings()
     expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": str(user_id),
         "email": email,
         "role": role,
+        "tenant_id": tenant_id,
         "exp": expire,
         "type": "access",
     }
@@ -131,6 +132,7 @@ def get_current_user(
                 userId=payload["sub"],
                 email=payload["email"],
                 role=payload["role"],
+                tenantId=payload.get("tenant_id"),
             )
     except JWTError:
         pass

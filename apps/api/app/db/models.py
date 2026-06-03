@@ -1,12 +1,58 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.types import JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+
+class TenantRecord(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    plan: Mapped[str] = mapped_column(String(32), nullable=False, default="starter")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class TenantMemberRecord(Base):
+    __tablename__ = "tenant_members"
+    __table_args__ = (
+        Index("ix_tenant_members_tenant_user", "tenant_id", "user_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class TenantInviteRecord(Base):
+    __tablename__ = "tenant_invites"
+    __table_args__ = (
+        Index("ix_tenant_invites_token", "token", unique=True),
+        Index("ix_tenant_invites_email_tenant", "email", "tenant_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
 
 
 class UserRecord(Base):
@@ -47,9 +93,11 @@ class AuditLogRecord(Base):
         Index("ix_audit_logs_detected_intent_created_at", "detected_intent", "created_at"),
         Index("ix_audit_logs_ai_provider_created_at", "ai_provider", "created_at"),
         Index("ix_audit_logs_success_created_at", "success", "created_at"),
+        Index("ix_audit_logs_tenant_id", "tenant_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -87,9 +135,11 @@ class FlowRunRecord(Base):
         Index("ix_flow_runs_request_id", "request_id"),
         Index("ix_flow_runs_flow_id_started_at", "flow_id", "started_at"),
         Index("ix_flow_runs_status_started_at", "status", "started_at"),
+        Index("ix_flow_runs_tenant_id", "tenant_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=True)
     request_id: Mapped[str] = mapped_column(String(64), nullable=False)
     flow_id: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -111,9 +161,11 @@ class FlowDefinitionRecord(Base):
     __table_args__ = (
         Index("ix_flow_definitions_status", "status"),
         Index("ix_flow_definitions_target_module", "target_module"),
+        Index("ix_flow_definitions_tenant_id", "tenant_id"),
     )
 
     flow_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     source_connector: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -142,9 +194,11 @@ class MappingDefinitionRecord(Base):
     __table_args__ = (
         Index("ix_mapping_definitions_status", "status"),
         Index("ix_mapping_definitions_source_target", "source_object_id", "target_object_id"),
+        Index("ix_mapping_definitions_tenant_id", "tenant_id"),
     )
 
     mapping_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     source_object_id: Mapped[str] = mapped_column(String(80), nullable=False)
