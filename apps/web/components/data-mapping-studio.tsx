@@ -54,6 +54,8 @@ type MappingRow = {
   rationale?: string;
 };
 
+type WizardStep = "describe" | "discover" | "map" | "review";
+
 const initialMappings: MappingRow[] = [
   {
     id: "map-customer",
@@ -76,6 +78,7 @@ const initialMappings: MappingRow[] = [
 ];
 
 export function DataMappingStudio() {
+  const [activeStep, setActiveStep] = useState<WizardStep>("discover");
   const [sourceSystemId, setSourceSystemId] = useState("netsuite");
   const [targetSystemId, setTargetSystemId] = useState("salesforce");
   const [sourceObjectId, setSourceObjectId] = useState("netsuite-project");
@@ -149,6 +152,7 @@ export function DataMappingStudio() {
   );
   const usesSessionDiscoveredObject =
     sourceObjectId.startsWith("rest-discovered-") || targetObjectId.startsWith("rest-discovered-");
+  const canReview = mappings.length > 0 && missingRequiredTargets.length === 0;
 
   useEffect(() => {
     loadSavedMappings();
@@ -228,6 +232,7 @@ export function DataMappingStudio() {
         : `${response.data.suggestionProvider} suggested ${response.data.suggestions.length} reviewed draft matches.`
     );
     setIsSuggesting(false);
+    setActiveStep("map");
   }
 
   function acceptSuggestion(suggestion: MappingSuggestionItem) {
@@ -268,7 +273,7 @@ export function DataMappingStudio() {
   async function saveDraft() {
     if (usesSessionDiscoveredObject) {
       setMessage(
-        "Discovered REST schemas are session-scoped in V3.1. Map them visually now; promote them to a governed catalog object before saving a persistent mapping."
+        "Discovered REST schemas are session-scoped. Map them visually now; promote them to a governed catalog object before saving a persistent mapping."
       );
       return;
     }
@@ -344,6 +349,7 @@ export function DataMappingStudio() {
     setSuggestions([]);
     setSimulation(undefined);
     setMessage(`${mapping.name} opened in the mapping grid.`);
+    setActiveStep("map");
   }
 
   async function discoverSchema() {
@@ -400,6 +406,7 @@ export function DataMappingStudio() {
     setSuggestions([]);
     setSimulation(undefined);
     setMessage(`${mappingObject.displayName} is ready in the ${role} tray.`);
+    setActiveStep("map");
   }
 
   return (
@@ -431,6 +438,9 @@ export function DataMappingStudio() {
         </div>
       </Card>
 
+      <WizardProgress activeStep={activeStep} onStepChange={setActiveStep} />
+
+      {activeStep === "describe" ? (
       <Card className="overflow-hidden border-slate-200 bg-white/95 p-0 shadow-sm">
         <div className="grid gap-0 lg:grid-cols-[1fr_380px]">
           <div className="p-5 lg:p-6">
@@ -525,7 +535,9 @@ export function DataMappingStudio() {
           </div>
         </div>
       </Card>
+      ) : null}
 
+      {activeStep === "discover" ? (
       <Card className="overflow-hidden border-slate-200 bg-white/95 p-0 shadow-sm">
         <div className="grid gap-0 lg:grid-cols-[1fr_420px]">
           <div className="p-5 lg:p-6">
@@ -664,7 +676,9 @@ export function DataMappingStudio() {
           </div>
         </div>
       </Card>
+      ) : null}
 
+      {activeStep === "review" ? (
       <Card className="border-slate-200 bg-white/95 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]">
           <div>
@@ -766,8 +780,9 @@ export function DataMappingStudio() {
           </div>
         </div>
       </Card>
+      ) : null}
 
-      {simulation ? (
+      {activeStep === "review" && simulation ? (
         <Card className="border-slate-200 bg-white/95 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -803,6 +818,7 @@ export function DataMappingStudio() {
         </Card>
       ) : null}
 
+      {activeStep === "map" ? (
       <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr_1fr]">
         <FieldTray
           fields={sourceObject.fields}
@@ -811,7 +827,7 @@ export function DataMappingStudio() {
           onFieldSelect={setSelectedSourceField}
           onObjectChange={(objectId) => {
             setSourceObjectId(objectId);
-            setSelectedSourceField(mappingObjects.find((object) => object.id === objectId)?.fields[0]?.name);
+            setSelectedSourceField(allMappingObjects.find((object) => object.id === objectId)?.fields[0]?.name);
             setMappings([]);
           }}
           onSystemChange={onSourceSystemChange}
@@ -916,9 +932,13 @@ export function DataMappingStudio() {
             </p>
           ) : null}
 
-          <Button className="mt-5 w-full" onClick={saveDraft} type="button">
-            <ListChecks className="h-4 w-4" />
-            Save mapping draft
+          <Button
+            className="mt-5 w-full bg-slate-950 text-white hover:bg-slate-800"
+            disabled={!canReview}
+            onClick={() => setActiveStep("review")}
+            type="button"
+          >
+            Review integration
           </Button>
         </Card>
 
@@ -942,12 +962,82 @@ export function DataMappingStudio() {
           title="Target"
         />
       </section>
+      ) : null}
 
+      {activeStep === "review" ? (
       <section className="grid gap-4 lg:grid-cols-2">
         <PayloadPreview fields={sourceObject.fields} title="Source sample payload" />
         <PayloadPreview fields={targetObject.fields} title="Target sample payload" />
       </section>
+      ) : null}
     </div>
+  );
+}
+
+function WizardProgress({
+  activeStep,
+  onStepChange
+}: {
+  activeStep: WizardStep;
+  onStepChange: (step: WizardStep) => void;
+}) {
+  const steps: Array<{ id: WizardStep; label: string; summary: string }> = [
+    {
+      id: "describe",
+      label: "Describe",
+      summary: "Optional AI help"
+    },
+    {
+      id: "discover",
+      label: "Choose data",
+      summary: "Discover or select fields"
+    },
+    {
+      id: "map",
+      label: "Map fields",
+      summary: "Match source to target"
+    },
+    {
+      id: "review",
+      label: "Review",
+      summary: "Save or simulate"
+    }
+  ];
+
+  return (
+    <Card className="border-slate-200 bg-white/95 p-4 shadow-sm">
+      <div className="grid gap-3 md:grid-cols-4">
+        {steps.map((step, index) => {
+          const isActive = step.id === activeStep;
+          return (
+            <button
+              className={`rounded-lg border p-4 text-left transition-colors ${
+                isActive
+                  ? "border-slate-950 bg-slate-950 text-white"
+                  : "border-slate-200 bg-slate-50 text-slate-950 hover:border-primary"
+              }`}
+              key={step.id}
+              onClick={() => onStepChange(step.id)}
+              type="button"
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                    isActive ? "bg-white text-slate-950" : "bg-white text-slate-700"
+                  }`}
+                >
+                  {index + 1}
+                </span>
+                <span className="text-sm font-semibold">{step.label}</span>
+              </div>
+              <p className={isActive ? "mt-2 text-xs text-slate-300" : "mt-2 text-xs text-muted-foreground"}>
+                {step.summary}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 

@@ -676,6 +676,17 @@ Workflow:
 
 Discovered objects are session-scoped in V3.1. They are not persisted as governed catalog objects yet, and mappings that reference them cannot be saved permanently until a future catalog promotion step is added. No external API call, credential storage, arbitrary payload execution, SQL, or SuiteQL is introduced.
 
+## Guided Integration Wizard UI v3.2
+
+V3.2 reduces Mapping Studio clutter by turning the experience into a guided wizard:
+
+- Describe: optional natural-language mapping help.
+- Choose data: discover or select the source payload.
+- Map fields: match source fields to target fields.
+- Review: inspect payload previews and save eligible governed mappings.
+
+Only the current step is shown, so non-technical users can move through one decision at a time. Session-discovered REST schemas remain design-time only until a future governed catalog promotion step.
+
 The backend exposes flow run detail lookup:
 
 ```bash

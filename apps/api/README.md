@@ -219,6 +219,8 @@ Schema discovery is design-time only. It infers top-level scalar fields from pas
 
 The V3.1 web Mapping Studio can use discovered schemas as temporary source or target trays. This is browser/session scoped only; persistent mapping definitions still require known governed catalog object IDs.
 
+The V3.2 web Mapping Studio presents discovery, mapping, and review as separate guided steps. This is a frontend workflow change only; API governance and persistence rules remain unchanged.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:
