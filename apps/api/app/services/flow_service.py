@@ -219,8 +219,54 @@ class FlowService:
 
         return next_status
 
-    def run_flow(self, flow_id: FlowId, tenant_id: int | None = None) -> FlowRunResponse:
+    def enqueue_flow_run(self, flow_id: FlowId, tenant_id: int | None = None) -> FlowRunResponse:
+        """Create a running record and enqueue async execution. Returns 202-style response."""
+        from app.worker.tasks import execute_flow_task
+
         request_id = str(uuid4())
+        started = datetime.now(UTC).isoformat()
+
+        with SessionLocal() as session:
+            FlowRunRepository(session, tenant_id).create_running(flow_id, request_id, started)
+
+        execute_flow_task.delay(flow_id, request_id, tenant_id)
+
+        return FlowRunResponse(
+            requestId=request_id,
+            flowId=flow_id,
+            status="running",
+            startedAt=started,
+            completedAt=None,
+            toolsUsed=[],
+            message="Flow execution enqueued.",
+            data={},
+            executionTimeline=[],
+        )
+
+    def _mark_run_dead_letter(
+        self, request_id: str, tenant_id: int | None, message: str
+    ) -> None:
+        completed = datetime.now(UTC).isoformat()
+        with SessionLocal() as session:
+            repo = FlowRunRepository(session, tenant_id)
+            existing = repo.get_by_request_id(request_id)
+            dead = FlowRunResponse(
+                requestId=request_id,
+                flowId=existing.flow_id,
+                status="failed",
+                startedAt=existing.started_at,
+                completedAt=completed,
+                toolsUsed=[],
+                message=message,
+                data={},
+                executionTimeline=[],
+            )
+            repo.update_completed(request_id, dead)
+
+    def _execute_flow_sync(
+        self, flow_id: FlowId, request_id: str, tenant_id: int | None = None
+    ) -> None:
+        """Run flow synchronously and update the existing run record. Called by Celery task."""
         started = datetime.now(UTC).isoformat()
         timer_started = perf_counter()
         tools_used: list[str] = []
@@ -254,8 +300,8 @@ class FlowService:
                     ],
                 )
                 with SessionLocal() as session:
-                    FlowRunRepository(session, tenant_id).append(response)
-                return self._with_inspection(response)
+                    FlowRunRepository(session, tenant_id).update_completed(request_id, response)
+                return
 
             if flow_id == "netsuite-cfo-dashboard-refresh":
                 data = {
@@ -323,9 +369,12 @@ class FlowService:
                         ],
                     )
                     with SessionLocal() as session:
-                        FlowRunRepository(session, tenant_id).append(response)
-                        FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "failed")
-                    return self._with_inspection(response)
+                        repo = FlowRunRepository(session, tenant_id)
+                        repo.update_completed(request_id, response)
+                        FlowDefinitionRepository(session, tenant_id).update_last_run(
+                            flow_id, completed, "failed"
+                        )
+                    return
 
                 mapping = mapping_definition_service.get_mapping(flow.mapping_definition_id)
                 if mapping.status != "published":
@@ -351,9 +400,12 @@ class FlowService:
                         ],
                     )
                     with SessionLocal() as session:
-                        FlowRunRepository(session, tenant_id).append(response)
-                        FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "failed")
-                    return self._with_inspection(response)
+                        repo = FlowRunRepository(session, tenant_id)
+                        repo.update_completed(request_id, response)
+                        FlowDefinitionRepository(session, tenant_id).update_last_run(
+                            flow_id, completed, "failed"
+                        )
+                    return
 
                 simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
                 execution_timeline = self._timeline_for_tools(
@@ -374,6 +426,7 @@ class FlowService:
                     )
                 )
                 success = True
+                completed = datetime.now(UTC).isoformat()
                 response = FlowRunResponse(
                     requestId=request_id,
                     flowId=flow_id,
@@ -390,13 +443,18 @@ class FlowService:
                     executionTimeline=execution_timeline,
                 )
                 with SessionLocal() as session:
-                    FlowRunRepository(session, tenant_id).append(response)
-                    FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "succeeded")
-                return self._with_inspection(response)
+                    repo = FlowRunRepository(session, tenant_id)
+                    repo.update_completed(request_id, response)
+                    FlowDefinitionRepository(session, tenant_id).update_last_run(
+                        flow_id, completed, "succeeded"
+                    )
+                return
 
             completed = datetime.now(UTC).isoformat()
             with SessionLocal() as session:
-                FlowDefinitionRepository(session, tenant_id).update_last_run(flow_id, completed, "succeeded")
+                FlowDefinitionRepository(session, tenant_id).update_last_run(
+                    flow_id, completed, "succeeded"
+                )
 
             success = True
             response = FlowRunResponse(
@@ -411,9 +469,8 @@ class FlowService:
                 executionTimeline=execution_timeline,
             )
             with SessionLocal() as session:
-                FlowRunRepository(session, tenant_id).append(response)
+                FlowRunRepository(session, tenant_id).update_completed(request_id, response)
 
-            return self._with_inspection(response)
         finally:
             latency_ms = int((perf_counter() - timer_started) * 1000)
             audit_service.record_flow_action(

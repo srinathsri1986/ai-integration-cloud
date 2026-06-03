@@ -144,7 +144,7 @@ class FlowRunRecord(Base):
     flow_id: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     started_at: Mapped[str] = mapped_column(String(64), nullable=False)
-    completed_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tools_used: Mapped[list[str]] = mapped_column(_json_type(), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(_json_type(), nullable=False)

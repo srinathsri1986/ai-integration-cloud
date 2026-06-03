@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 FlowId = str
 FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
 FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause"]
-FlowRunStatus = Literal["never_run", "succeeded", "failed"]
+FlowRunStatus = Literal["never_run", "running", "succeeded", "failed"]
 FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
 FlowTriggerType = Literal["manual", "schedule_placeholder"]
 ApprovedFlowTool = Literal[
@@ -129,7 +129,7 @@ class FlowRunResponse(BaseModel):
     flow_id: FlowId = Field(alias="flowId")
     status: FlowRunStatus
     started_at: str = Field(alias="startedAt")
-    completed_at: str = Field(alias="completedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
     tools_used: list[str] = Field(alias="toolsUsed")
     message: str
     data: dict[str, Any]

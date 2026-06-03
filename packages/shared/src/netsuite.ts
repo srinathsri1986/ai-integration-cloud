@@ -281,7 +281,7 @@ export const flowLifecycleActionSchema = z.enum([
   "publish",
   "pause"
 ]);
-export const flowRunStatusSchema = z.enum(["never_run", "succeeded", "failed"]);
+export const flowRunStatusSchema = z.enum(["never_run", "running", "succeeded", "failed"]);
 export const flowRunStepStatusSchema = z.enum(["succeeded", "failed", "skipped"]);
 export const flowTriggerTypeSchema = z.enum(["manual", "schedule_placeholder"]);
 export const approvedFlowToolSchema = z.enum([
@@ -542,7 +542,7 @@ export const flowRunResponseSchema = z.object({
   flowId: flowIdSchema,
   status: flowRunStatusSchema,
   startedAt: z.string(),
-  completedAt: z.string(),
+  completedAt: z.string().nullable().optional(),
   toolsUsed: z.array(z.string()),
   message: z.string(),
   data: z.unknown(),

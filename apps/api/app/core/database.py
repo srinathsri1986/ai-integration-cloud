@@ -26,6 +26,7 @@ def init_db() -> None:
     _ensure_tenant_columns()
     _ensure_users_table()
     _ensure_lightweight_columns()
+    _ensure_async_execution_columns()
 
 
 def _ensure_tenant_columns() -> None:
@@ -68,6 +69,17 @@ def _ensure_users_table() -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ"
             )
+
+
+def _ensure_async_execution_columns() -> None:
+    """Make flow_runs.completed_at nullable to support in-flight running status."""
+    with engine.begin() as connection:
+        dialect_name = connection.dialect.name
+        if dialect_name == "postgresql":
+            connection.exec_driver_sql(
+                "ALTER TABLE flow_runs ALTER COLUMN completed_at DROP NOT NULL"
+            )
+        # SQLite does not support ALTER COLUMN; new tables created with nullable constraint.
 
 
 def _ensure_lightweight_columns() -> None:

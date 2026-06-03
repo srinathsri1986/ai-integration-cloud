@@ -90,12 +90,18 @@ def test_unknown_flow_returns_404_before_execution() -> None:
 
 
 def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
-    response = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+    enqueue_response = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["requestId"]
-    assert body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert enqueue_response.status_code == 202
+    enqueue_body = enqueue_response.json()
+    assert enqueue_body["requestId"]
+    assert enqueue_body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert enqueue_body["status"] == "running"
+
+    # In tests, Celery runs eagerly (CELERY_TASK_ALWAYS_EAGER=true), so the run
+    # is already complete by the time we poll.
+    request_id = enqueue_body["requestId"]
+    body = client.get(f"/api/v1/flows/runs/{request_id}").json()
     assert body["status"] == "succeeded"
     assert body["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
     assert body["data"]["dashboardSummary"]["mode"] == "mock"
@@ -108,7 +114,7 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
 
     logs = client.get("/api/v1/audit/logs").json()
     assert len(logs) == 1
-    assert logs[0]["requestId"] == body["requestId"]
+    assert logs[0]["requestId"] == request_id
     assert logs[0]["detectedIntent"] == "FLOW_RUN"
     assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
     assert logs[0]["endpointCalled"] == "/api/v1/flows/netsuite-cfo-dashboard-refresh/run"
@@ -119,17 +125,23 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
 
     runs = client.get("/api/v1/flows/runs").json()
     assert len(runs) == 1
-    assert runs[0]["requestId"] == body["requestId"]
+    assert runs[0]["requestId"] == request_id
     assert runs[0]["flowId"] == "netsuite-cfo-dashboard-refresh"
     assert runs[0]["status"] == "succeeded"
     assert runs[0]["executionTimeline"][1]["approvedTool"] == "cfo.pl_vs_budget"
 
-    run_detail = client.get(f"/api/v1/flows/runs/{body['requestId']}").json()
-    assert run_detail["requestId"] == body["requestId"]
+    run_detail = client.get(f"/api/v1/flows/runs/{request_id}").json()
+    assert run_detail["requestId"] == request_id
     assert run_detail["executionTimeline"][0]["name"] == "Load CFO summary"
     assert run_detail["inspection"]["stepCount"] == 2
     assert run_detail["inspection"]["succeededSteps"] == 2
-    assert run_detail["inspection"]["auditRequestId"] == body["requestId"]
+    assert run_detail["inspection"]["auditRequestId"] == request_id
+
+
+def _run_and_wait(flow_id: str) -> dict:
+    enqueue = client.post(f"/api/v1/flows/{flow_id}/run")
+    assert enqueue.status_code == 202
+    return client.get(f"/api/v1/flows/runs/{enqueue.json()['requestId']}").json()
 
 
 def test_flow_run_history_supports_filters_and_pagination() -> None:
@@ -151,10 +163,8 @@ def test_flow_run_history_supports_filters_and_pagination() -> None:
 
 
 def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
-    response = client.post("/api/v1/flows/netsuite-project-risk-refresh/run")
+    body = _run_and_wait("netsuite-project-risk-refresh")
 
-    assert response.status_code == 200
-    body = response.json()
     assert body["toolsUsed"] == [
         "cfo.running_projects",
         "cfo.overdue_projects_by_account_manager",
@@ -221,7 +231,11 @@ def test_flow_lifecycle_requires_human_approval_before_publish() -> None:
         },
     )
 
-    run_before_publish = client.post("/api/v1/flows/approval-flow/run").json()
+    run_before_publish_enqueue = client.post("/api/v1/flows/approval-flow/run")
+    assert run_before_publish_enqueue.status_code == 202
+    run_before_publish = client.get(
+        f"/api/v1/flows/runs/{run_before_publish_enqueue.json()['requestId']}"
+    ).json()
     assert run_before_publish["status"] == "failed"
     assert "published" in run_before_publish["message"]
 
@@ -524,10 +538,8 @@ def test_custom_published_flow_run_fails_closed_until_runtime_mapping_exists() -
     client.post("/api/v1/flows/custom-published-flow/lifecycle", json={"action": "approve"})
     client.post("/api/v1/flows/custom-published-flow/lifecycle", json={"action": "publish"})
 
-    response = client.post("/api/v1/flows/custom-published-flow/run")
+    body = _run_and_wait("custom-published-flow")
 
-    assert response.status_code == 200
-    body = response.json()
     assert body["status"] == "failed"
     assert "no published mapping definition" in body["message"]
     assert body["toolsUsed"] == ["cfo.dashboard_summary"]
@@ -625,10 +637,8 @@ def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
     client.post("/api/v1/flows/mapped-runtime-preview/lifecycle", json={"action": "approve"})
     client.post("/api/v1/flows/mapped-runtime-preview/lifecycle", json={"action": "publish"})
 
-    response = client.post("/api/v1/flows/mapped-runtime-preview/run")
+    body = _run_and_wait("mapped-runtime-preview")
 
-    assert response.status_code == 200
-    body = response.json()
     assert body["status"] == "succeeded"
     assert body["data"]["mappingDefinitionId"] == "netsuite-project-to-salesforce-opportunity"
     assert body["data"]["mappingSimulation"]["targetPayload"]["AccountName"] == "Acme Manufacturing"
@@ -661,10 +671,8 @@ def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
 
 
 def test_run_subsidiary_flow_uses_approved_services_only() -> None:
-    response = client.post("/api/v1/flows/netsuite-subsidiary-drilldown-refresh/run")
+    body = _run_and_wait("netsuite-subsidiary-drilldown-refresh")
 
-    assert response.status_code == 200
-    body = response.json()
     assert body["toolsUsed"] == ["cfo.subsidiary_drilldown", "orchestrator.query"]
     assert body["data"]["subsidiaryDrilldown"]["source"] == "mock"
     assert body["data"]["orchestratorSummary"]["detected_intent"] == "SUBSIDIARY_DRILLDOWN"

@@ -211,21 +211,29 @@ export function IntegrationManagementConsole({
     setBusyKey(`${flow.flowId}:run`);
     setMessage(undefined);
     const response = await runFlow(flow.flowId);
+    if (!response.ok) {
+      setMessage(response.error ?? "Unable to run integration.");
+      setBusyKey(undefined);
+      return;
+    }
+
+    // Poll every 3s while the async task is running.
     let detail = response.data;
-    if (response.ok) {
+    while (detail.status === "running") {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       const detailResponse = await getFlowRun(response.data.requestId);
       if (detailResponse.ok) detail = detailResponse.data;
-      setFlows((current) =>
-        current.map((item) =>
-          item.flowId === flow.flowId
-            ? { ...item, lastRunAt: response.data.completedAt, lastRunStatus: response.data.status }
-            : item
-        )
-      );
-      setMessage(response.data.message);
-    } else {
-      setMessage(response.error ?? "Unable to run integration.");
+      else break;
     }
+
+    setFlows((current) =>
+      current.map((item) =>
+        item.flowId === flow.flowId
+          ? { ...item, lastRunAt: detail.completedAt ?? item.lastRunAt, lastRunStatus: detail.status }
+          : item
+      )
+    );
+    setMessage(detail.message);
     setLastRuns((current) => ({ ...current, [flow.flowId]: detail }));
     setBusyKey(undefined);
   }

@@ -64,6 +64,7 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
   );
   const [runningFlowId, setRunningFlowId] = useState<string | undefined>();
   const [transitioningFlowId, setTransitioningFlowId] = useState<string | undefined>();
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | undefined>();
   const [lastRun, setLastRun] = useState<Record<string, FlowRunResponse>>({});
   const [loadingRunDetailId, setLoadingRunDetailId] = useState<string | undefined>();
   const [designerMessage, setDesignerMessage] = useState<string | undefined>();
@@ -106,30 +107,45 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
     setRunningFlowId(flow.flowId);
 
     const response = await runFlow(flow.flowId);
+    if (!response.ok) {
+      setError(response.error ?? "Unable to run flow.");
+      setRunningFlowId(undefined);
+      return;
+    }
+
+    // Poll every 3s until execution completes.
     let runDetail = response.data;
-    if (response.ok) {
+    while (runDetail.status === "running") {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       const detailResponse = await getFlowRun(response.data.requestId);
       if (detailResponse.ok) {
         runDetail = detailResponse.data;
+      } else {
+        break;
       }
     }
+
     setLastRun((current) => ({ ...current, [flow.flowId]: runDetail }));
-    if (response.ok) {
-      setFlows((current) =>
-        current.map((item) =>
-          item.flowId === flow.flowId
-            ? {
-                ...item,
-                lastRunAt: response.data.completedAt,
-                lastRunStatus: response.data.status
-              }
-            : item
-        )
-      );
-    } else {
-      setError(response.error ?? "Unable to run flow.");
-    }
+    setFlows((current) =>
+      current.map((item) =>
+        item.flowId === flow.flowId
+          ? {
+              ...item,
+              lastRunAt: runDetail.completedAt ?? item.lastRunAt,
+              lastRunStatus: runDetail.status
+            }
+          : item
+      )
+    );
     setRunningFlowId(undefined);
+
+    const variant = runDetail.status === "succeeded" ? "success" : "error";
+    const msg =
+      runDetail.status === "succeeded"
+        ? `Flow completed successfully.`
+        : `Flow run finished with status: ${runDetail.status}.`;
+    setToast({ message: msg, variant });
+    setTimeout(() => setToast(undefined), 5000);
   }
 
   async function refreshRunDetail(flow: FlowDefinition, requestId: string) {
@@ -183,6 +199,17 @@ export function FlowCatalog({ initialFlows }: { initialFlows: ApiResult<FlowDefi
 
   return (
     <section className="mx-auto max-w-7xl px-6 pb-12">
+      {toast ? (
+        <div
+          className={`fixed bottom-6 right-6 z-50 max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg transition-all ${
+            toast.variant === "success"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+              : "border-rose-300 bg-rose-50 text-rose-900"
+          }`}
+        >
+          {toast.message}
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Recipe Catalog</p>

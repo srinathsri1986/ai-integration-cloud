@@ -135,10 +135,10 @@ def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) ->
         ) from exc
 
 
-@router.post("/{flow_id}/run", response_model=FlowRunResponse)
+@router.post("/{flow_id}/run", response_model=FlowRunResponse, status_code=status.HTTP_202_ACCEPTED)
 def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> FlowRunResponse:
     try:
-        return flow_service.run_flow(flow_id, tenant_id=user.tenant_id)
+        return flow_service.enqueue_flow_run(flow_id, tenant_id=user.tenant_id)
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

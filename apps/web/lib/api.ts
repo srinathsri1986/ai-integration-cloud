@@ -1048,7 +1048,7 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
       method: "POST"
     });
 
-    if (!response.ok) {
+    if (response.status !== 202 && !response.ok) {
       return {
         data: { ...fallbackFlowRunResponse, flowId },
         error: `API returned ${response.status}`,

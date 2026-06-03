@@ -12,7 +12,39 @@ class FlowRunRepository:
         self.session = session
         self._tenant_id = tenant_id
 
-    def append(self, run: FlowRunResponse) -> None:
+    def create_running(self, flow_id: str, request_id: str, started_at: str) -> None:
+        record = FlowRunRecord(
+            tenant_id=self._tenant_id,
+            request_id=request_id,
+            flow_id=flow_id,
+            status="running",
+            started_at=started_at,
+            completed_at=None,
+            tools_used=[],
+            message="Execution in progress.",
+            data={},
+            execution_timeline=[],
+        )
+        self.session.add(record)
+        self.session.commit()
+
+    def update_completed(self, request_id: str, run: "FlowRunResponse") -> None:
+        record = self.session.scalars(
+            select(FlowRunRecord).where(FlowRunRecord.request_id == request_id).limit(1)
+        ).first()
+        if record is None:
+            return
+        record.status = run.status
+        record.completed_at = run.completed_at
+        record.tools_used = run.tools_used
+        record.message = run.message
+        record.data = run.data
+        record.execution_timeline = [
+            step.model_dump(by_alias=True) for step in run.execution_timeline
+        ]
+        self.session.commit()
+
+    def append(self, run: "FlowRunResponse") -> None:
         record = FlowRunRecord(
             tenant_id=self._tenant_id,
             request_id=run.request_id,
@@ -125,7 +157,9 @@ class FlowRunRepository:
             auditRequestId=record.request_id,
         )
 
-    def _duration_ms(self, started_at: str, completed_at: str) -> int:
+    def _duration_ms(self, started_at: str, completed_at: str | None) -> int:
+        if not completed_at:
+            return 0
         try:
             started = datetime.fromisoformat(started_at)
             completed = datetime.fromisoformat(completed_at)

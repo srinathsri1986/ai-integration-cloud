@@ -8,6 +8,7 @@ import {
   Clock3,
   Database,
   FileJson,
+  Loader2,
   ShieldCheck,
   TriangleAlert,
   Workflow,
@@ -27,6 +28,7 @@ function statusLabel(status: string) {
 function statusBadgeClass(status: string) {
   if (status === "succeeded") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (status === "running") return "border-sky-200 bg-sky-50 text-sky-900";
   return "border-slate-200 bg-slate-50 text-slate-800";
 }
 
@@ -55,12 +57,23 @@ export function FlowRunDetail({ runResult }: { runResult: ApiResult<FlowRunRespo
       }
     | undefined;
 
+  const isRunning = run.status === "running";
+
   return (
     <section className="space-y-6 px-6 pb-12">
+      {isRunning ? (
+        <div className="flex items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Flow is executing — refreshing automatically every 3 seconds…
+        </div>
+      ) : null}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <Badge className={statusBadgeClass(run.status)}>{statusLabel(run.status)}</Badge>
+            <Badge className={statusBadgeClass(run.status)}>
+              {isRunning ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+              {statusLabel(run.status)}
+            </Badge>
             <h2 className="mt-4 max-w-4xl text-3xl font-semibold tracking-normal text-slate-950">
               {run.flowId}
             </h2>
@@ -139,7 +152,7 @@ export function FlowRunDetail({ runResult }: { runResult: ApiResult<FlowRunRespo
             </div>
             <div className="mt-5 space-y-3 text-sm">
               <Fact label="Started" value={new Date(run.startedAt).toLocaleString()} />
-              <Fact label="Completed" value={new Date(run.completedAt).toLocaleString()} />
+              <Fact label="Completed" value={run.completedAt ? new Date(run.completedAt).toLocaleString() : "In progress…"} />
               <Fact label="Tools" value={run.toolsUsed.join(", ") || "None"} />
               <Fact label="Mapping" value={inspection?.mappingDefinitionId ?? "None"} />
               <Fact
