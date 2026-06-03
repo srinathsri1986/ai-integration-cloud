@@ -99,18 +99,6 @@ class FlowLifecycleResponse(BaseModel):
     message: str
 
 
-class FlowRunResponse(BaseModel):
-    request_id: str = Field(alias="requestId")
-    flow_id: FlowId = Field(alias="flowId")
-    status: FlowRunStatus
-    started_at: str = Field(alias="startedAt")
-    completed_at: str = Field(alias="completedAt")
-    tools_used: list[str] = Field(alias="toolsUsed")
-    message: str
-    data: dict[str, Any]
-    execution_timeline: list["FlowRunTimelineStep"] = Field(default_factory=list, alias="executionTimeline")
-
-
 class FlowRunTimelineStep(BaseModel):
     id: str
     name: str
@@ -121,3 +109,29 @@ class FlowRunTimelineStep(BaseModel):
     approved_tool: str | None = Field(default=None, alias="approvedTool")
     mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId")
     warnings: list[str] = Field(default_factory=list)
+
+
+class FlowRunInspection(BaseModel):
+    duration_ms: int = Field(alias="durationMs")
+    step_count: int = Field(alias="stepCount")
+    succeeded_steps: int = Field(alias="succeededSteps")
+    failed_steps: int = Field(alias="failedSteps")
+    skipped_steps: int = Field(alias="skippedSteps")
+    warning_count: int = Field(alias="warningCount")
+    mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId")
+    has_source_payload: bool = Field(alias="hasSourcePayload")
+    has_target_payload: bool = Field(alias="hasTargetPayload")
+    audit_request_id: str = Field(alias="auditRequestId")
+
+
+class FlowRunResponse(BaseModel):
+    request_id: str = Field(alias="requestId")
+    flow_id: FlowId = Field(alias="flowId")
+    status: FlowRunStatus
+    started_at: str = Field(alias="startedAt")
+    completed_at: str = Field(alias="completedAt")
+    tools_used: list[str] = Field(alias="toolsUsed")
+    message: str
+    data: dict[str, Any]
+    execution_timeline: list[FlowRunTimelineStep] = Field(default_factory=list, alias="executionTimeline")
+    inspection: FlowRunInspection | None = Field(default=None, alias="inspection")

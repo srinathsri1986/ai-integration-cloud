@@ -769,6 +769,35 @@ curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
 
 Template fallback still exists as a safety mechanism when callers do not require live AI, but the guided UI asks for live AI by default and does not present fallback suggestions as if they were model-generated.
 
+## Runtime Run Detail View v3.6
+
+V3.6 makes integration execution inspectable after a run.
+
+Backend flow run responses now include an `inspection` summary with:
+
+- duration
+- step counts by status
+- warning count
+- mapping definition ID
+- source/target payload availability
+- audit request ID
+
+```bash
+curl "http://localhost:8000/api/v1/flows/runs/{request_id}"
+```
+
+The frontend adds `/flows/runs/{requestId}` with:
+
+- run status and request ID
+- execution timeline
+- step-level warnings
+- approved tool per step
+- source payload preview
+- target payload preview
+- audit trace identifier
+
+The Integration Studio review pane links directly to the run detail page after a run completes.
+
 ## Tests
 
 Backend:

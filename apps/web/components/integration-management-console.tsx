@@ -536,6 +536,7 @@ function IntegrationReviewPane({
   onSimulateMapping: (mapping: MappingDefinition) => void;
   run?: FlowRunResponse;
 }) {
+  const router = useRouter();
   if (!flow) {
     return (
       <Card className="bg-white">
@@ -679,10 +680,10 @@ function IntegrationReviewPane({
       {run ? (
         <Card className="bg-white">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Runtime preview</p>
-              <h3 className="mt-1 text-lg font-semibold text-slate-950">{run.message}</h3>
-            </div>
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Runtime preview</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-950">{run.message}</h3>
+          </div>
             <Badge className={statusBadgeClass(run.status)}>{statusLabel(run.status)}</Badge>
           </div>
           <div className="mt-4 space-y-2">
@@ -704,6 +705,9 @@ function IntegrationReviewPane({
               </div>
             ))}
           </div>
+          <Button className="mt-4 w-full" onClick={() => router.push(`/flows/runs/${run.requestId}`)} type="button">
+            Open run detail
+          </Button>
         </Card>
       ) : null}
 

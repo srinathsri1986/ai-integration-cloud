@@ -8,6 +8,7 @@ from app.models.flows import (
     FlowDefinition,
     FlowDefinitionUpsertRequest,
     FlowId,
+    FlowRunInspection,
     FlowLifecycleAction,
     FlowLifecycleResponse,
     FlowRunResponse,
@@ -253,7 +254,7 @@ class FlowService:
                 )
                 with SessionLocal() as session:
                     FlowRunRepository(session).append(response)
-                return response
+                return self._with_inspection(response)
 
             if flow_id == "netsuite-cfo-dashboard-refresh":
                 data = {
@@ -323,7 +324,7 @@ class FlowService:
                     with SessionLocal() as session:
                         FlowRunRepository(session).append(response)
                         FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
-                    return response
+                    return self._with_inspection(response)
 
                 mapping = mapping_definition_service.get_mapping(flow.mapping_definition_id)
                 if mapping.status != "published":
@@ -351,7 +352,7 @@ class FlowService:
                     with SessionLocal() as session:
                         FlowRunRepository(session).append(response)
                         FlowDefinitionRepository(session).update_last_run(flow_id, completed, "failed")
-                    return response
+                    return self._with_inspection(response)
 
                 simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
                 execution_timeline = self._timeline_for_tools(
@@ -390,7 +391,7 @@ class FlowService:
                 with SessionLocal() as session:
                     FlowRunRepository(session).append(response)
                     FlowDefinitionRepository(session).update_last_run(flow_id, completed, "succeeded")
-                return response
+                return self._with_inspection(response)
 
             completed = datetime.now(UTC).isoformat()
             with SessionLocal() as session:
@@ -411,7 +412,7 @@ class FlowService:
             with SessionLocal() as session:
                 FlowRunRepository(session).append(response)
 
-            return response
+            return self._with_inspection(response)
         finally:
             latency_ms = int((perf_counter() - timer_started) * 1000)
             audit_service.record_flow_action(
@@ -450,6 +451,42 @@ class FlowService:
     def get_run(self, request_id: str) -> FlowRunResponse:
         with SessionLocal() as session:
             return FlowRunRepository(session).get_by_request_id(request_id)
+
+    def _with_inspection(self, response: FlowRunResponse) -> FlowRunResponse:
+        mapping_simulation = response.data.get("mappingSimulation") if isinstance(response.data, dict) else None
+        mapping_definition_id = response.data.get("mappingDefinitionId") if isinstance(response.data, dict) else None
+        if not mapping_definition_id:
+            mapping_definition_id = next(
+                (step.mapping_definition_id for step in response.execution_timeline if step.mapping_definition_id),
+                None,
+            )
+
+        response.inspection = FlowRunInspection(
+            durationMs=self._duration_ms(response.started_at, response.completed_at),
+            stepCount=len(response.execution_timeline),
+            succeededSteps=sum(1 for step in response.execution_timeline if step.status == "succeeded"),
+            failedSteps=sum(1 for step in response.execution_timeline if step.status == "failed"),
+            skippedSteps=sum(1 for step in response.execution_timeline if step.status == "skipped"),
+            warningCount=sum(len(step.warnings) for step in response.execution_timeline),
+            mappingDefinitionId=mapping_definition_id,
+            hasSourcePayload=bool(
+                isinstance(mapping_simulation, dict) and mapping_simulation.get("sourcePayload")
+            ),
+            hasTargetPayload=bool(
+                isinstance(mapping_simulation, dict) and mapping_simulation.get("targetPayload")
+            ),
+            auditRequestId=response.request_id,
+        )
+        return response
+
+    def _duration_ms(self, started_at: str, completed_at: str) -> int:
+        try:
+            started = datetime.fromisoformat(started_at)
+            completed = datetime.fromisoformat(completed_at)
+        except ValueError:
+            return 0
+
+        return max(0, int((completed - started).total_seconds() * 1000))
 
     def _timeline_for_tools(
         self,

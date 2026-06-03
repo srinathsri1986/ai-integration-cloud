@@ -488,7 +488,19 @@ const fallbackFlowRunResponse: FlowRunResponse = {
   toolsUsed: [],
   message: "The flow API is unavailable.",
   data: {},
-  executionTimeline: []
+  executionTimeline: [],
+  inspection: {
+    auditRequestId: "unavailable",
+    durationMs: 0,
+    failedSteps: 0,
+    hasSourcePayload: false,
+    hasTargetPayload: false,
+    mappingDefinitionId: null,
+    skippedSteps: 0,
+    stepCount: 0,
+    succeededSteps: 0,
+    warningCount: 0
+  }
 };
 
 const fallbackFlowLifecycleResponse: FlowLifecycleResponse = {

@@ -197,6 +197,15 @@ curl "http://localhost:8000/api/v1/flows/runs/{request_id}"
 
 Each timeline step includes status, timestamps, latency, approved tool, attached mapping definition ID, and warnings. Built-in flows show approved CFO service steps. Custom mapped flows include both approved action steps and a mapping simulation step.
 
+Run detail responses also include an `inspection` summary for UI drilldown:
+
+- duration
+- step counts by status
+- warning count
+- mapping definition ID
+- source/target payload availability
+- audit request ID
+
 ## Generic REST connector foundation
 
 The API exposes a governed mock REST connector for system-agnostic integration design:

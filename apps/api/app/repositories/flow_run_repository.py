@@ -2,7 +2,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.models import FlowRunRecord
-from app.models.flows import FlowRunResponse
+from datetime import datetime
+
+from app.models.flows import FlowRunInspection, FlowRunResponse
 
 
 class FlowRunRepository:
@@ -66,6 +68,8 @@ class FlowRunRepository:
         self.session.commit()
 
     def _to_response(self, record: FlowRunRecord) -> FlowRunResponse:
+        timeline = record.execution_timeline
+        data = record.data
         return FlowRunResponse(
             requestId=record.request_id,
             flowId=record.flow_id,
@@ -74,6 +78,51 @@ class FlowRunRepository:
             completedAt=record.completed_at,
             toolsUsed=record.tools_used,
             message=record.message,
-            data=record.data,
-            executionTimeline=record.execution_timeline,
+            data=data,
+            executionTimeline=timeline,
+            inspection=self._inspection(record, timeline, data),
         )
+
+    def _inspection(
+        self,
+        record: FlowRunRecord,
+        timeline: list[dict],
+        data: dict,
+    ) -> FlowRunInspection:
+        mapping_simulation = data.get("mappingSimulation") if isinstance(data, dict) else None
+        mapping_definition_id = data.get("mappingDefinitionId") if isinstance(data, dict) else None
+        if not mapping_definition_id:
+            mapping_definition_id = next(
+                (
+                    step.get("mappingDefinitionId")
+                    for step in timeline
+                    if isinstance(step, dict) and step.get("mappingDefinitionId")
+                ),
+                None,
+            )
+
+        return FlowRunInspection(
+            durationMs=self._duration_ms(record.started_at, record.completed_at),
+            stepCount=len(timeline),
+            succeededSteps=sum(1 for step in timeline if step.get("status") == "succeeded"),
+            failedSteps=sum(1 for step in timeline if step.get("status") == "failed"),
+            skippedSteps=sum(1 for step in timeline if step.get("status") == "skipped"),
+            warningCount=sum(len(step.get("warnings", [])) for step in timeline if isinstance(step, dict)),
+            mappingDefinitionId=mapping_definition_id,
+            hasSourcePayload=bool(
+                isinstance(mapping_simulation, dict) and mapping_simulation.get("sourcePayload")
+            ),
+            hasTargetPayload=bool(
+                isinstance(mapping_simulation, dict) and mapping_simulation.get("targetPayload")
+            ),
+            auditRequestId=record.request_id,
+        )
+
+    def _duration_ms(self, started_at: str, completed_at: str) -> int:
+        try:
+            started = datetime.fromisoformat(started_at)
+            completed = datetime.fromisoformat(completed_at)
+        except ValueError:
+            return 0
+
+        return max(0, int((completed - started).total_seconds() * 1000))

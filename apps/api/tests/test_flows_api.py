@@ -127,6 +127,9 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     run_detail = client.get(f"/api/v1/flows/runs/{body['requestId']}").json()
     assert run_detail["requestId"] == body["requestId"]
     assert run_detail["executionTimeline"][0]["name"] == "Load CFO summary"
+    assert run_detail["inspection"]["stepCount"] == 2
+    assert run_detail["inspection"]["succeededSteps"] == 2
+    assert run_detail["inspection"]["auditRequestId"] == body["requestId"]
 
 
 def test_flow_run_history_supports_filters_and_pagination() -> None:
@@ -639,6 +642,11 @@ def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
     assert body["executionTimeline"][1]["mappingDefinitionId"] == (
         "netsuite-project-to-salesforce-opportunity"
     )
+    assert body["inspection"]["mappingDefinitionId"] == (
+        "netsuite-project-to-salesforce-opportunity"
+    )
+    assert body["inspection"]["hasSourcePayload"] is True
+    assert body["inspection"]["hasTargetPayload"] is True
 
     saved_flow = client.get("/api/v1/flows/mapped-runtime-preview").json()
     assert saved_flow["mappingDefinitionId"] == "netsuite-project-to-salesforce-opportunity"

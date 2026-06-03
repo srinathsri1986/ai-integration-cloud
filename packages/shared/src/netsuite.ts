@@ -507,6 +507,21 @@ export const flowRunTimelineStepSchema = z.object({
 
 export type FlowRunTimelineStep = z.infer<typeof flowRunTimelineStepSchema>;
 
+export const flowRunInspectionSchema = z.object({
+  durationMs: z.number(),
+  stepCount: z.number(),
+  succeededSteps: z.number(),
+  failedSteps: z.number(),
+  skippedSteps: z.number(),
+  warningCount: z.number(),
+  mappingDefinitionId: z.string().nullable(),
+  hasSourcePayload: z.boolean(),
+  hasTargetPayload: z.boolean(),
+  auditRequestId: z.string()
+});
+
+export type FlowRunInspection = z.infer<typeof flowRunInspectionSchema>;
+
 export const flowLifecycleRequestSchema = z.object({
   action: flowLifecycleActionSchema,
   note: z.string().max(300).nullable().optional()
@@ -531,7 +546,8 @@ export const flowRunResponseSchema = z.object({
   toolsUsed: z.array(z.string()),
   message: z.string(),
   data: z.unknown(),
-  executionTimeline: z.array(flowRunTimelineStepSchema)
+  executionTimeline: z.array(flowRunTimelineStepSchema),
+  inspection: flowRunInspectionSchema.nullable().optional()
 });
 
 export type FlowRunResponse = z.infer<typeof flowRunResponseSchema>;
