@@ -230,16 +230,22 @@ export function DataMappingStudio() {
 
     const response = await suggestMappingDefinition({
       prompt: mappingPrompt,
+      requireLiveAi: true,
       sourceObjectId,
       targetObjectId
     });
 
-    setSuggestions(response.data.suggestions);
-    setSuggestionStatus(
-      response.isFallback
-        ? "Template suggestions are shown because the model path fell back safely."
-        : `${response.data.suggestionProvider} suggested ${response.data.suggestions.length} reviewed draft matches.`
-    );
+    if (response.ok && !response.data.suggestionFallbackUsed) {
+      setSuggestions(response.data.suggestions);
+      setSuggestionStatus(
+        `${response.data.suggestionProvider} / ${
+          response.data.suggestionModel ?? "live model"
+        } suggested ${response.data.suggestions.length} reviewed draft matches.`
+      );
+    } else {
+      setSuggestions([]);
+      setSuggestionStatus(response.error ?? "Live AI did not return valid governed suggestions.");
+    }
     setIsSuggesting(false);
     setActiveStep("map");
   }

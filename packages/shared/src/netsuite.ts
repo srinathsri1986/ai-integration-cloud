@@ -341,7 +341,8 @@ export const flowDefinitionUpsertRequestSchema = z.object({
 export type FlowDefinitionUpsertRequest = z.infer<typeof flowDefinitionUpsertRequestSchema>;
 
 export const flowSuggestionRequestSchema = z.object({
-  prompt: z.string().min(10).max(1000)
+  prompt: z.string().min(10).max(1000),
+  requireLiveAi: z.boolean().optional()
 });
 
 export type FlowSuggestionRequest = z.infer<typeof flowSuggestionRequestSchema>;
@@ -373,7 +374,8 @@ export type MappingTransform = z.infer<typeof mappingTransformSchema>;
 export const mappingSuggestionRequestSchema = z.object({
   prompt: z.string().min(10).max(1000),
   sourceObjectId: z.string().min(3).max(80),
-  targetObjectId: z.string().min(3).max(80)
+  targetObjectId: z.string().min(3).max(80),
+  requireLiveAi: z.boolean().optional()
 });
 
 export type MappingSuggestionRequest = z.infer<typeof mappingSuggestionRequestSchema>;

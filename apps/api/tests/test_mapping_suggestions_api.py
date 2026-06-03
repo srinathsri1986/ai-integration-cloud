@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.mapping import MappingSuggestionRequest
 from app.services.audit_service import audit_service
-from app.services.mapping_suggestion_service import MappingSuggestionService
+from app.services.mapping_suggestion_service import LiveAIRequiredError, MappingSuggestionService
 
 
 client = TestClient(app)
@@ -121,6 +121,62 @@ def test_mapping_suggestions_fallback_when_model_invents_fields() -> None:
         "due_date",
     }
     assert "invented_raw_field" not in {suggestion.source_field for suggestion in response.suggestions}
+
+
+def test_mapping_suggestions_can_require_live_ai_without_template_fallback() -> None:
+    class InvalidMappingSuggestionProvider:
+        provider_name = "ollama"
+        model_name = "fake-local-model"
+
+        def extract_intent(self, question: str):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_narrative(self, context: dict):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_flow_suggestion(self, context: dict):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_mapping_suggestion(self, context: dict):
+            return type(
+                "InvalidSuggestion",
+                (),
+                {
+                    "suggestions": [
+                        {
+                            "sourceField": "invented_raw_field",
+                            "targetField": "AccountName",
+                            "transform": "direct",
+                            "confidence": 0.99,
+                            "rationale": "Invalid model output for test coverage.",
+                        }
+                    ],
+                    "model_name": "fake-local-model",
+                    "model_call_attempted": True,
+                    "model_call_succeeded": True,
+                    "provider_name": "ollama",
+                },
+            )()
+
+    service = MappingSuggestionService(
+        ai_provider="ollama",
+        model_name="fake-local-model",
+        llm_provider=InvalidMappingSuggestionProvider(),
+    )
+
+    try:
+        service.suggest(
+            MappingSuggestionRequest(
+                prompt="Map NetSuite project fields into Salesforce opportunity fields.",
+                sourceObjectId="netsuite-project",
+                targetObjectId="salesforce-opportunity",
+                requireLiveAi=True,
+            )
+        )
+    except LiveAIRequiredError as exc:
+        assert "Live AI was requested" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected live AI enforcement to reject template fallback.")
 
 
 def test_mapping_prompt_rejects_raw_query_and_secret_language() -> None:

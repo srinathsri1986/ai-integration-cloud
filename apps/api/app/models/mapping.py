@@ -34,6 +34,7 @@ class MappingSuggestionRequest(BaseModel):
     prompt: str = Field(min_length=10, max_length=1000)
     source_object_id: str = Field(alias="sourceObjectId", min_length=3, max_length=80)
     target_object_id: str = Field(alias="targetObjectId", min_length=3, max_length=80)
+    require_live_ai: bool = Field(default=False, alias="requireLiveAi")
 
     @field_validator("prompt")
     @classmethod

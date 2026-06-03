@@ -11,7 +11,7 @@ from app.models.flows import (
     FlowSuggestionRequest,
     FlowSuggestionResponse,
 )
-from app.services.flow_suggestion_service import flow_suggestion_service
+from app.services.flow_suggestion_service import LiveAIRequiredError, flow_suggestion_service
 from app.services.flow_service import flow_service
 
 router = APIRouter(prefix="/flows", tags=["flows"])
@@ -76,7 +76,13 @@ def suggest_flow_definition(
     request: FlowSuggestionRequest,
     user=Depends(require_permissions("flow:run")),
 ) -> FlowSuggestionResponse:
-    return flow_suggestion_service.suggest(request)
+    try:
+        return flow_suggestion_service.suggest(request)
+    except LiveAIRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post("/{flow_id}/lifecycle", response_model=FlowLifecycleResponse)

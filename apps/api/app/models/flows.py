@@ -73,6 +73,7 @@ class FlowDefinitionUpsertRequest(BaseModel):
 
 class FlowSuggestionRequest(BaseModel):
     prompt: str = Field(min_length=10, max_length=1000)
+    require_live_ai: bool = Field(default=False, alias="requireLiveAi")
 
 
 class FlowSuggestionResponse(BaseModel):

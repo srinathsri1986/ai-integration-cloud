@@ -239,6 +239,22 @@ curl -X DELETE "http://localhost:8000/api/v1/mappings/definitions/rest-governed-
 
 Delete actions are audited. Built-in demo integrations are protected from deletion, while user-created flow definitions can be removed. Mapping definitions can also be deleted from the saved definition registry. These operations do not call external systems and do not access credentials.
 
+## Live AI required suggestions
+
+Flow and mapping suggestion endpoints accept `requireLiveAi`. When enabled, the configured live provider must return valid governed output. If Ollama/OpenAI is unavailable or returns invalid fields/tools, the API responds with `503` instead of returning deterministic template output.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Create a customer event to Salesforce opportunity integration.","requireLiveAi":true}'
+
+curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Map customer event fields to Salesforce opportunity fields.","sourceObjectId":"rest-governed-customer-event","targetObjectId":"salesforce-opportunity","requireLiveAi":true}'
+```
+
+When `requireLiveAi` is omitted or false, deterministic templates remain available as a governed fallback for local development and failure safety.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:

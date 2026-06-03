@@ -1203,9 +1203,10 @@ export async function suggestFlowDefinition(
     });
 
     if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
       return {
         data: fallbackFlowSuggestionResponse,
-        error: `API returned ${response.status}`,
+        error: body?.detail ? String(body.detail) : `API returned ${response.status}`,
         isFallback: true,
         ok: false
       };
@@ -1238,6 +1239,7 @@ export async function suggestMappingDefinition(
     });
 
     if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
       return {
         data: {
           ...fallbackMappingSuggestionResponse,
@@ -1245,7 +1247,7 @@ export async function suggestMappingDefinition(
           sourceObjectId: request.sourceObjectId,
           targetObjectId: request.targetObjectId
         },
-        error: `API returned ${response.status}`,
+        error: body?.detail ? String(body.detail) : `API returned ${response.status}`,
         isFallback: true,
         ok: false
       };

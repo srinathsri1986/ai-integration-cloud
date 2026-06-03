@@ -11,7 +11,7 @@ from app.models.mapping import (
     MappingSuggestionResponse,
 )
 from app.services.mapping_definition_service import mapping_definition_service
-from app.services.mapping_suggestion_service import mapping_suggestion_service
+from app.services.mapping_suggestion_service import LiveAIRequiredError, mapping_suggestion_service
 
 router = APIRouter(prefix="/mappings", tags=["mappings"])
 
@@ -49,6 +49,11 @@ def suggest_mapping(
 ) -> MappingSuggestionResponse:
     try:
         return mapping_suggestion_service.suggest(request)
+    except LiveAIRequiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     except KeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

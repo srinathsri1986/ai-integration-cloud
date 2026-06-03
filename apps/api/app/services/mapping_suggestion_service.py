@@ -26,6 +26,10 @@ class MappingSuggestionMetadata:
     model_call_succeeded: bool
 
 
+class LiveAIRequiredError(RuntimeError):
+    pass
+
+
 class MappingSuggestionService:
     def __init__(
         self,
@@ -116,6 +120,8 @@ class MappingSuggestionService:
         target_object: MappingObject,
     ) -> tuple[list[MappingSuggestionItem], MappingSuggestionMetadata]:
         if self.ai_provider == "disabled" or self.llm_provider is None:
+            if request.require_live_ai:
+                raise LiveAIRequiredError("Live AI was requested, but no live AI provider is configured.")
             return (
                 self._template_suggestions(source_object, target_object),
                 MappingSuggestionMetadata(
@@ -162,6 +168,10 @@ class MappingSuggestionService:
         except Exception as exc:
             attempted = exc.model_call_attempted if isinstance(exc, LLMProviderError) else False
             succeeded = exc.model_call_succeeded if isinstance(exc, LLMProviderError) else False
+            if request.require_live_ai and self.ai_provider in {"ollama", "openai"}:
+                raise LiveAIRequiredError(
+                    "Live AI was requested, but the configured provider returned invalid or unavailable output."
+                ) from exc
             return (
                 self._template_suggestions(source_object, target_object),
                 MappingSuggestionMetadata(

@@ -35,6 +35,10 @@ class FlowSuggestionMetadata:
     model_call_succeeded: bool
 
 
+class LiveAIRequiredError(RuntimeError):
+    pass
+
+
 class FlowSuggestionService:
     def __init__(
         self,
@@ -69,7 +73,7 @@ class FlowSuggestionService:
         )
 
         try:
-            suggested_flow, rationale, metadata = self._suggest_flow(request.prompt)
+            suggested_flow, rationale, metadata = self._suggest_flow(request)
             success = True
             return FlowSuggestionResponse(
                 prompt=request.prompt,
@@ -117,9 +121,12 @@ class FlowSuggestionService:
 
     def _suggest_flow(
         self,
-        prompt: str,
+        request: FlowSuggestionRequest,
     ) -> tuple[FlowDefinitionUpsertRequest, str, FlowSuggestionMetadata]:
+        prompt = request.prompt
         if self.ai_provider == "disabled" or self.llm_provider is None:
+            if request.require_live_ai:
+                raise LiveAIRequiredError("Live AI was requested, but no live AI provider is configured.")
             return (
                 self._template_flow(prompt),
                 "Template planner created a governed draft using approved NetSuite CFO actions.",
@@ -159,6 +166,10 @@ class FlowSuggestionService:
         except Exception as exc:
             attempted = exc.model_call_attempted if isinstance(exc, LLMProviderError) else False
             succeeded = exc.model_call_succeeded if isinstance(exc, LLMProviderError) else False
+            if request.require_live_ai and self.ai_provider in {"ollama", "openai"}:
+                raise LiveAIRequiredError(
+                    "Live AI was requested, but the configured provider returned invalid or unavailable output."
+                ) from exc
             return (
                 self._template_flow(prompt),
                 "AI output was unavailable or invalid, so a deterministic governed draft was used.",

@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.flows import FlowSuggestionRequest
 from app.services.audit_service import audit_service
-from app.services.flow_suggestion_service import FlowSuggestionService
+from app.services.flow_suggestion_service import FlowSuggestionService, LiveAIRequiredError
 from app.services.flow_service import flow_service
 from app.services.mapping_definition_service import mapping_definition_service
 
@@ -323,6 +323,69 @@ def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
     assert logs[0]["detectedIntent"] == "FLOW_SUGGESTION"
     assert logs[0]["endpointCalled"] == "/api/v1/flows/suggestions"
     assert logs[0]["success"] is True
+
+
+def test_flow_suggestion_can_require_live_ai_without_template_fallback() -> None:
+    class InvalidFlowSuggestionProvider:
+        provider_name = "ollama"
+        model_name = "fake-local-model"
+
+        def extract_intent(self, question: str):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_narrative(self, context: dict):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_mapping_suggestion(self, context: dict):  # pragma: no cover
+            raise NotImplementedError
+
+        def generate_flow_suggestion(self, context: dict):
+            return type(
+                "InvalidSuggestion",
+                (),
+                {
+                    "suggested_flow": {
+                        "flowId": "invalid-live-ai-flow",
+                        "name": "Invalid live AI flow",
+                        "description": "Invalid because it uses an unsupported raw action.",
+                        "sourceConnector": "netsuite",
+                        "targetModule": "cfo_dashboard",
+                        "status": "draft",
+                        "triggerType": "manual",
+                        "steps": [
+                            {
+                                "id": "raw-step",
+                                "name": "Raw step",
+                                "description": "Invalid step.",
+                                "approvedTool": "raw.system.call",
+                            }
+                        ],
+                    },
+                    "rationale": "Invalid model output for test coverage.",
+                    "model_name": "fake-local-model",
+                    "model_call_attempted": True,
+                    "model_call_succeeded": True,
+                    "provider_name": "ollama",
+                },
+            )()
+
+    service = FlowSuggestionService(
+        ai_provider="ollama",
+        model_name="fake-local-model",
+        llm_provider=InvalidFlowSuggestionProvider(),
+    )
+
+    try:
+        service.suggest(
+            FlowSuggestionRequest(
+                prompt="Create a governed integration using real local AI.",
+                requireLiveAi=True,
+            )
+        )
+    except LiveAIRequiredError as exc:
+        assert "Live AI was requested" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("Expected live AI enforcement to reject template fallback.")
 
 
 def test_flow_suggestion_falls_back_when_model_output_is_invalid() -> None:

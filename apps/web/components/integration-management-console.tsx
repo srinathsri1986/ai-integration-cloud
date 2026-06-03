@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   CircleDot,
@@ -113,6 +114,7 @@ export function IntegrationManagementConsole({
 }: {
   initialFlows: ApiResult<FlowDefinition[]>;
 }) {
+  const router = useRouter();
   const [flows, setFlows] = useState(initialFlows.data);
   const [selectedFlowId, setSelectedFlowId] = useState(initialFlows.data[0]?.flowId);
   const [filter, setFilter] = useState<Filter>("all");
@@ -319,6 +321,10 @@ export function IntegrationManagementConsole({
                 </h3>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button onClick={() => router.push("/flows/new")} type="button">
+                  <Plus className="h-4 w-4" />
+                  New integration
+                </Button>
                 {(["all", "draft", "pending_approval", "approved", "published", "paused"] as Filter[]).map(
                   (item) => (
                     <Button
@@ -335,7 +341,7 @@ export function IntegrationManagementConsole({
             </div>
 
             <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-              <div className="grid min-w-[820px] grid-cols-[1.3fr_110px_110px_120px_90px] bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-muted-foreground">
+              <div className="grid min-w-[920px] grid-cols-[1.3fr_110px_110px_120px_150px] bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-muted-foreground">
                 <span>Integration</span>
                 <span>Status</span>
                 <span>Run</span>
@@ -344,7 +350,7 @@ export function IntegrationManagementConsole({
               </div>
               {filteredFlows.map((flow) => (
                 <button
-                  className={`grid min-w-[820px] w-full grid-cols-[1.3fr_110px_110px_120px_90px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 ${
+                  className={`grid min-w-[920px] w-full grid-cols-[1.3fr_110px_110px_120px_150px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 ${
                     selectedFlow?.flowId === flow.flowId ? "bg-sky-50/60" : "bg-white"
                   }`}
                   key={flow.flowId}
@@ -380,6 +386,7 @@ export function IntegrationManagementConsole({
                       variant="secondary"
                     >
                       <Trash2 className="h-4 w-4" />
+                      Delete
                     </Button>
                   </span>
                 </button>

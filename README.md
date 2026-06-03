@@ -742,6 +742,33 @@ curl -X DELETE "http://localhost:8000/api/v1/mappings/definitions/rest-governed-
 
 Built-in demo integrations are protected from deletion. User-created integrations and mapping definitions can be deleted, and delete actions are written to the audit log. Deletion does not introduce external execution, arbitrary SQL, SuiteQL, raw system access, or credential storage.
 
+## Guided Integration Creation and Live AI Enforcement v3.5
+
+V3.5 adds a guided creation path at `/flows/new` so integrators build one step at a time:
+
+- describe the integration goal
+- generate a governed draft with live AI
+- choose source and target
+- attach a published mapping
+- select an approved action
+- review and save as draft
+
+The Active Integrations list now has a visible `New integration` action and row-level `Delete` button text, so destructive actions are easier to find while still guarded.
+
+Flow and mapping suggestion requests support `requireLiveAi`. When set to `true`, Ollama/OpenAI must return valid governed output; otherwise the API returns an error instead of silently showing template output.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/flows/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Create a customer event to Salesforce opportunity integration.","requireLiveAi":true}'
+
+curl -X POST "http://localhost:8000/api/v1/mappings/suggestions" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Map customer event fields to Salesforce opportunity fields.","sourceObjectId":"rest-governed-customer-event","targetObjectId":"salesforce-opportunity","requireLiveAi":true}'
+```
+
+Template fallback still exists as a safety mechanism when callers do not require live AI, but the guided UI asks for live AI by default and does not present fallback suggestions as if they were model-generated.
+
 ## Tests
 
 Backend:
