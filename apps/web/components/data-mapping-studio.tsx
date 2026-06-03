@@ -41,10 +41,9 @@ import {
 import {
   mappingObjects,
   mappingTransforms,
-  objectsForSystem,
   samplePayload
 } from "@/lib/mapping-catalog";
-import type { MappingField, MappingTransform } from "@/lib/mapping-catalog";
+import type { MappingField, MappingObject, MappingTransform } from "@/lib/mapping-catalog";
 
 type MappingRow = {
   id: string;
@@ -79,8 +78,6 @@ const initialMappings: MappingRow[] = [
 export function DataMappingStudio() {
   const [sourceSystemId, setSourceSystemId] = useState("netsuite");
   const [targetSystemId, setTargetSystemId] = useState("salesforce");
-  const sourceObjects = objectsForSystem(sourceSystemId);
-  const targetObjects = objectsForSystem(targetSystemId);
   const [sourceObjectId, setSourceObjectId] = useState("netsuite-project");
   const [targetObjectId, setTargetObjectId] = useState("salesforce-opportunity");
   const [selectedSourceField, setSelectedSourceField] = useState<string | undefined>("project_id");
@@ -118,19 +115,40 @@ export function DataMappingStudio() {
   >();
   const [isDiscoveringSchema, setIsDiscoveringSchema] = useState(false);
   const [schemaDiscoveryStatus, setSchemaDiscoveryStatus] = useState<string | undefined>();
+  const [discoveredSourceObject, setDiscoveredSourceObject] = useState<MappingObject | undefined>();
+  const [discoveredTargetObject, setDiscoveredTargetObject] = useState<MappingObject | undefined>();
+
+  const allMappingObjects = useMemo(
+    () => [
+      ...mappingObjects,
+      ...(discoveredSourceObject ? [discoveredSourceObject] : []),
+      ...(discoveredTargetObject ? [discoveredTargetObject] : [])
+    ],
+    [discoveredSourceObject, discoveredTargetObject]
+  );
+  const sourceObjects = useMemo(
+    () => objectsForSystemFrom(allMappingObjects, sourceSystemId),
+    [allMappingObjects, sourceSystemId]
+  );
+  const targetObjects = useMemo(
+    () => objectsForSystemFrom(allMappingObjects, targetSystemId),
+    [allMappingObjects, targetSystemId]
+  );
 
   const sourceObject = useMemo(
-    () => mappingObjects.find((object) => object.id === sourceObjectId) ?? sourceObjects[0],
-    [sourceObjectId, sourceObjects]
+    () => allMappingObjects.find((object) => object.id === sourceObjectId) ?? sourceObjects[0],
+    [allMappingObjects, sourceObjectId, sourceObjects]
   );
   const targetObject = useMemo(
-    () => mappingObjects.find((object) => object.id === targetObjectId) ?? targetObjects[0],
-    [targetObjectId, targetObjects]
+    () => allMappingObjects.find((object) => object.id === targetObjectId) ?? targetObjects[0],
+    [allMappingObjects, targetObjectId, targetObjects]
   );
   const mappedTargetFields = new Set(mappings.map((mapping) => mapping.targetField));
   const missingRequiredTargets = targetObject.fields.filter(
     (field) => field.required && !mappedTargetFields.has(field.name)
   );
+  const usesSessionDiscoveredObject =
+    sourceObjectId.startsWith("rest-discovered-") || targetObjectId.startsWith("rest-discovered-");
 
   useEffect(() => {
     loadSavedMappings();
@@ -144,7 +162,7 @@ export function DataMappingStudio() {
   }
 
   function onSourceSystemChange(systemId: string) {
-    const objects = objectsForSystem(systemId);
+    const objects = objectsForSystemFrom(allMappingObjects, systemId);
     setSourceSystemId(systemId);
     setSourceObjectId(objects[0]?.id ?? sourceObjectId);
     setSelectedSourceField(objects[0]?.fields[0]?.name);
@@ -154,7 +172,7 @@ export function DataMappingStudio() {
   }
 
   function onTargetSystemChange(systemId: string) {
-    const objects = objectsForSystem(systemId);
+    const objects = objectsForSystemFrom(allMappingObjects, systemId);
     setTargetSystemId(systemId);
     setTargetObjectId(objects[0]?.id ?? targetObjectId);
     setMappings([]);
@@ -248,6 +266,13 @@ export function DataMappingStudio() {
   }
 
   async function saveDraft() {
+    if (usesSessionDiscoveredObject) {
+      setMessage(
+        "Discovered REST schemas are session-scoped in V3.1. Map them visually now; promote them to a governed catalog object before saving a persistent mapping."
+      );
+      return;
+    }
+
     if (missingRequiredTargets.length > 0) {
       setMessage(`Map required fields first: ${missingRequiredTargets.map((field) => field.name).join(", ")}.`);
       return;
@@ -304,8 +329,8 @@ export function DataMappingStudio() {
     setMappingName(mapping.name);
     setSourceObjectId(mapping.sourceObjectId);
     setTargetObjectId(mapping.targetObjectId);
-    setSourceSystemId(mappingObjects.find((object) => object.id === mapping.sourceObjectId)?.systemId ?? sourceSystemId);
-    setTargetSystemId(mappingObjects.find((object) => object.id === mapping.targetObjectId)?.systemId ?? targetSystemId);
+    setSourceSystemId(allMappingObjects.find((object) => object.id === mapping.sourceObjectId)?.systemId ?? sourceSystemId);
+    setTargetSystemId(allMappingObjects.find((object) => object.id === mapping.targetObjectId)?.systemId ?? targetSystemId);
     setMappings(
       mapping.mappings.map((row) => ({
         confidence: row.confidence ?? undefined,
@@ -349,6 +374,32 @@ export function DataMappingStudio() {
     } finally {
       setIsDiscoveringSchema(false);
     }
+  }
+
+  function useDiscoveredSchema(role: "source" | "target") {
+    if (!discoveredSchema || discoveredSchema.fields.length === 0) {
+      setSchemaDiscoveryStatus("Discover at least one safe field before using the schema.");
+      return;
+    }
+
+    const mappingObject = mappingObjectFromDiscoveredSchema(discoveredSchema, role);
+    if (role === "source") {
+      setDiscoveredSourceObject(mappingObject);
+      setSourceSystemId("rest-api");
+      setSourceObjectId(mappingObject.id);
+      setSelectedSourceField(mappingObject.fields[0]?.name);
+      setMappingPrompt(`Map ${mappingObject.displayName} fields into ${targetObject.displayName}.`);
+    } else {
+      setDiscoveredTargetObject(mappingObject);
+      setTargetSystemId("rest-api");
+      setTargetObjectId(mappingObject.id);
+      setMappingPrompt(`Map ${sourceObject.displayName} fields into ${mappingObject.displayName}.`);
+    }
+
+    setMappings([]);
+    setSuggestions([]);
+    setSimulation(undefined);
+    setMessage(`${mappingObject.displayName} is ready in the ${role} tray.`);
   }
 
   return (
@@ -584,6 +635,25 @@ export function DataMappingStudio() {
                     </ul>
                   </div>
                 ) : null}
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    className="inline-flex h-10 items-center justify-center rounded-md bg-amber-300 px-3 text-sm font-semibold text-slate-950 hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={discoveredSchema.fields.length === 0}
+                    onClick={() => useDiscoveredSchema("source")}
+                    type="button"
+                  >
+                    Use as Source
+                  </button>
+                  <button
+                    className="inline-flex h-10 items-center justify-center rounded-md border border-white/15 px-3 text-sm font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={discoveredSchema.fields.length === 0}
+                    onClick={() => useDiscoveredSchema("target")}
+                    type="button"
+                  >
+                    Use as Target
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="mt-4 rounded-lg border border-dashed border-white/15 p-8 text-center">
@@ -986,6 +1056,28 @@ function FieldTray({
 
 function objectsForSelect(systemId: string) {
   return mappingObjects.filter((object) => object.systemId === systemId);
+}
+
+function objectsForSystemFrom(objects: MappingObject[], systemId: string) {
+  return objects.filter((object) => object.systemId === systemId);
+}
+
+function mappingObjectFromDiscoveredSchema(
+  schema: RestApiSchemaDiscoveryResponse,
+  role: "source" | "target"
+): MappingObject {
+  return {
+    displayName: `${schema.objectLabel} (${role})`,
+    fields: schema.fields.map((field) => ({
+      description: `Discovered from REST sample payload as ${field.type}.`,
+      name: field.name,
+      required: field.required,
+      sample: field.sample ?? null,
+      type: field.type
+    })),
+    id: `${schema.objectId}-${role}`,
+    systemId: "rest-api"
+  };
 }
 
 function lifecycleActionsForStatus(status: MappingDefinition["status"]): MappingLifecycleAction[] {

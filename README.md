@@ -663,6 +663,19 @@ curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/discover-schema" 
 
 Discovery reads pasted sample JSON only. It infers top-level scalar fields, skips secret-like fields, reports warnings for nested values, and returns `executable:false`. It does not call external APIs, does not store credentials, and does not enable arbitrary URL or payload execution.
 
+## Discovered Schema to Mapping Workspace v3.1
+
+V3.1 lets an integrator use a discovered REST sample schema directly in the visual Mapping Studio.
+
+Workflow:
+
+- Paste a safe REST sample payload.
+- Discover top-level scalar fields.
+- Click `Use as Source` or `Use as Target`.
+- Map the discovered fields visually against another approved object.
+
+Discovered objects are session-scoped in V3.1. They are not persisted as governed catalog objects yet, and mappings that reference them cannot be saved permanently until a future catalog promotion step is added. No external API call, credential storage, arbitrary payload execution, SQL, or SuiteQL is introduced.
+
 The backend exposes flow run detail lookup:
 
 ```bash

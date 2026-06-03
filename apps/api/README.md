@@ -217,6 +217,8 @@ The connector returns approved object metadata for `customer`, `invoice`, and `o
 
 Schema discovery is design-time only. It infers top-level scalar fields from pasted sample JSON, skips secret-like field names, warns on nested values, and returns `executable:false`. Discovery does not save connector credentials, execute HTTP requests, or create runtime mappings automatically.
 
+The V3.1 web Mapping Studio can use discovered schemas as temporary source or target trays. This is browser/session scoped only; persistent mapping definitions still require known governed catalog object IDs.
+
 ## Flow approval and publishing
 
 Flow definitions must move through the human approval lifecycle before execution:
