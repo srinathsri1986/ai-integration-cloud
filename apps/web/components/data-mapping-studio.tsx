@@ -98,6 +98,7 @@ export function DataMappingStudio() {
   const [savedMappings, setSavedMappings] = useState<MappingDefinition[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingMappings, setIsLoadingMappings] = useState(false);
+  const [lastSavedMappingId, setLastSavedMappingId] = useState<string | undefined>();
   const [simulation, setSimulation] = useState<MappingSimulationResponse | undefined>();
   const [isSimulating, setIsSimulating] = useState(false);
   const [restObjectLabel, setRestObjectLabel] = useState("Customer Event");
@@ -157,6 +158,8 @@ export function DataMappingStudio() {
   const usesSessionDiscoveredObject =
     sourceObjectId.startsWith("rest-discovered-") || targetObjectId.startsWith("rest-discovered-");
   const canReview = mappings.length > 0 && missingRequiredTargets.length === 0;
+  const canSimulateCurrentMapping =
+    lastSavedMappingId === mappingId || savedMappings.some((mapping) => mapping.mappingId === mappingId);
 
   useEffect(() => {
     loadSavedMappings();
@@ -177,6 +180,7 @@ export function DataMappingStudio() {
     setMappings([]);
     setSuggestions([]);
     setSimulation(undefined);
+    setLastSavedMappingId(undefined);
   }
 
   function onTargetSystemChange(systemId: string) {
@@ -186,6 +190,7 @@ export function DataMappingStudio() {
     setMappings([]);
     setSuggestions([]);
     setSimulation(undefined);
+    setLastSavedMappingId(undefined);
   }
 
   function mapToTarget(targetField: MappingField) {
@@ -312,7 +317,12 @@ export function DataMappingStudio() {
       return;
     }
 
-    setMessage(`${response.data.name} saved as a governed draft.`);
+    setMessage(`${response.data.name} saved as a governed draft. You can now simulate it.`);
+    setLastSavedMappingId(response.data.mappingId);
+    setSavedMappings((current) => [
+      response.data,
+      ...current.filter((mapping) => mapping.mappingId !== response.data.mappingId)
+    ]);
     await loadSavedMappings();
   }
 
@@ -354,6 +364,7 @@ export function DataMappingStudio() {
     setSuggestions([]);
     setSimulation(undefined);
     setMessage(`${mapping.name} opened in the mapping grid.`);
+    setLastSavedMappingId(mapping.mappingId);
     setActiveStep("map");
   }
 
@@ -416,9 +427,12 @@ export function DataMappingStudio() {
     setSourceSystemId("rest-api");
     setSourceObjectId(promotedObject.id);
     setSelectedSourceField(promotedObject.fields[0]?.name);
+    setMappingId(`${promotedObject.id}-to-${targetObject.id}`);
+    setMappingName(`${promotedObject.displayName} to ${targetObject.displayName}`);
     setMappings([]);
     setSuggestions([]);
     setSimulation(undefined);
+    setLastSavedMappingId(undefined);
     setMessage(response.data.message);
     setSchemaDiscoveryStatus(response.data.message);
     setActiveStep("map");
@@ -447,6 +461,7 @@ export function DataMappingStudio() {
     setMappings([]);
     setSuggestions([]);
     setSimulation(undefined);
+    setLastSavedMappingId(undefined);
     setMessage(`${mappingObject.displayName} is ready in the ${role} tray.`);
     setActiveStep("map");
   }
@@ -761,7 +776,7 @@ export function DataMappingStudio() {
                 {isSaving ? "Saving..." : "Save mapping draft"}
               </Button>
               <Button
-                disabled={isSimulating || !savedMappings.some((mapping) => mapping.mappingId === mappingId)}
+                disabled={isSimulating || !canSimulateCurrentMapping}
                 onClick={simulateCurrentMapping}
                 type="button"
                 variant="secondary"

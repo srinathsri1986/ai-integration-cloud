@@ -1279,9 +1279,15 @@ export async function saveMappingDefinition(
     });
 
     if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
+      const detail = body?.detail
+        ? Array.isArray(body.detail)
+          ? body.detail.map((item: any) => item.msg ?? String(item)).join("; ")
+          : String(body.detail)
+        : undefined;
       return {
         data: { ...fallbackMappingDefinition, ...request },
-        error: `API returned ${response.status}`,
+        error: detail ?? `API returned ${response.status}`,
         isFallback: true,
         ok: false
       };
