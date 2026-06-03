@@ -357,13 +357,15 @@ export function IntegrationManagementConsole({
                 <span>Actions</span>
               </div>
               {filteredFlows.map((flow) => (
-                <button
-                  className={`grid min-w-[920px] w-full grid-cols-[1.3fr_110px_110px_120px_150px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 ${
+                <div
+                  className={`grid min-w-[920px] w-full grid-cols-[1.3fr_110px_110px_120px_150px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 cursor-pointer ${
                     selectedFlow?.flowId === flow.flowId ? "bg-sky-50/60" : "bg-white"
                   }`}
                   key={flow.flowId}
                   onClick={() => setSelectedFlowId(flow.flowId)}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && setSelectedFlowId(flow.flowId)}
                 >
                   <span>
                     <span className="block text-sm font-semibold text-slate-950">{flow.name}</span>
@@ -397,7 +399,7 @@ export function IntegrationManagementConsole({
                       Delete
                     </Button>
                   </span>
-                </button>
+                </div>
               ))}
             </div>
           </Card>
