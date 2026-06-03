@@ -33,6 +33,7 @@ import { integrationSystems } from "@/lib/integration-catalog";
 import {
   discoverRestApiSchema,
   getMappingDefinitions,
+  promoteRestApiSchema,
   saveMappingDefinition,
   simulateMappingDefinition,
   suggestMappingDefinition,
@@ -120,14 +121,17 @@ export function DataMappingStudio() {
   const [schemaDiscoveryStatus, setSchemaDiscoveryStatus] = useState<string | undefined>();
   const [discoveredSourceObject, setDiscoveredSourceObject] = useState<MappingObject | undefined>();
   const [discoveredTargetObject, setDiscoveredTargetObject] = useState<MappingObject | undefined>();
+  const [promotedRestObjects, setPromotedRestObjects] = useState<MappingObject[]>([]);
+  const [isPromotingSchema, setIsPromotingSchema] = useState(false);
 
   const allMappingObjects = useMemo(
     () => [
       ...mappingObjects,
+      ...promotedRestObjects,
       ...(discoveredSourceObject ? [discoveredSourceObject] : []),
       ...(discoveredTargetObject ? [discoveredTargetObject] : [])
     ],
-    [discoveredSourceObject, discoveredTargetObject]
+    [discoveredSourceObject, discoveredTargetObject, promotedRestObjects]
   );
   const sourceObjects = useMemo(
     () => objectsForSystemFrom(allMappingObjects, sourceSystemId),
@@ -275,6 +279,7 @@ export function DataMappingStudio() {
       setMessage(
         "Discovered REST schemas are session-scoped. Map them visually now; promote them to a governed catalog object before saving a persistent mapping."
       );
+      setActiveStep("discover");
       return;
     }
 
@@ -380,6 +385,43 @@ export function DataMappingStudio() {
     } finally {
       setIsDiscoveringSchema(false);
     }
+  }
+
+  async function promoteDiscoveredSchema() {
+    if (!discoveredSchema || discoveredSchema.fields.length === 0) {
+      setSchemaDiscoveryStatus("Discover at least one safe field before promoting the schema.");
+      return;
+    }
+
+    setIsPromotingSchema(true);
+    const response = await promoteRestApiSchema({
+      fields: discoveredSchema.fields,
+      objectId: discoveredSchema.objectId,
+      objectLabel: discoveredSchema.objectLabel
+    });
+    setIsPromotingSchema(false);
+
+    if (!response.ok || !response.data.promoted) {
+      setSchemaDiscoveryStatus(response.error ?? response.data.message);
+      return;
+    }
+
+    const promotedObject = normalizeMappingObject(response.data.mappingObject);
+    setPromotedRestObjects((current) => [
+      ...current.filter((object) => object.id !== promotedObject.id),
+      promotedObject
+    ]);
+    setDiscoveredSourceObject(undefined);
+    setDiscoveredTargetObject(undefined);
+    setSourceSystemId("rest-api");
+    setSourceObjectId(promotedObject.id);
+    setSelectedSourceField(promotedObject.fields[0]?.name);
+    setMappings([]);
+    setSuggestions([]);
+    setSimulation(undefined);
+    setMessage(response.data.message);
+    setSchemaDiscoveryStatus(response.data.message);
+    setActiveStep("map");
   }
 
   function useDiscoveredSchema(role: "source" | "target") {
@@ -666,6 +708,14 @@ export function DataMappingStudio() {
                     Use as Target
                   </button>
                 </div>
+                <button
+                  className="inline-flex h-10 w-full items-center justify-center rounded-md bg-emerald-400 px-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={discoveredSchema.fields.length === 0 || isPromotingSchema}
+                  onClick={promoteDiscoveredSchema}
+                  type="button"
+                >
+                  {isPromotingSchema ? "Promoting..." : "Promote to governed catalog"}
+                </button>
               </div>
             ) : (
               <div className="mt-4 rounded-lg border border-dashed border-white/15 p-8 text-center">
@@ -1167,6 +1217,27 @@ function mappingObjectFromDiscoveredSchema(
     })),
     id: `${schema.objectId}-${role}`,
     systemId: "rest-api"
+  };
+}
+
+function normalizeMappingObject(object: {
+  displayName: string;
+  fields: Array<{
+    description: string;
+    name: string;
+    required?: boolean;
+    sample?: string | number | boolean | null;
+    type: MappingField["type"];
+  }>;
+  id: string;
+  systemId: string;
+}): MappingObject {
+  return {
+    ...object,
+    fields: object.fields.map((field) => ({
+      ...field,
+      sample: field.sample ?? null
+    }))
   };
 }
 

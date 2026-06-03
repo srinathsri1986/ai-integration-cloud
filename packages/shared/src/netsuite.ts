@@ -214,6 +214,49 @@ export type RestApiSchemaDiscoveryResponse = z.infer<
   typeof restApiSchemaDiscoveryResponseSchema
 >;
 
+export const mappingFieldSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: z.enum(["string", "number", "date", "boolean"]),
+  required: z.boolean().optional(),
+  sample: z.union([z.string(), z.number(), z.boolean()]).nullable().optional()
+});
+
+export type MappingField = z.infer<typeof mappingFieldSchema>;
+
+export const mappingObjectSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  systemId: z.string(),
+  fields: z.array(mappingFieldSchema)
+});
+
+export type MappingObject = z.infer<typeof mappingObjectSchema>;
+
+export const restApiSchemaPromotionRequestSchema = z.object({
+  objectId: z.string().min(3).max(80),
+  objectLabel: z.string().min(3).max(80),
+  fields: z.array(restApiDiscoveredFieldSchema).min(1).max(24)
+});
+
+export type RestApiSchemaPromotionRequest = z.infer<
+  typeof restApiSchemaPromotionRequestSchema
+>;
+
+export const restApiSchemaPromotionResponseSchema = z.object({
+  connectorId: z.literal("rest-api"),
+  promoted: z.boolean(),
+  objectId: z.string(),
+  objectLabel: z.string(),
+  mappingObject: mappingObjectSchema,
+  message: z.string(),
+  warnings: z.array(z.string())
+});
+
+export type RestApiSchemaPromotionResponse = z.infer<
+  typeof restApiSchemaPromotionResponseSchema
+>;
+
 export const flowIds = [
   "netsuite-cfo-dashboard-refresh",
   "netsuite-project-risk-refresh",

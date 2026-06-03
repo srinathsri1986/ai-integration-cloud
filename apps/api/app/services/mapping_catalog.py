@@ -1,3 +1,5 @@
+from threading import Lock
+
 from app.models.mapping import MappingObject
 
 
@@ -181,9 +183,28 @@ APPROVED_MAPPING_TRANSFORMS = [
     "constant_placeholder",
 ]
 
+_promoted_mapping_objects: dict[str, MappingObject] = {}
+_promoted_mapping_objects_lock = Lock()
+
+
+def list_mapping_objects() -> list[MappingObject]:
+    with _promoted_mapping_objects_lock:
+        return [*MAPPING_OBJECTS, *_promoted_mapping_objects.values()]
+
+
+def promote_mapping_object(mapping_object: MappingObject) -> MappingObject:
+    with _promoted_mapping_objects_lock:
+        _promoted_mapping_objects[mapping_object.id] = mapping_object
+        return mapping_object.model_copy()
+
+
+def clear_promoted_mapping_objects_for_tests() -> None:
+    with _promoted_mapping_objects_lock:
+        _promoted_mapping_objects.clear()
+
 
 def get_mapping_object(object_id: str) -> MappingObject:
-    for mapping_object in MAPPING_OBJECTS:
+    for mapping_object in list_mapping_objects():
         if mapping_object.id == object_id:
             return mapping_object
 

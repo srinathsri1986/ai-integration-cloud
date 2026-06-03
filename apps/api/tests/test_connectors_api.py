@@ -4,6 +4,8 @@ from app.core.config import get_settings
 from app.main import app
 from app.services.audit_service import audit_service
 from app.services.connector_config_service import connector_config_service
+from app.services.mapping_catalog import clear_promoted_mapping_objects_for_tests
+from app.services.mapping_definition_service import mapping_definition_service
 
 
 client = TestClient(app)
@@ -13,11 +15,15 @@ def setup_function() -> None:
     get_settings.cache_clear()
     audit_service.clear_for_tests()
     connector_config_service.clear_for_tests()
+    clear_promoted_mapping_objects_for_tests()
+    mapping_definition_service.clear_for_tests()
 
 
 def teardown_function() -> None:
     get_settings.cache_clear()
     connector_config_service.clear_for_tests()
+    clear_promoted_mapping_objects_for_tests()
+    mapping_definition_service.clear_for_tests()
 
 
 def test_list_connectors_includes_mock_netsuite_connector() -> None:
@@ -269,6 +275,122 @@ def test_discover_rest_api_schema_rejects_empty_payload() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_promote_rest_api_schema_allows_governed_mapping_save_and_simulation() -> None:
+    discovery = client.post(
+        "/api/v1/connectors/rest-api/discover-schema",
+        json={
+            "objectLabel": "Customer Event",
+            "samplePayload": {
+                "externalId": "CUST-100",
+                "displayName": "Acme Manufacturing",
+                "amount": 2500.75,
+                "invoiceDate": "2026-06-02",
+            },
+        },
+    ).json()
+
+    promoted = client.post(
+        "/api/v1/connectors/rest-api/promote-schema",
+        json={
+            "objectId": discovery["objectId"],
+            "objectLabel": discovery["objectLabel"],
+            "fields": discovery["fields"],
+        },
+    )
+
+    assert promoted.status_code == 200
+    promoted_body = promoted.json()
+    assert promoted_body["connectorId"] == "rest-api"
+    assert promoted_body["promoted"] is True
+    assert promoted_body["objectId"] == "rest-governed-customer-event"
+    assert promoted_body["mappingObject"]["systemId"] == "rest-api"
+    assert promoted_body["mappingObject"]["fields"][0]["name"] == "externalId"
+
+    mapping_response = client.post(
+        "/api/v1/mappings/definitions",
+        json={
+            "mappingId": "rest-customer-event-to-salesforce-opportunity",
+            "name": "REST Customer Event to Salesforce Opportunity",
+            "description": "Maps promoted REST customer event fields into Salesforce opportunity fields.",
+            "sourceObjectId": "rest-governed-customer-event",
+            "targetObjectId": "salesforce-opportunity",
+            "status": "draft",
+            "mappings": [
+                {
+                    "id": "display-to-name",
+                    "sourceField": "displayName",
+                    "targetField": "Name",
+                    "transform": "direct",
+                },
+                {
+                    "id": "external-to-account",
+                    "sourceField": "externalId",
+                    "targetField": "AccountName",
+                    "transform": "rename",
+                },
+                {
+                    "id": "amount-to-amount",
+                    "sourceField": "amount",
+                    "targetField": "Amount",
+                    "transform": "direct",
+                },
+                {
+                    "id": "date-to-close",
+                    "sourceField": "invoiceDate",
+                    "targetField": "CloseDate",
+                    "transform": "format_date",
+                },
+            ],
+        },
+    )
+
+    assert mapping_response.status_code == 200
+
+    simulation = client.post(
+        "/api/v1/mappings/definitions/rest-customer-event-to-salesforce-opportunity/simulate"
+    )
+    assert simulation.status_code == 200
+    simulation_body = simulation.json()
+    assert simulation_body["sourcePayload"]["externalId"] == "CUST-100"
+    assert simulation_body["targetPayload"]["Name"] == "Acme Manufacturing"
+    assert simulation_body["targetPayload"]["Amount"] == 2500.75
+
+    logs = client.get("/api/v1/audit/logs").json()
+    assert any(log["toolsUsed"] == ["connector.rest-api.schema_promotion"] for log in logs)
+
+
+def test_promote_rest_api_schema_skips_secret_like_fields() -> None:
+    response = client.post(
+        "/api/v1/connectors/rest-api/promote-schema",
+        json={
+            "objectId": "rest-discovered-payment-event",
+            "objectLabel": "Payment Event",
+            "fields": [
+                {
+                    "name": "apiKey",
+                    "label": "Api Key",
+                    "type": "string",
+                    "required": True,
+                    "sample": "do-not-store",
+                },
+                {
+                    "name": "customerId",
+                    "label": "Customer Id",
+                    "type": "string",
+                    "required": True,
+                    "sample": "CUST-100",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [field["name"] for field in body["mappingObject"]["fields"]] == ["customerId"]
+    assert body["warnings"] == ["apiKey was skipped because it looks like a secret or credential field."]
+    assert "do-not-store" not in str(body)
 
 
 def test_test_rest_api_connection_updates_status_and_writes_audit_log() -> None:

@@ -207,6 +207,9 @@ curl "http://localhost:8000/api/v1/connectors/rest-api/objects"
 curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/discover-schema" \
   -H "Content-Type: application/json" \
   -d '{"objectLabel":"Customer Event","samplePayload":{"externalId":"CUST-100","displayName":"Acme Manufacturing","amount":2500.75,"invoiceDate":"2026-06-02","isActive":true}}'
+curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/promote-schema" \
+  -H "Content-Type: application/json" \
+  -d '{"objectId":"rest-discovered-customer-event","objectLabel":"Customer Event","fields":[{"name":"externalId","label":"External Id","type":"string","required":true,"sample":"CUST-100"}]}'
 curl -X POST "http://localhost:8000/api/v1/connectors/rest-api/test"
 curl -X PUT "http://localhost:8000/api/v1/connectors/rest-api/config" \
   -H "Content-Type: application/json" \
@@ -220,6 +223,8 @@ Schema discovery is design-time only. It infers top-level scalar fields from pas
 The V3.1 web Mapping Studio can use discovered schemas as temporary source or target trays. This is browser/session scoped only; persistent mapping definitions still require known governed catalog object IDs.
 
 The V3.2 web Mapping Studio presents discovery, mapping, and review as separate guided steps. This is a frontend workflow change only; API governance and persistence rules remain unchanged.
+
+V3.3 adds schema promotion. Promoted REST schemas are registered as governed mapping catalog objects in the local backend runtime, allowing mapping drafts to be saved against them. Promotion revalidates fields, skips secret-like field names, records a connector audit event, and still performs no outbound HTTP calls.
 
 ## Flow approval and publishing
 

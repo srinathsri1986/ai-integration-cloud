@@ -32,6 +32,8 @@ import type {
   RestApiConnectorConfigUpdate,
   RestApiSchemaDiscoveryRequest,
   RestApiSchemaDiscoveryResponse,
+  RestApiSchemaPromotionRequest,
+  RestApiSchemaPromotionResponse,
   RunningProjectsResponse,
   SubsidiaryDrilldownResponse,
   YoyComparisonResponse
@@ -379,6 +381,21 @@ const fallbackRestApiSchemaDiscoveryResponse: RestApiSchemaDiscoveryResponse = {
   warnings: ["The REST schema discovery API is unavailable."],
   generatedFromSample: false,
   executable: false
+};
+
+const fallbackRestApiSchemaPromotionResponse: RestApiSchemaPromotionResponse = {
+  connectorId: "rest-api",
+  promoted: false,
+  objectId: "rest-governed-fallback-object",
+  objectLabel: "Fallback Object",
+  mappingObject: {
+    displayName: "Fallback Object",
+    fields: [],
+    id: "rest-governed-fallback-object",
+    systemId: "rest-api"
+  },
+  message: "The REST schema promotion API is unavailable.",
+  warnings: ["Promotion could not be completed."]
 };
 
 const fallbackFlows: FlowDefinition[] = [
@@ -833,6 +850,41 @@ export async function discoverRestApiSchema(
   } catch (error) {
     return {
       data: fallbackRestApiSchemaDiscoveryResponse,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
+export async function promoteRestApiSchema(
+  request: RestApiSchemaPromotionRequest
+): Promise<ClientApiResult<RestApiSchemaPromotionResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/promote-schema`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      return {
+        data: fallbackRestApiSchemaPromotionResponse,
+        error: `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: fallbackRestApiSchemaPromotionResponse,
       error: error instanceof Error ? error.message : "API unavailable",
       isFallback: true,
       ok: false

@@ -687,6 +687,19 @@ V3.2 reduces Mapping Studio clutter by turning the experience into a guided wiza
 
 Only the current step is shown, so non-technical users can move through one decision at a time. Session-discovered REST schemas remain design-time only until a future governed catalog promotion step.
 
+## Promote Discovered Schema to Governed Catalog v3.3
+
+V3.3 lets an integrator promote a discovered REST schema into a governed mapping catalog object.
+
+Workflow:
+
+- Discover a REST sample schema.
+- Promote it to the governed catalog.
+- Use the promoted object in the mapping trays.
+- Save a mapping draft through the existing mapping definition lifecycle.
+
+Promoted objects are kept in the local backend runtime for the MVP. Promotion revalidates discovered fields, skips secret-like field names, records an audit event, and still performs no outbound API calls or credential storage.
+
 The backend exposes flow run detail lookup:
 
 ```bash

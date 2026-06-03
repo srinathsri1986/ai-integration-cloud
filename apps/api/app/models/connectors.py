@@ -2,6 +2,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.mapping import MappingObject
+
 
 ConnectorEnvironment = Literal["sandbox", "production"]
 ConnectorMode = Literal["mock", "sandbox"]
@@ -145,3 +147,29 @@ class RestApiSchemaDiscoveryResponse(BaseModel):
     warnings: list[str]
     generated_from_sample: bool = Field(alias="generatedFromSample")
     executable: bool
+
+
+class RestApiSchemaPromotionRequest(BaseModel):
+    object_id: str = Field(alias="objectId", min_length=3, max_length=80, pattern=r"^[a-z0-9-]+$")
+    object_label: str = Field(alias="objectLabel", min_length=3, max_length=80)
+    fields: list[RestApiDiscoveredField] = Field(min_length=1, max_length=24)
+
+    @field_validator("object_label")
+    @classmethod
+    def reject_sensitive_label(cls, value: str) -> str:
+        normalized = value.lower()
+        blocked = ["password", "secret", "token", "api key", "authorization", "bearer"]
+        if any(term in normalized for term in blocked):
+            raise ValueError("REST object labels cannot contain secret-like terms.")
+
+        return value
+
+
+class RestApiSchemaPromotionResponse(BaseModel):
+    connector_id: Literal["rest-api"] = Field(alias="connectorId")
+    promoted: bool
+    object_id: str = Field(alias="objectId")
+    object_label: str = Field(alias="objectLabel")
+    mapping_object: MappingObject = Field(alias="mappingObject")
+    message: str
+    warnings: list[str]

@@ -17,13 +17,17 @@ from app.models.connectors import (
     RestApiDiscoveredField,
     RestApiSchemaDiscoveryRequest,
     RestApiSchemaDiscoveryResponse,
+    RestApiSchemaPromotionRequest,
+    RestApiSchemaPromotionResponse,
 )
+from app.models.mapping import MappingObject
 from app.connectors.netsuite.sandbox_connector import (
     NetSuiteSandboxConnectionConfig,
     NetSuiteSandboxConnector,
 )
 from app.core.config import get_settings
 from app.services.audit_service import audit_service
+from app.services.mapping_catalog import promote_mapping_object
 
 
 _SECRET_FIELD_TERMS = ("password", "secret", "token", "apikey", "api_key", "authorization", "bearer")
@@ -160,6 +164,65 @@ class ConnectorConfigService:
             generatedFromSample=True,
             executable=False,
         )
+
+    def promote_rest_api_schema(
+        self,
+        request: RestApiSchemaPromotionRequest,
+    ) -> RestApiSchemaPromotionResponse:
+        request_id = str(uuid4())
+        started = perf_counter()
+        success = False
+        warnings: list[str] = []
+
+        try:
+            safe_fields = []
+            for field in request.fields:
+                normalized_name = field.name.lower().replace("-", "_")
+                compact_name = normalized_name.replace("_", "")
+                if any(term in compact_name or term in normalized_name for term in _SECRET_FIELD_TERMS):
+                    warnings.append(f"{field.name} was skipped because it looks like a secret or credential field.")
+                    continue
+
+                safe_fields.append(
+                    {
+                        "name": field.name,
+                        "description": f"Promoted from governed REST sample discovery as {field.type}.",
+                        "type": field.type,
+                        "required": field.required,
+                        "sample": field.sample,
+                    }
+                )
+
+            if len(safe_fields) == 0:
+                raise ValueError("At least one safe field is required to promote a REST schema.")
+
+            mapping_object = MappingObject(
+                id=f"rest-governed-{request.object_id.removeprefix('rest-discovered-')}",
+                displayName=request.object_label,
+                systemId="rest-api",
+                fields=safe_fields,
+            )
+            promoted = promote_mapping_object(mapping_object)
+            success = True
+
+            return RestApiSchemaPromotionResponse(
+                connectorId="rest-api",
+                promoted=True,
+                objectId=promoted.id,
+                objectLabel=promoted.display_name,
+                mappingObject=promoted,
+                message=f"{promoted.display_name} promoted as a governed REST catalog object.",
+                warnings=warnings,
+            )
+        finally:
+            audit_service.record_connector_action(
+                request_id=request_id,
+                action="schema_promotion",
+                connector_id="rest-api",
+                endpoint_called="/api/v1/connectors/rest-api/promote-schema",
+                success=success,
+                latency_ms=int((perf_counter() - started) * 1000),
+            )
 
     def _infer_rest_field_type(self, sample: Any) -> str:
         if isinstance(sample, bool):

@@ -12,6 +12,8 @@ from app.models.connectors import (
     RestApiConnectorConfigUpdate,
     RestApiSchemaDiscoveryRequest,
     RestApiSchemaDiscoveryResponse,
+    RestApiSchemaPromotionRequest,
+    RestApiSchemaPromotionResponse,
 )
 from app.services.connector_config_service import connector_config_service
 
@@ -57,6 +59,14 @@ def discover_rest_api_schema(
     user=Depends(require_permissions("connector:admin")),
 ) -> RestApiSchemaDiscoveryResponse:
     return connector_config_service.discover_rest_api_schema(request)
+
+
+@router.post("/rest-api/promote-schema", response_model=RestApiSchemaPromotionResponse)
+def promote_rest_api_schema(
+    request: RestApiSchemaPromotionRequest,
+    user=Depends(require_permissions("connector:admin")),
+) -> RestApiSchemaPromotionResponse:
+    return connector_config_service.promote_rest_api_schema(request)
 
 
 @router.post("/rest-api/test", response_model=RestApiConnectionTestResponse)
