@@ -1,0 +1,45 @@
+# Development override — used with:
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml watch
+#
+# What this does:
+#   api          — syncs Python files into the container; uvicorn --reload picks them up instantly
+#   celery-worker— syncs Python files + restarts the worker process
+#   web          — full image rebuild on any source change (Next.js production build)
+#
+# Postgres and Redis are stateful; they never need to be watched.
+
+services:
+  api:
+    # Override CMD to enable uvicorn auto-reload in dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    develop:
+      watch:
+        # Sync Python source — uvicorn --reload detects the change and reloads in-process
+        - action: sync
+          path: ../apps/api/app
+          target: /app/app
+        # Full rebuild only when dependencies change
+        - action: rebuild
+          path: ../apps/api/pyproject.toml
+
+  celery-worker:
+    develop:
+      watch:
+        # Sync Python source then restart the worker to pick up task changes
+        - action: sync+restart
+          path: ../apps/api/app
+          target: /app/app
+        - action: rebuild
+          path: ../apps/api/pyproject.toml
+
+  web:
+    develop:
+      watch:
+        # Next.js production build — any source change triggers a full rebuild + restart
+        - action: rebuild
+          path: ../apps/web
+          ignore:
+            - .next
+            - node_modules
+        - action: rebuild
+          path: ../packages/shared/src

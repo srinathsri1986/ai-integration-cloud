@@ -6,6 +6,9 @@
   "packageManager": "pnpm@11.4.0",
   "scripts": {
     "build": "pnpm --recursive build",
+    "stack:up": "docker compose -f infra/docker-compose.yml up --build",
+    "stack:watch": "docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml watch",
+    "stack:down": "docker compose -f infra/docker-compose.yml down",
     "dev:web": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/web dev",
     "dev:mcp": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/mcp-server dev",
     "lint": "pnpm --recursive lint",
