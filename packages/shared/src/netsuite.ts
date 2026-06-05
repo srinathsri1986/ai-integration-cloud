@@ -35,21 +35,28 @@ export const netSuiteQueryResultSchema = z.object({
 
 export type NetSuiteQueryResult = z.infer<typeof netSuiteQueryResultSchema>;
 
-export const connectorStatusSchema = z.enum([
-  "not_configured",
-  "configured",
-  "test_passed",
-  "test_failed"
-]);
+// Import generics for use in this file AND re-export for consumers
+import {
+  connectorStatusSchema,
+  connectorModeSchema,
+  connectorDefinitionSchema,
+  connectorToolSchema,
+  connectorConfigSchema,
+  connectorTestResponseSchema
+} from "./connectors.js";
+import type {
+  ConnectorStatus,
+  ConnectorMode,
+  ConnectorDefinition,
+  ConnectorTool,
+  ConnectorConfig,
+  ConnectorTestResponse
+} from "./connectors.js";
+export type { ConnectorStatus, ConnectorMode, ConnectorDefinition, ConnectorTool, ConnectorConfig, ConnectorTestResponse };
+export { connectorStatusSchema, connectorModeSchema, connectorDefinitionSchema, connectorToolSchema, connectorConfigSchema, connectorTestResponseSchema };
 
-export type ConnectorStatus = z.infer<typeof connectorStatusSchema>;
-
-export const connectorModeSchema = z.enum(["mock", "sandbox"]);
-
-export type ConnectorMode = z.infer<typeof connectorModeSchema>;
-
-export const connectorIdSchema = z.enum(["netsuite", "rest-api"]);
-
+// connectorIdSchema kept for backward compatibility — use z.string() in new code
+export const connectorIdSchema = z.string().min(2).max(48);
 export type ConnectorId = z.infer<typeof connectorIdSchema>;
 
 export const netSuiteConnectorConfigSchema = z.object({
@@ -78,7 +85,7 @@ export type NetSuiteConnectorConfigUpdate = z.infer<
 >;
 
 export const connectorListItemSchema = z.object({
-  id: connectorIdSchema,
+  id: z.string().min(2).max(48),
   name: z.string(),
   status: connectorStatusSchema,
   mockMode: z.boolean(),
@@ -285,15 +292,8 @@ export const flowLifecycleActionSchema = z.enum([
 export const flowRunStatusSchema = z.enum(["never_run", "running", "succeeded", "failed"]);
 export const flowRunStepStatusSchema = z.enum(["succeeded", "failed", "skipped"]);
 export const flowTriggerTypeSchema = z.enum(["manual", "schedule", "webhook"]);
-export const approvedFlowToolSchema = z.enum([
-  "cfo.dashboard_summary",
-  "cfo.pl_vs_budget",
-  "cfo.yoy_comparison",
-  "cfo.subsidiary_drilldown",
-  "cfo.running_projects",
-  "cfo.overdue_projects_by_account_manager",
-  "orchestrator.query"
-]);
+// Any string tool ID — validated against the connector registry at runtime
+export const approvedFlowToolSchema = z.string().min(1).max(120);
 
 export type FlowStatus = z.infer<typeof flowStatusSchema>;
 export type FlowLifecycleAction = z.infer<typeof flowLifecycleActionSchema>;
@@ -315,7 +315,7 @@ export const flowDefinitionSchema = z.object({
   flowId: flowIdSchema,
   name: z.string(),
   description: z.string(),
-  sourceConnector: z.literal("netsuite"),
+  sourceConnector: z.string().min(2).max(48),
   targetModule: z.string(),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
@@ -333,7 +333,7 @@ export const flowDefinitionUpsertRequestSchema = z.object({
   flowId: z.string().min(3).max(96),
   name: z.string().min(3).max(120),
   description: z.string().min(10).max(500),
-  sourceConnector: z.literal("netsuite"),
+  sourceConnector: z.string().min(2).max(48),
   targetModule: z.string().min(3).max(80),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,

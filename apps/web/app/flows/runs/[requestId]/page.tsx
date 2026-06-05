@@ -5,7 +5,7 @@ import { use } from "react";
 import { FlowRunDetail } from "@/components/flow-run-detail";
 import { PlatformShell } from "@/components/platform-shell";
 import { getFlowRun } from "@/lib/api";
-import type { FlowRunResponse } from "@netsuite-cfo/shared";
+import type { FlowRunResponse } from "@ai-integration-cloud/shared";
 
 const POLL_INTERVAL_MS = 3000;
 

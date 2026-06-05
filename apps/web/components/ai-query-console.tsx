@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Bot, SendHorizonal } from "lucide-react";
-import type { OrchestratorQueryResponse } from "@netsuite-cfo/shared";
+import type { OrchestratorQueryResponse } from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   XCircle
 } from "lucide-react";
-import type { AuditLogEntry, FlowDefinition } from "@netsuite-cfo/shared";
+import type { AuditLogEntry, FlowDefinition } from "@ai-integration-cloud/shared";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
-import type { FlowDefinition } from "@netsuite-cfo/shared";
+import type { FlowDefinition } from "@ai-integration-cloud/shared";
 
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";

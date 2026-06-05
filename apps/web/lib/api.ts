@@ -37,7 +37,7 @@ import type {
   RunningProjectsResponse,
   SubsidiaryDrilldownResponse,
   YoyComparisonResponse
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 
 // Browser-facing URL (exposed to client bundle via NEXT_PUBLIC_ prefix)
 const PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";

@@ -19,7 +19,7 @@ import type {
   ApprovedFlowTool,
   FlowDefinitionUpsertRequest,
   MappingDefinition
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

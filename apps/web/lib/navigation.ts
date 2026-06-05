@@ -1,4 +1,4 @@
-import type { UserRole } from "@netsuite-cfo/shared";
+import type { UserRole } from "@ai-integration-cloud/shared";
 import {
   BarChart3,
   Bot,

@@ -5,7 +5,7 @@ import {
   runningProjectsResponseSchema,
   subsidiaryDrilldownResponseSchema,
   yoyComparisonResponseSchema
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 import { z } from "zod";
 
 export const periodSchema = z.string().regex(/^\d{4}-(Q[1-4]|0[1-9]|1[0-2])$/);

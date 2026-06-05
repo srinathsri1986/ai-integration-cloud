@@ -1,7 +1,7 @@
 import {
   approvedNetSuiteQueryTemplateIdSchema,
   type ApprovedNetSuiteQueryTemplateId
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 
 export { approvedNetSuiteQueryTemplateIdSchema };
 export type { ApprovedNetSuiteQueryTemplateId };

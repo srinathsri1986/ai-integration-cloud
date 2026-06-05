@@ -12,7 +12,7 @@ import {
   Loader2,
   Webhook
 } from "lucide-react";
-import type { FlowDefinitionUpsertRequest, FlowTriggerType } from "@netsuite-cfo/shared";
+import type { FlowDefinitionUpsertRequest, FlowTriggerType } from "@ai-integration-cloud/shared";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";

@@ -29,7 +29,7 @@ import type {
   MappingDefinition,
   MappingLifecycleAction,
   MappingSimulationResponse
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

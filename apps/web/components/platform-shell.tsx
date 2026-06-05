@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrainCircuit, Building2, LogOut, ShieldCheck } from "lucide-react";
-import type { UserRole } from "@netsuite-cfo/shared";
+import type { UserRole } from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

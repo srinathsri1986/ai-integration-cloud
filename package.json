@@ -1,5 +1,5 @@
 {
-  "name": "netsuite-cfo-intelligence-orchestrator",
+  "name": "ai-integration-cloud",
   "private": true,
   "version": "0.1.0",
   "description": "Monorepo scaffold for the NetSuite CFO Intelligence Orchestrator MVP.",
@@ -9,10 +9,10 @@
     "stack:up": "docker compose -f infra/docker-compose.yml up --build",
     "stack:watch": "docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml watch",
     "stack:down": "docker compose -f infra/docker-compose.yml down",
-    "dev:web": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/web dev",
-    "dev:mcp": "pnpm --filter @netsuite-cfo/shared build && pnpm --filter @netsuite-cfo/mcp-server dev",
+    "dev:web": "pnpm --filter @ai-integration-cloud/shared build && pnpm --filter @ai-integration-cloud/web dev",
+    "dev:mcp": "pnpm --filter @ai-integration-cloud/shared build && pnpm --filter @ai-integration-cloud/mcp-server dev",
     "lint": "pnpm --recursive lint",
-    "test": "pnpm --filter @netsuite-cfo/shared build && pnpm --recursive test",
+    "test": "pnpm --filter @ai-integration-cloud/shared build && pnpm --recursive test",
     "typecheck": "pnpm --recursive typecheck"
   },
   "engines": {

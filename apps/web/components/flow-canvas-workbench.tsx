@@ -20,7 +20,7 @@ import type {
   FlowDefinitionUpsertRequest,
   FlowSuggestionResponse,
   FlowStep
-} from "@netsuite-cfo/shared";
+} from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

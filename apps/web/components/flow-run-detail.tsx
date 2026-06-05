@@ -14,7 +14,7 @@ import {
   Workflow,
   XCircle
 } from "lucide-react";
-import type { FlowRunResponse } from "@netsuite-cfo/shared";
+import type { FlowRunResponse } from "@ai-integration-cloud/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

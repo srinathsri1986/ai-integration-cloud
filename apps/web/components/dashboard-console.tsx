@@ -12,7 +12,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react";
-import type { FlowDefinition, FlowRunResponse } from "@netsuite-cfo/shared";
+import type { FlowDefinition, FlowRunResponse } from "@ai-integration-cloud/shared";
 
 import { Card } from "@/components/ui/card";
 

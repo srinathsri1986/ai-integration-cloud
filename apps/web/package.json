@@ -1,5 +1,5 @@
 {
-  "name": "@netsuite-cfo/web",
+  "name": "@ai-integration-cloud/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@netsuite-cfo/shared": "workspace:*",
+    "@ai-integration-cloud/shared": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
