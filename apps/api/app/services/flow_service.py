@@ -4,6 +4,7 @@ from threading import Lock
 from time import perf_counter
 from uuid import uuid4
 
+from app.connectors import connector_registry
 from app.core.database import SessionLocal
 from app.models.flows import (
     FlowDefinition,
@@ -17,26 +18,29 @@ from app.models.flows import (
     PaginatedFlowRuns,
     PaginatedFlows,
 )
-from app.models.orchestrator import OrchestratorQueryRequest
 from app.repositories.flow_definition_repository import FlowDefinitionRepository
 from app.repositories.flow_run_repository import FlowRunRepository
 from app.services.audit_service import audit_service
-from app.services.cfo_service import CfoService
 from app.services.mapping_definition_service import mapping_definition_service
-from app.services.orchestrator_service import OrchestratorService
 
+# These flow IDs are protected from deletion — they are the built-in demo integrations.
 BUILT_IN_FLOW_IDS = {
-    "netsuite-cfo-dashboard-refresh",
-    "netsuite-project-risk-refresh",
-    "netsuite-subsidiary-drilldown-refresh",
+    "demo-netsuite-cfo-dashboard",
+    "demo-salesforce-opportunity-sync",
+    "demo-sap-journal-post",
+    "demo-oracle-financial-report",
+    "demo-hcm-headcount-snapshot",
+    "demo-postgres-analytics-pull",
+    "demo-rest-api-webhook-relay",
+    "demo-slack-alert-dispatch",
 }
 
 
 def _initial_flows() -> dict[str, FlowDefinition]:
     return {
-        "netsuite-cfo-dashboard-refresh": FlowDefinition(
-            flowId="netsuite-cfo-dashboard-refresh",
-            name="NetSuite CFO dashboard refresh",
+        "demo-netsuite-cfo-dashboard": FlowDefinition(
+            flowId="demo-netsuite-cfo-dashboard",
+            name="NetSuite CFO Dashboard Refresh",
             description="Refreshes executive CFO dashboard metrics from approved mock NetSuite data.",
             sourceConnector="netsuite",
             targetModule="cfo_dashboard",
@@ -59,53 +63,172 @@ def _initial_flows() -> dict[str, FlowDefinition]:
                 },
             ],
         ),
-        "netsuite-project-risk-refresh": FlowDefinition(
-            flowId="netsuite-project-risk-refresh",
-            name="NetSuite project risk refresh",
-            description="Refreshes running project exposure and overdue project risk views.",
-            sourceConnector="netsuite",
-            targetModule="project_risk",
+        "demo-salesforce-opportunity-sync": FlowDefinition(
+            flowId="demo-salesforce-opportunity-sync",
+            name="Salesforce Opportunity Sync",
+            description="Pulls open opportunities from Salesforce CRM and lists them in the activity feed.",
+            sourceConnector="salesforce",
+            targetModule="crm_sync",
             status="published",
             triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=[
                 {
-                    "id": "running-projects",
-                    "name": "Load running projects",
-                    "description": "Fetch active project financial exposure from approved mock data.",
-                    "approvedTool": "cfo.running_projects",
+                    "id": "list-opportunities",
+                    "name": "List open opportunities",
+                    "description": "Fetch open opportunities from Salesforce.",
+                    "approvedTool": "list_opportunities",
                 },
                 {
-                    "id": "overdue-projects",
-                    "name": "Load overdue projects",
-                    "description": "Summarize overdue projects by account manager.",
-                    "approvedTool": "cfo.overdue_projects_by_account_manager",
+                    "id": "get-account",
+                    "name": "Enrich with account details",
+                    "description": "Retrieve account details for the top opportunity.",
+                    "approvedTool": "get_account",
                 },
             ],
         ),
-        "netsuite-subsidiary-drilldown-refresh": FlowDefinition(
-            flowId="netsuite-subsidiary-drilldown-refresh",
-            name="NetSuite subsidiary drilldown refresh",
-            description="Refreshes subsidiary operating performance using approved mock data.",
-            sourceConnector="netsuite",
-            targetModule="subsidiary_drilldown",
+        "demo-sap-journal-post": FlowDefinition(
+            flowId="demo-sap-journal-post",
+            name="SAP Automated Journal Post",
+            description="Posts a double-entry journal entry to SAP G/L and retrieves updated balance.",
+            sourceConnector="sap",
+            targetModule="gl_journal",
             status="published",
             triggerType="manual",
             lastRunAt=None,
             lastRunStatus="never_run",
             steps=[
                 {
-                    "id": "subsidiary",
-                    "name": "Load subsidiary drilldown",
-                    "description": "Fetch EMEA operating performance for 2026-Q1.",
-                    "approvedTool": "cfo.subsidiary_drilldown",
+                    "id": "post-journal",
+                    "name": "Post journal entry",
+                    "description": "Post a double-entry journal to the general ledger.",
+                    "approvedTool": "post_journal_entry",
                 },
                 {
-                    "id": "orchestrator-summary",
-                    "name": "Route CFO summary prompt",
-                    "description": "Route a deterministic supported CFO summary question.",
-                    "approvedTool": "orchestrator.query",
+                    "id": "check-balance",
+                    "name": "Check G/L balance",
+                    "description": "Verify the updated G/L account balance after posting.",
+                    "approvedTool": "get_gl_balance",
+                },
+            ],
+        ),
+        "demo-oracle-financial-report": FlowDefinition(
+            flowId="demo-oracle-financial-report",
+            name="Oracle Financial Report",
+            description="Runs a pre-approved Oracle FSG report and fetches open accounting periods.",
+            sourceConnector="oracle",
+            targetModule="financial_reporting",
+            status="published",
+            triggerType="manual",
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=[
+                {
+                    "id": "run-report",
+                    "name": "Run financial report",
+                    "description": "Execute pre-approved FSG report.",
+                    "approvedTool": "run_financial_report",
+                },
+                {
+                    "id": "list-periods",
+                    "name": "List open periods",
+                    "description": "Retrieve open accounting periods.",
+                    "approvedTool": "list_periods",
+                },
+            ],
+        ),
+        "demo-hcm-headcount-snapshot": FlowDefinition(
+            flowId="demo-hcm-headcount-snapshot",
+            name="HCM Headcount Snapshot",
+            description="Captures current headcount and open roles from the HCM system.",
+            sourceConnector="hcm",
+            targetModule="workforce_analytics",
+            status="published",
+            triggerType="manual",
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=[
+                {
+                    "id": "headcount",
+                    "name": "Get headcount",
+                    "description": "Fetch active headcount by department.",
+                    "approvedTool": "get_headcount",
+                },
+                {
+                    "id": "open-roles",
+                    "name": "List open roles",
+                    "description": "Fetch open requisitions.",
+                    "approvedTool": "list_open_roles",
+                },
+            ],
+        ),
+        "demo-postgres-analytics-pull": FlowDefinition(
+            flowId="demo-postgres-analytics-pull",
+            name="PostgreSQL Analytics Pull",
+            description="Runs an approved parameterised query against the analytics database.",
+            sourceConnector="postgres",
+            targetModule="analytics",
+            status="published",
+            triggerType="manual",
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=[
+                {
+                    "id": "list-templates",
+                    "name": "List approved query templates",
+                    "description": "Show which templates are approved for execution.",
+                    "approvedTool": "list_approved_templates",
+                },
+                {
+                    "id": "run-query",
+                    "name": "Run approved query",
+                    "description": "Execute the revenue_by_month template.",
+                    "approvedTool": "run_approved_query",
+                },
+            ],
+        ),
+        "demo-rest-api-webhook-relay": FlowDefinition(
+            flowId="demo-rest-api-webhook-relay",
+            name="REST API Webhook Relay",
+            description="Fetches data from an approved REST endpoint and relays the response.",
+            sourceConnector="rest-api",
+            targetModule="webhook_relay",
+            status="published",
+            triggerType="manual",
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=[
+                {
+                    "id": "http-get",
+                    "name": "Fetch from approved endpoint",
+                    "description": "Execute an approved GET template to retrieve data.",
+                    "approvedTool": "http_get",
+                },
+            ],
+        ),
+        "demo-slack-alert-dispatch": FlowDefinition(
+            flowId="demo-slack-alert-dispatch",
+            name="Slack Alert Dispatch",
+            description="Posts a system alert message to the approved Slack alerts channel.",
+            sourceConnector="slack",
+            targetModule="alerting",
+            status="published",
+            triggerType="manual",
+            lastRunAt=None,
+            lastRunStatus="never_run",
+            steps=[
+                {
+                    "id": "list-channels",
+                    "name": "Check approved channels",
+                    "description": "Verify which channels are approved for posting.",
+                    "approvedTool": "list_channels",
+                },
+                {
+                    "id": "post-alert",
+                    "name": "Post alert message",
+                    "description": "Send alert text to the approved alerts channel.",
+                    "approvedTool": "post_message",
                 },
             ],
         ),
@@ -113,13 +236,7 @@ def _initial_flows() -> dict[str, FlowDefinition]:
 
 
 class FlowService:
-    def __init__(
-        self,
-        cfo_service: CfoService | None = None,
-        orchestrator_service: OrchestratorService | None = None,
-    ) -> None:
-        self.cfo_service = cfo_service or CfoService()
-        self.orchestrator_service = orchestrator_service or OrchestratorService(self.cfo_service)
+    def __init__(self) -> None:
         self._lock = Lock()
 
     def _seed_flows(self, tenant_id: int | None = None) -> None:
@@ -315,17 +432,24 @@ class FlowService:
     def _execute_flow_sync(
         self, flow_id: FlowId, request_id: str, tenant_id: int | None = None
     ) -> None:
-        """Run flow synchronously and update the existing run record. Called by Celery task."""
+        """Step-driven flow execution — dispatches each step to the connector registry.
+
+        Replaces the old hardcoded flow_id branching. Every flow is now executed the
+        same way: iterate steps, resolve connector, call registry.execute_tool().
+        """
         started = datetime.now(UTC).isoformat()
         timer_started = perf_counter()
         tools_used: list[str] = []
         success = False
         mapping_definition_id: str | None = None
         execution_timeline: list[FlowRunTimelineStep] = []
+        data: dict = {}
 
         try:
             flow = self.get_flow(flow_id, tenant_id)
             mapping_definition_id = flow.mapping_definition_id
+
+            # Gate: flow must be published
             if flow.status != "published":
                 completed = datetime.now(UTC).isoformat()
                 response = FlowRunResponse(
@@ -352,173 +476,96 @@ class FlowService:
                     FlowRunRepository(session, tenant_id).update_completed(request_id, response)
                 return
 
-            if flow_id == "netsuite-cfo-dashboard-refresh":
-                data = {
-                    "dashboardSummary": self.cfo_service.dashboard_summary().model_dump(),
-                    "plVsBudget": self.cfo_service.pl_vs_budget(
-                        period="2026-Q1",
-                        subsidiary_id="NA",
-                    ).model_dump(),
-                }
-                tools_used = ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
-                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
-            elif flow_id == "netsuite-project-risk-refresh":
-                data = {
-                    "runningProjects": self.cfo_service.running_projects().model_dump(),
-                    "overdueProjects": self.cfo_service.overdue_projects_by_account_manager(
-                        min_days_overdue=1,
-                    ).model_dump(),
-                }
-                tools_used = [
-                    "cfo.running_projects",
-                    "cfo.overdue_projects_by_account_manager",
-                ]
-                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
-            elif flow_id == "netsuite-subsidiary-drilldown-refresh":
-                data = {
-                    "subsidiaryDrilldown": self.cfo_service.subsidiary_drilldown(
-                        period="2026-Q1",
-                        subsidiary_id="EMEA",
-                    ).model_dump(),
-                    "orchestratorSummary": self.orchestrator_service.query(
-                        OrchestratorQueryRequest(
-                            question="Show EMEA subsidiary drilldown",
-                            periodRange="2026-Q1",
-                            subsidiary="EMEA",
+            # Step-driven execution: iterate steps, dispatch each to the connector registry
+            step_failed = False
+            for step in flow.steps:
+                connector_id = step.connector_id or flow.source_connector
+                tool_id = step.approved_tool
+                step_start = datetime.now(UTC).isoformat()
+                try:
+                    result = connector_registry.execute_tool(connector_id, tool_id, params={})
+                    data[step.id] = result
+                    tools_used.append(tool_id)
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id=step.id,
+                            name=step.name,
+                            status="succeeded",
+                            started_at=step_start,
+                            approved_tool=tool_id,
+                            mapping_definition_id=mapping_definition_id,
                         )
-                    ).model_dump(),
-                }
-                tools_used = ["cfo.subsidiary_drilldown", "orchestrator.query"]
-                execution_timeline = self._timeline_for_tools(flow, tools_used, started)
-            else:
-                completed = datetime.now(UTC).isoformat()
-                tools_used = [step.approved_tool for step in flow.steps]
-                if flow.mapping_definition_id is None:
-                    response = FlowRunResponse(
-                        requestId=request_id,
-                        flowId=flow_id,
-                        status="failed",
-                        startedAt=started,
-                        completedAt=completed,
-                        toolsUsed=tools_used,
-                        message=(
-                            "Flow definition is saved, but no published mapping definition "
-                            "is attached for custom runtime preview."
-                        ),
-                        data={"steps": [step.model_dump(by_alias=True) for step in flow.steps]},
-                        executionTimeline=[
-                            self._timeline_step(
-                                step_id="mapping-check",
-                                name="Require attached published mapping",
-                                status="failed",
-                                started_at=started,
-                                approved_tool=None,
-                                warnings=["No published mapping definition is attached."],
-                            )
-                        ],
                     )
-                    with SessionLocal() as session:
-                        repo = FlowRunRepository(session, tenant_id)
-                        repo.update_completed(request_id, response)
-                        FlowDefinitionRepository(session, tenant_id).update_last_run(
-                            flow_id, completed, "failed"
+                except KeyError as exc:
+                    step_failed = True
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id=step.id,
+                            name=step.name,
+                            status="failed",
+                            started_at=step_start,
+                            approved_tool=tool_id,
+                            warnings=[f"Tool not found: {exc}"],
                         )
-                    return
+                    )
+                    break  # stop on first step failure
 
-                mapping = mapping_definition_service.get_mapping(flow.mapping_definition_id)
+            # If flow has a mapping definition, simulate it as an additional step
+            if not step_failed and mapping_definition_id:
+                mapping = mapping_definition_service.get_mapping(mapping_definition_id)
                 if mapping.status != "published":
-                    response = FlowRunResponse(
-                        requestId=request_id,
-                        flowId=flow_id,
-                        status="failed",
-                        startedAt=started,
-                        completedAt=completed,
-                        toolsUsed=tools_used,
-                        message="Attached mapping definition must be published before flow runtime preview.",
-                        data={"mappingDefinitionId": flow.mapping_definition_id},
-                        executionTimeline=[
-                            self._timeline_step(
-                                step_id="mapping-status-check",
-                                name="Require published mapping",
-                                status="failed",
-                                started_at=started,
-                                approved_tool=None,
-                                mapping_definition_id=flow.mapping_definition_id,
-                                warnings=["Attached mapping definition is not published."],
-                            )
-                        ],
-                    )
-                    with SessionLocal() as session:
-                        repo = FlowRunRepository(session, tenant_id)
-                        repo.update_completed(request_id, response)
-                        FlowDefinitionRepository(session, tenant_id).update_last_run(
-                            flow_id, completed, "failed"
+                    step_failed = True
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id="mapping-status-check",
+                            name="Require published mapping",
+                            status="failed",
+                            started_at=started,
+                            approved_tool=None,
+                            mapping_definition_id=mapping_definition_id,
+                            warnings=["Attached mapping definition is not published."],
                         )
-                    return
-
-                simulation = mapping_definition_service.simulate_mapping(flow.mapping_definition_id)
-                execution_timeline = self._timeline_for_tools(
-                    flow,
-                    tools_used,
-                    started,
-                    mapping_definition_id=flow.mapping_definition_id,
-                )
-                execution_timeline.append(
-                    self._timeline_step(
-                        step_id="mapping-simulation",
-                        name="Simulate attached mapping",
-                        status="succeeded",
-                        started_at=started,
-                        approved_tool=None,
-                        mapping_definition_id=flow.mapping_definition_id,
-                        warnings=simulation.warnings,
                     )
-                )
-                success = True
-                completed = datetime.now(UTC).isoformat()
-                response = FlowRunResponse(
-                    requestId=request_id,
-                    flowId=flow_id,
-                    status="succeeded",
-                    startedAt=started,
-                    completedAt=completed,
-                    toolsUsed=tools_used,
-                    message="Custom flow runtime preview completed using the attached published mapping.",
-                    data={
-                        "steps": [step.model_dump(by_alias=True) for step in flow.steps],
-                        "mappingDefinitionId": flow.mapping_definition_id,
-                        "mappingSimulation": simulation.model_dump(by_alias=True),
-                    },
-                    executionTimeline=execution_timeline,
-                )
-                with SessionLocal() as session:
-                    repo = FlowRunRepository(session, tenant_id)
-                    repo.update_completed(request_id, response)
-                    FlowDefinitionRepository(session, tenant_id).update_last_run(
-                        flow_id, completed, "succeeded"
+                else:
+                    simulation = mapping_definition_service.simulate_mapping(mapping_definition_id)
+                    data["mappingSimulation"] = simulation.model_dump(by_alias=True)
+                    data["mappingDefinitionId"] = mapping_definition_id
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id="mapping-simulation",
+                            name="Simulate attached mapping",
+                            status="succeeded",
+                            started_at=started,
+                            approved_tool=None,
+                            mapping_definition_id=mapping_definition_id,
+                            warnings=simulation.warnings,
+                        )
                     )
-                return
 
             completed = datetime.now(UTC).isoformat()
-            with SessionLocal() as session:
-                FlowDefinitionRepository(session, tenant_id).update_last_run(
-                    flow_id, completed, "succeeded"
-                )
+            final_status = "failed" if step_failed else "succeeded"
+            success = not step_failed
 
-            success = True
             response = FlowRunResponse(
                 requestId=request_id,
                 flowId=flow_id,
-                status="succeeded",
+                status=final_status,
                 startedAt=started,
                 completedAt=completed,
                 toolsUsed=tools_used,
-                message="Mock flow execution completed using approved CFO services only.",
+                message=(
+                    "Flow execution completed." if success
+                    else "Flow execution failed on one or more steps."
+                ),
                 data=data,
                 executionTimeline=execution_timeline,
             )
             with SessionLocal() as session:
-                FlowRunRepository(session, tenant_id).update_completed(request_id, response)
+                repo = FlowRunRepository(session, tenant_id)
+                repo.update_completed(request_id, response)
+                FlowDefinitionRepository(session, tenant_id).update_last_run(
+                    flow_id, completed, final_status
+                )
 
         finally:
             latency_ms = int((perf_counter() - timer_started) * 1000)

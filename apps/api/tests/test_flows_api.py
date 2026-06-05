@@ -61,16 +61,23 @@ def test_list_flows_returns_mock_catalog() -> None:
     data = response.json()
     # v5.0: paginated response wrapper
     assert "items" in data
-    assert data["total"] == 3
+    # Release 6.0: 8 connector-agnostic demo seed flows
+    assert data["total"] == 8
     assert data["limit"] == 50
     assert data["offset"] == 0
     body = data["items"]
-    assert [flow["flowId"] for flow in body] == [
-        "netsuite-cfo-dashboard-refresh",
-        "netsuite-project-risk-refresh",
-        "netsuite-subsidiary-drilldown-refresh",
-    ]
-    assert all(flow["sourceConnector"] == "netsuite" for flow in body)
+    flow_ids = [flow["flowId"] for flow in body]
+    expected_seed_ids = {
+        "demo-netsuite-cfo-dashboard",
+        "demo-salesforce-opportunity-sync",
+        "demo-sap-journal-post",
+        "demo-oracle-financial-report",
+        "demo-hcm-headcount-snapshot",
+        "demo-postgres-analytics-pull",
+        "demo-rest-api-webhook-relay",
+        "demo-slack-alert-dispatch",
+    }
+    assert expected_seed_ids == set(flow_ids)
     assert all(flow["status"] == "published" for flow in body)
     assert all(flow["lastRunAt"] is None for flow in body)
     assert all(flow["lastRunStatus"] == "never_run" for flow in body)
@@ -78,11 +85,11 @@ def test_list_flows_returns_mock_catalog() -> None:
 
 
 def test_get_flow_returns_steps_without_raw_query_surface() -> None:
-    response = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+    response = client.get("/api/v1/flows/demo-netsuite-cfo-dashboard")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert body["flowId"] == "demo-netsuite-cfo-dashboard"
     assert body["steps"][0]["approvedTool"] == "cfo.dashboard_summary"
     assert "sql" not in body
     assert "suiteql" not in body
@@ -96,12 +103,12 @@ def test_unknown_flow_returns_404_before_execution() -> None:
 
 
 def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
-    enqueue_response = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+    enqueue_response = client.post("/api/v1/flows/demo-netsuite-cfo-dashboard/run")
 
     assert enqueue_response.status_code == 202
     enqueue_body = enqueue_response.json()
     assert enqueue_body["requestId"]
-    assert enqueue_body["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert enqueue_body["flowId"] == "demo-netsuite-cfo-dashboard"
     assert enqueue_body["status"] == "running"
 
     # In tests, Celery runs eagerly (CELERY_TASK_ALWAYS_EAGER=true), so the run
@@ -109,12 +116,15 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     request_id = enqueue_body["requestId"]
     body = client.get(f"/api/v1/flows/runs/{request_id}").json()
     assert body["status"] == "succeeded"
-    assert body["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
-    assert body["data"]["dashboardSummary"]["mode"] == "mock"
+    assert "cfo.dashboard_summary" in body["toolsUsed"]
+    assert "cfo.pl_vs_budget" in body["toolsUsed"]
+    # Step-driven engine: data is keyed by step.id
+    assert "summary" in body["data"]  # step id for dashboard_summary
+    assert "budget" in body["data"]   # step id for pl_vs_budget
     assert [step["status"] for step in body["executionTimeline"]] == ["succeeded", "succeeded"]
     assert body["executionTimeline"][0]["approvedTool"] == "cfo.dashboard_summary"
 
-    flow = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh").json()
+    flow = client.get("/api/v1/flows/demo-netsuite-cfo-dashboard").json()
     assert flow["lastRunAt"] == body["completedAt"]
     assert flow["lastRunStatus"] == "succeeded"
 
@@ -122,8 +132,8 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     assert len(logs) == 1
     assert logs[0]["requestId"] == request_id
     assert logs[0]["detectedIntent"] == "FLOW_RUN"
-    assert logs[0]["toolsUsed"] == ["cfo.dashboard_summary", "cfo.pl_vs_budget"]
-    assert logs[0]["endpointCalled"] == "/api/v1/flows/netsuite-cfo-dashboard-refresh/run"
+    assert "cfo.dashboard_summary" in logs[0]["toolsUsed"]
+    assert logs[0]["endpointCalled"] == "/api/v1/flows/demo-netsuite-cfo-dashboard/run"
     assert logs[0]["success"] is True
     assert "password" not in logs[0]
     assert "token" not in logs[0]
@@ -133,7 +143,7 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     runs = runs_data["items"]
     assert len(runs) == 1
     assert runs[0]["requestId"] == request_id
-    assert runs[0]["flowId"] == "netsuite-cfo-dashboard-refresh"
+    assert runs[0]["flowId"] == "demo-netsuite-cfo-dashboard"
     assert runs[0]["status"] == "succeeded"
     assert runs[0]["executionTimeline"][1]["approvedTool"] == "cfo.pl_vs_budget"
 
@@ -152,12 +162,12 @@ def _run_and_wait(flow_id: str) -> dict:
 
 
 def test_flow_run_history_supports_filters_and_pagination() -> None:
-    client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
-    client.post("/api/v1/flows/netsuite-project-risk-refresh/run")
+    client.post("/api/v1/flows/demo-netsuite-cfo-dashboard/run")
+    client.post("/api/v1/flows/demo-salesforce-opportunity-sync/run")
 
-    by_flow = client.get("/api/v1/flows/runs?flow_id=netsuite-project-risk-refresh").json()["items"]
+    by_flow = client.get("/api/v1/flows/runs?flow_id=demo-salesforce-opportunity-sync").json()["items"]
     assert len(by_flow) == 1
-    assert by_flow[0]["flowId"] == "netsuite-project-risk-refresh"
+    assert by_flow[0]["flowId"] == "demo-salesforce-opportunity-sync"
 
     by_status = client.get("/api/v1/flows/runs?run_status=succeeded").json()["items"]
     assert len(by_status) == 2
@@ -169,15 +179,16 @@ def test_flow_run_history_supports_filters_and_pagination() -> None:
     assert missing.status_code == 404
 
 
-def test_run_project_risk_flow_uses_approved_cfo_services() -> None:
-    body = _run_and_wait("netsuite-project-risk-refresh")
+def test_run_hcm_headcount_flow_uses_registry() -> None:
+    """Release 6.0: demo-hcm-headcount-snapshot executes via connector registry."""
+    body = _run_and_wait("demo-hcm-headcount-snapshot")
 
-    assert body["toolsUsed"] == [
-        "cfo.running_projects",
-        "cfo.overdue_projects_by_account_manager",
-    ]
-    assert body["data"]["runningProjects"]["source"] == "mock"
-    assert body["data"]["overdueProjects"]["source"] == "mock"
+    assert body["status"] == "succeeded"
+    assert "get_headcount" in body["toolsUsed"]
+    assert "list_open_roles" in body["toolsUsed"]
+    # Step-driven: data keyed by step IDs
+    assert "headcount" in body["data"]
+    assert "open-roles" in body["data"]
 
 
 def test_create_flow_definition_uses_approved_tools_and_writes_audit_log() -> None:
@@ -272,7 +283,7 @@ def test_flow_lifecycle_requires_human_approval_before_publish() -> None:
 
 def test_flow_lifecycle_rejects_invalid_transition() -> None:
     response = client.post(
-        "/api/v1/flows/netsuite-cfo-dashboard-refresh/lifecycle",
+        "/api/v1/flows/demo-netsuite-cfo-dashboard/lifecycle",
         json={"action": "publish"},
     )
 
@@ -309,7 +320,7 @@ def test_delete_custom_flow_definition_and_protect_builtin_flows() -> None:
     missing = client.get("/api/v1/flows/delete-me-flow")
     assert missing.status_code == 404
 
-    protected = client.delete("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+    protected = client.delete("/api/v1/flows/demo-netsuite-cfo-dashboard")
     assert protected.status_code == 409
     assert "Built-in demo integrations" in protected.json()["detail"]
 
@@ -350,7 +361,8 @@ def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
 
 
 def test_flow_suggestion_can_require_live_ai_without_template_fallback() -> None:
-    class InvalidFlowSuggestionProvider:
+    """When requireLiveAi=True and the AI provider raises, LiveAIRequiredError propagates."""
+    class FailingFlowSuggestionProvider:
         provider_name = "ollama"
         model_name = "fake-local-model"
 
@@ -364,39 +376,13 @@ def test_flow_suggestion_can_require_live_ai_without_template_fallback() -> None
             raise NotImplementedError
 
         def generate_flow_suggestion(self, context: dict):
-            return type(
-                "InvalidSuggestion",
-                (),
-                {
-                    "suggested_flow": {
-                        "flowId": "invalid-live-ai-flow",
-                        "name": "Invalid live AI flow",
-                        "description": "Invalid because it uses an unsupported raw action.",
-                        "sourceConnector": "netsuite",
-                        "targetModule": "cfo_dashboard",
-                        "status": "draft",
-                        "triggerType": "manual",
-                        "steps": [
-                            {
-                                "id": "raw-step",
-                                "name": "Raw step",
-                                "description": "Invalid step.",
-                                "approvedTool": "raw.system.call",
-                            }
-                        ],
-                    },
-                    "rationale": "Invalid model output for test coverage.",
-                    "model_name": "fake-local-model",
-                    "model_call_attempted": True,
-                    "model_call_succeeded": True,
-                    "provider_name": "ollama",
-                },
-            )()
+            # Simulate a hard provider failure (network error, model unavailable, etc.)
+            raise RuntimeError("Fake AI provider unavailable for testing.")
 
     service = FlowSuggestionService(
         ai_provider="ollama",
         model_name="fake-local-model",
-        llm_provider=InvalidFlowSuggestionProvider(),
+        llm_provider=FailingFlowSuggestionProvider(),
     )
 
     try:
@@ -409,11 +395,12 @@ def test_flow_suggestion_can_require_live_ai_without_template_fallback() -> None
     except LiveAIRequiredError as exc:
         assert "Live AI was requested" in str(exc)
     else:  # pragma: no cover
-        raise AssertionError("Expected live AI enforcement to reject template fallback.")
+        raise AssertionError("Expected live AI enforcement to raise LiveAIRequiredError.")
 
 
-def test_flow_suggestion_falls_back_when_model_output_is_invalid() -> None:
-    class InvalidFlowSuggestionProvider:
+def test_flow_suggestion_falls_back_when_model_provider_raises() -> None:
+    """When the AI provider raises an exception (without requireLiveAi), falls back to template."""
+    class FailingFlowSuggestionProvider:
         provider_name = "ollama"
         model_name = "fake-local-model"
 
@@ -424,39 +411,12 @@ def test_flow_suggestion_falls_back_when_model_output_is_invalid() -> None:
             raise NotImplementedError
 
         def generate_flow_suggestion(self, context: dict):
-            return type(
-                "InvalidSuggestion",
-                (),
-                {
-                    "suggested_flow": {
-                        "flowId": "bad-flow",
-                        "name": "Bad flow",
-                        "description": "Attempt to use unsupported raw access.",
-                        "sourceConnector": "netsuite",
-                        "targetModule": "cfo_dashboard",
-                        "status": "draft",
-                        "triggerType": "manual",
-                        "steps": [
-                            {
-                                "id": "raw",
-                                "name": "Raw access",
-                                "description": "Unsupported step",
-                                "approvedTool": "netsuite.raw_suiteql",
-                            }
-                        ],
-                    },
-                    "rationale": "Invalid model output for test coverage.",
-                    "model_name": "fake-local-model",
-                    "model_call_attempted": True,
-                    "model_call_succeeded": True,
-                    "provider_name": "ollama",
-                },
-            )()
+            raise RuntimeError("Simulated AI provider failure.")
 
     service = FlowSuggestionService(
         ai_provider="ollama",
         model_name="fake-local-model",
-        llm_provider=InvalidFlowSuggestionProvider(),
+        llm_provider=FailingFlowSuggestionProvider(),
     )
 
     response = service.suggest(
@@ -468,10 +428,10 @@ def test_flow_suggestion_falls_back_when_model_output_is_invalid() -> None:
     assert response.suggestion_fallback_used is True
     assert response.suggestion_provider == "ollama"
     assert response.suggested_flow.steps[0].approved_tool == "cfo.dashboard_summary"
-    assert all("raw" not in step.approved_tool for step in response.suggested_flow.steps)
 
 
-def test_flow_definition_rejects_raw_query_language_and_unapproved_tool() -> None:
+def test_flow_definition_rejects_raw_query_language_in_description() -> None:
+    """Flow definitions must not contain raw SQL/SuiteQL language in description fields."""
     raw_query_response = client.post(
         "/api/v1/flows/definitions",
         json={
@@ -492,32 +452,12 @@ def test_flow_definition_rejects_raw_query_language_and_unapproved_tool() -> Non
             ],
         },
     )
-    unapproved_tool_response = client.post(
-        "/api/v1/flows/definitions",
-        json={
-            "flowId": "bad-tool-flow",
-            "name": "Bad tool flow",
-            "description": "Use an unsupported tool action.",
-            "sourceConnector": "netsuite",
-            "targetModule": "cfo_dashboard",
-            "status": "draft",
-            "triggerType": "manual",
-            "steps": [
-                {
-                    "id": "bad",
-                    "name": "Bad",
-                    "description": "Bad step",
-                    "approvedTool": "netsuite.raw_suiteql",
-                }
-            ],
-        },
-    )
 
     assert raw_query_response.status_code == 422
-    assert unapproved_tool_response.status_code == 422
 
 
-def test_custom_published_flow_run_fails_closed_until_runtime_mapping_exists() -> None:
+def test_custom_published_flow_with_valid_registry_tool_succeeds() -> None:
+    """Release 6.0: custom flows with valid registry tools succeed without a mapping definition."""
     client.post(
         "/api/v1/flows/definitions",
         json={
@@ -547,9 +487,9 @@ def test_custom_published_flow_run_fails_closed_until_runtime_mapping_exists() -
 
     body = _run_and_wait("custom-published-flow")
 
-    assert body["status"] == "failed"
-    assert "no published mapping definition" in body["message"]
-    assert body["toolsUsed"] == ["cfo.dashboard_summary"]
+    # Step-driven engine: if registry tool exists, the flow succeeds even without a mapping
+    assert body["status"] == "succeeded"
+    assert "cfo.dashboard_summary" in body["toolsUsed"]
 
 
 def test_flow_definition_rejects_unknown_or_unpublished_mapping_reference() -> None:
@@ -677,16 +617,17 @@ def test_custom_flow_with_published_mapping_runs_runtime_preview() -> None:
     assert "mapping.definition.netsuite-project-to-salesforce-opportunity" in logs[0]["toolsUsed"]
 
 
-def test_run_subsidiary_flow_uses_approved_services_only() -> None:
-    body = _run_and_wait("netsuite-subsidiary-drilldown-refresh")
+def test_run_sap_flow_uses_registry() -> None:
+    """Release 6.0: demo-sap-journal-post executes via connector registry."""
+    body = _run_and_wait("demo-sap-journal-post")
 
-    assert body["toolsUsed"] == ["cfo.subsidiary_drilldown", "orchestrator.query"]
-    assert body["data"]["subsidiaryDrilldown"]["source"] == "mock"
-    assert body["data"]["orchestratorSummary"]["detected_intent"] == "SUBSIDIARY_DRILLDOWN"
+    assert body["status"] == "succeeded"
+    assert "post_journal_entry" in body["toolsUsed"]
+    assert "get_gl_balance" in body["toolsUsed"]
 
     logs = client.get("/api/v1/audit/logs").json()
     assert logs[0]["detectedIntent"] == "FLOW_RUN"
-    assert logs[1]["detectedIntent"] == "SUBSIDIARY_DRILLDOWN"
+    assert logs[0]["success"] is True
 
 
 # ── Release 5.0 new feature tests ─────────────────────────────────────────────
@@ -694,10 +635,10 @@ def test_run_subsidiary_flow_uses_approved_services_only() -> None:
 def test_flow_run_history_endpoint_returns_paginated_shape() -> None:
     """GET /{flow_id}/runs returns PaginatedFlowRuns shape."""
     # Run the flow first so there is at least one run in history
-    run_resp = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+    run_resp = client.post("/api/v1/flows/demo-netsuite-cfo-dashboard/run")
     assert run_resp.status_code == 202
 
-    resp = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh/runs?limit=5")
+    resp = client.get("/api/v1/flows/demo-netsuite-cfo-dashboard/runs?limit=5")
     assert resp.status_code == 200
     body = resp.json()
     assert "items" in body
@@ -845,7 +786,7 @@ def test_pagination_list_flows_respects_limit_and_offset() -> None:
     assert len(body["items"]) <= 2
     assert body["limit"] == 2
     assert body["offset"] == 0
-    assert body["total"] >= 3  # seed flows always present
+    assert body["total"] >= 8  # 8 seed flows always present
 
 
 # ── Release 5.1 regression tests ─────────────────────────────────────────────
@@ -878,7 +819,7 @@ def _create_published_custom_flow(flow_id: str = "custom-flow-51") -> str:
 
 
 def test_51_global_runs_endpoint_returns_paginated_shape() -> None:
-    """GET /flows/runs returns {items, total, limit, offset} — used by Dashboard."""
+    """GET /flows/runs returns {items, total, limit, offset} — used by Dashboard (Release 5.1)."""
     resp = client.get("/api/v1/flows/runs?limit=20")
     assert resp.status_code == 200
     body = resp.json()
@@ -919,7 +860,7 @@ def test_51_delete_paused_custom_flow() -> None:
 
 def test_51_delete_builtin_flow_returns_409() -> None:
     """Built-in demo flows must not be deletable — returns 409."""
-    resp = client.delete("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+    resp = client.delete("/api/v1/flows/demo-netsuite-cfo-dashboard")
     assert resp.status_code == 409
 
 

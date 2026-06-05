@@ -26,33 +26,29 @@ def teardown_function() -> None:
     mapping_definition_service.clear_for_tests()
 
 
-def test_list_connectors_includes_mock_netsuite_connector() -> None:
+def test_list_connectors_returns_all_eight_generic_connectors() -> None:
+    """GET /connectors returns all 8 registered connectors in the generic format."""
     response = client.get("/api/v1/connectors")
 
     assert response.status_code == 200
     body = response.json()
-    assert body == [
-        {
-            "id": "netsuite",
-            "name": "NetSuite",
-            "status": "not_configured",
-            "mockMode": True,
-            "mode": "mock",
-            "lastTestedAt": None,
-        },
-        {
-            "id": "rest-api",
-            "name": "REST API",
-            "status": "not_configured",
-            "mockMode": True,
-            "mode": "mock",
-            "lastTestedAt": None,
-        },
-    ]
+    assert isinstance(body, list)
+    connector_ids = {c["connectorId"] for c in body}
+    expected_ids = {"netsuite", "salesforce", "sap", "oracle", "hcm", "postgres", "rest-api", "slack"}
+    assert expected_ids <= connector_ids
+    # Each entry has required generic fields
+    for connector in body:
+        assert "connectorId" in connector
+        assert "name" in connector
+        assert "logoSlug" in connector
+        assert "authScheme" in connector
+        assert "status" in connector
+        assert "mode" in connector
+        assert "toolCount" in connector
 
 
 def test_get_netsuite_config_returns_placeholder_only_config() -> None:
-    response = client.get("/api/v1/connectors/netsuite")
+    response = client.get("/api/v1/connectors/netsuite/config")
 
     assert response.status_code == 200
     body = response.json()
@@ -112,7 +108,7 @@ def test_update_netsuite_config_rejects_non_placeholder_auth_mode() -> None:
 
 
 def test_get_rest_api_config_returns_governed_mock_config() -> None:
-    response = client.get("/api/v1/connectors/rest-api")
+    response = client.get("/api/v1/connectors/rest-api/config")
 
     assert response.status_code == 200
     body = response.json()
@@ -407,7 +403,7 @@ def test_promote_rest_api_schema_skips_secret_like_fields() -> None:
 
 
 def test_test_rest_api_connection_updates_status_and_writes_audit_log() -> None:
-    response = client.post("/api/v1/connectors/rest-api/test")
+    response = client.post("/api/v1/connectors/rest-api/legacy-test")
 
     assert response.status_code == 200
     body = response.json()
@@ -422,7 +418,7 @@ def test_test_rest_api_connection_updates_status_and_writes_audit_log() -> None:
     assert "No outbound HTTP request was made" in body["message"]
     assert "No credentials were used or stored" in body["message"]
 
-    config = client.get("/api/v1/connectors/rest-api").json()
+    config = client.get("/api/v1/connectors/rest-api/config").json()
     assert config["status"] == "test_passed"
     assert config["lastTestedAt"] == body["testedAt"]
 
@@ -438,7 +434,7 @@ def test_test_rest_api_connection_updates_status_and_writes_audit_log() -> None:
 
 
 def test_test_netsuite_connection_updates_status_and_writes_audit_log() -> None:
-    response = client.post("/api/v1/connectors/netsuite/test")
+    response = client.post("/api/v1/connectors/netsuite/legacy-test")
 
     assert response.status_code == 200
     body = response.json()
@@ -452,7 +448,7 @@ def test_test_netsuite_connection_updates_status_and_writes_audit_log() -> None:
     assert "No credentials were used or stored" in body["message"]
     assert body["testedAt"]
 
-    config = client.get("/api/v1/connectors/netsuite").json()
+    config = client.get("/api/v1/connectors/netsuite/config").json()
     assert config["status"] == "test_passed"
     assert config["lastTestedAt"] == body["testedAt"]
 
@@ -478,7 +474,7 @@ def test_sandbox_mode_reports_readiness_without_exposing_secrets(monkeypatch) ->
     get_settings.cache_clear()
     connector_config_service.clear_for_tests()
 
-    response = client.get("/api/v1/connectors/netsuite")
+    response = client.get("/api/v1/connectors/netsuite/config")
 
     assert response.status_code == 200
     body = response.json()
@@ -503,7 +499,7 @@ def test_sandbox_connection_test_fails_closed_when_credentials_missing(monkeypat
     get_settings.cache_clear()
     connector_config_service.clear_for_tests()
 
-    response = client.post("/api/v1/connectors/netsuite/test")
+    response = client.post("/api/v1/connectors/netsuite/legacy-test")
 
     assert response.status_code == 200
     body = response.json()

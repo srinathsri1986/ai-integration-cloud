@@ -3,7 +3,9 @@ import type {
   AuditLogSummary,
   LoginResponse,
   CfoDashboardSummary,
+  ConnectorDefinition,
   ConnectorListItem,
+  ConnectorTool,
   FlowDefinition,
   FlowDefinitionUpsertRequest,
   FlowId,
@@ -411,8 +413,8 @@ const fallbackRestApiSchemaPromotionResponse: RestApiSchemaPromotionResponse = {
 
 const fallbackFlows: FlowDefinition[] = [
   {
-    flowId: "netsuite-cfo-dashboard-refresh",
-    name: "NetSuite CFO dashboard refresh",
+    flowId: "demo-netsuite-cfo-dashboard",
+    name: "NetSuite CFO Dashboard Refresh",
     description: "Refreshes executive CFO dashboard metrics from approved mock NetSuite data.",
     sourceConnector: "netsuite",
     targetModule: "cfo_dashboard",
@@ -437,11 +439,11 @@ const fallbackFlows: FlowDefinition[] = [
     ]
   },
   {
-    flowId: "netsuite-project-risk-refresh",
-    name: "NetSuite project risk refresh",
-    description: "Refreshes running project exposure and overdue project risk views.",
-    sourceConnector: "netsuite",
-    targetModule: "project_risk",
+    flowId: "demo-salesforce-opportunity-sync",
+    name: "Salesforce Opportunity Sync",
+    description: "Pulls open opportunities from Salesforce CRM and lists them in the activity feed.",
+    sourceConnector: "salesforce",
+    targetModule: "crm_sync",
     status: "published",
     triggerType: "manual",
     mappingDefinitionId: null,
@@ -449,25 +451,19 @@ const fallbackFlows: FlowDefinition[] = [
     lastRunStatus: "never_run",
     steps: [
       {
-        id: "running-projects",
-        name: "Load running projects",
-        description: "Fetch active project financial exposure from approved mock data.",
-        approvedTool: "cfo.running_projects"
-      },
-      {
-        id: "overdue-projects",
-        name: "Load overdue projects",
-        description: "Summarize overdue projects by account manager.",
-        approvedTool: "cfo.overdue_projects_by_account_manager"
+        id: "list-opportunities",
+        name: "List open opportunities",
+        description: "Fetch open opportunities from Salesforce.",
+        approvedTool: "list_opportunities"
       }
     ]
   },
   {
-    flowId: "netsuite-subsidiary-drilldown-refresh",
-    name: "NetSuite subsidiary drilldown refresh",
-    description: "Refreshes subsidiary operating performance using approved mock data.",
-    sourceConnector: "netsuite",
-    targetModule: "subsidiary_drilldown",
+    flowId: "demo-slack-alert-dispatch",
+    name: "Slack Alert Dispatch",
+    description: "Posts a system alert message to the approved Slack alerts channel.",
+    sourceConnector: "slack",
+    targetModule: "alerting",
     status: "published",
     triggerType: "manual",
     mappingDefinitionId: null,
@@ -475,16 +471,10 @@ const fallbackFlows: FlowDefinition[] = [
     lastRunStatus: "never_run",
     steps: [
       {
-        id: "subsidiary",
-        name: "Load subsidiary drilldown",
-        description: "Fetch EMEA operating performance for 2026-Q1.",
-        approvedTool: "cfo.subsidiary_drilldown"
-      },
-      {
-        id: "orchestrator-summary",
-        name: "Route CFO summary prompt",
-        description: "Route a deterministic supported CFO summary question.",
-        approvedTool: "orchestrator.query"
+        id: "post-alert",
+        name: "Post alert message",
+        description: "Send alert text to the approved alerts channel.",
+        approvedTool: "post_message"
       }
     ]
   }
@@ -817,13 +807,70 @@ export async function getAuditSummary(): Promise<ApiResult<AuditLogSummary>> {
   return getApiResult("/api/v1/audit/summary", fallbackAuditSummary, (body) => body);
 }
 
-export async function getConnectors(): Promise<ApiResult<ConnectorListItem[]>> {
-  return getApiResult("/api/v1/connectors", fallbackConnectorList, (body) => body);
+/** Returns all registered connectors (generic, connector-agnostic format). */
+export async function getConnectors(): Promise<ApiResult<ConnectorDefinition[]>> {
+  const fallbackGeneric: ConnectorDefinition[] = fallbackConnectorList.map((c) => ({
+    connectorId: c.id,
+    name: c.name,
+    logoSlug: c.id,
+    authScheme: "api_key" as const,
+    status: c.status as ConnectorDefinition["status"],
+    mode: c.mode as ConnectorDefinition["mode"],
+    toolCount: 0,
+    lastTestedAt: c.lastTestedAt ?? null,
+  }));
+  return getApiResult("/api/v1/connectors", fallbackGeneric, (body) =>
+    Array.isArray(body)
+      ? body.map((c: any) => ({
+          connectorId: c.connectorId ?? c.id,
+          name: c.name,
+          logoSlug: c.logoSlug ?? c.id,
+          authScheme: c.authScheme ?? "none",
+          status: c.status ?? "not_configured",
+          mode: c.mode ?? "mock",
+          toolCount: c.toolCount ?? 0,
+          lastTestedAt: c.lastTestedAt ?? null,
+        }))
+      : fallbackGeneric
+  );
+}
+
+/** Returns tools for a specific connector. */
+export async function getConnectorTools(connectorId: string): Promise<ApiResult<ConnectorTool[]>> {
+  return getApiResult(
+    `/api/v1/connectors/${encodeURIComponent(connectorId)}/tools`,
+    [],
+    (body) =>
+      Array.isArray(body)
+        ? body.map((t: any) => ({
+            toolId: t.toolId,
+            label: t.label,
+            description: t.description,
+            connectorId: t.connectorId,
+            params: t.params,
+          }))
+        : []
+  );
+}
+
+/** Test a connector connection (generic). Returns { ok, message }. */
+export async function testConnector(connectorId: string): Promise<ClientApiResult<{ ok: boolean; message: string }>> {
+  const fallback = { ok: false, message: "The connector API is unavailable." };
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}/api/v1/connectors/${encodeURIComponent(connectorId)}/test`,
+      { cache: "no-store", headers: authHeaders(), method: "POST" }
+    );
+    if (!response.ok) return { data: fallback, error: `API returned ${response.status}`, isFallback: true, ok: false };
+    return { data: await response.json(), isFallback: false, ok: true };
+  } catch (error) {
+    return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
+  }
 }
 
 export async function getNetSuiteConnectorConfig(): Promise<ApiResult<NetSuiteConnectorConfig>> {
   return getApiResult(
-    "/api/v1/connectors/netsuite",
+    "/api/v1/connectors/netsuite/config",
     fallbackNetSuiteConnectorConfig,
     (body) => body
   );
@@ -831,7 +878,7 @@ export async function getNetSuiteConnectorConfig(): Promise<ApiResult<NetSuiteCo
 
 export async function getRestApiConnectorConfig(): Promise<ApiResult<RestApiConnectorConfig>> {
   return getApiResult(
-    "/api/v1/connectors/rest-api",
+    "/api/v1/connectors/rest-api/config",
     fallbackRestApiConnectorConfig,
     (body) => body
   );
@@ -919,7 +966,7 @@ export async function testNetSuiteConnection(): Promise<
   ClientApiResult<NetSuiteConnectionTestResponse>
 > {
   try {
-    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/netsuite/test`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/netsuite/legacy-test`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"
@@ -950,7 +997,7 @@ export async function testRestApiConnection(): Promise<
   ClientApiResult<RestApiConnectionTestResponse>
 > {
   try {
-    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/test`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/legacy-test`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"

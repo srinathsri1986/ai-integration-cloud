@@ -10,21 +10,14 @@ FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publi
 FlowRunStatus = Literal["never_run", "running", "succeeded", "failed"]
 FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
 FlowTriggerType = Literal["manual", "schedule", "webhook"]
-ApprovedFlowTool = Literal[
-    "cfo.dashboard_summary",
-    "cfo.pl_vs_budget",
-    "cfo.yoy_comparison",
-    "cfo.subsidiary_drilldown",
-    "cfo.running_projects",
-    "cfo.overdue_projects_by_account_manager",
-    "orchestrator.query",
-]
+ApprovedFlowTool = str  # validated against connector_registry at request-time
 
 
 class FlowStep(BaseModel):
     id: str
     name: str
     description: str
+    connector_id: str | None = Field(default=None, alias="connectorId")
     approved_tool: ApprovedFlowTool = Field(alias="approvedTool")
 
 
@@ -32,7 +25,7 @@ class FlowDefinition(BaseModel):
     flow_id: FlowId = Field(alias="flowId")
     name: str
     description: str
-    source_connector: Literal["netsuite"] = Field(alias="sourceConnector")
+    source_connector: str = Field(alias="sourceConnector", min_length=2, max_length=48)
     target_module: str = Field(alias="targetModule")
     status: FlowStatus
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
@@ -48,7 +41,7 @@ class FlowDefinitionUpsertRequest(BaseModel):
     flow_id: str = Field(alias="flowId", min_length=3, max_length=96, pattern=r"^[a-z0-9-]+$")
     name: str = Field(min_length=3, max_length=120)
     description: str = Field(min_length=10, max_length=500)
-    source_connector: Literal["netsuite"] = Field(alias="sourceConnector")
+    source_connector: str = Field(alias="sourceConnector", min_length=2, max_length=48)
     target_module: str = Field(alias="targetModule", min_length=3, max_length=80)
     status: FlowStatus = "draft"
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
