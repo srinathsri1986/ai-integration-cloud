@@ -10,6 +10,7 @@ import {
   FilePenLine,
   Hand,
   Link2,
+  Loader2,
   PauseCircle,
   Play,
   Plus,
@@ -153,6 +154,7 @@ export function IntegrationManagementConsole({
   const [message, setMessage] = useState<string | undefined>(
     initialFlows.isFallback ? initialFlows.error : undefined
   );
+  const [messageIsError, setMessageIsError] = useState(initialFlows.isFallback);
   const [busyKey, setBusyKey] = useState<string | undefined>();
   const [lastRuns, setLastRuns] = useState<Record<string, FlowRunResponse>>({});
   const [mappings, setMappings] = useState<MappingDefinition[]>([]);
@@ -185,12 +187,16 @@ export function IntegrationManagementConsole({
   async function refreshMappings() {
     const response = await getMappingDefinitions();
     setMappings(response.data);
-    if (!response.ok) setMessage(response.error ?? "Unable to load mapping definitions.");
+    if (!response.ok) {
+      setMessage(response.error ?? "Unable to load mapping definitions.");
+      setMessageIsError(true);
+    }
   }
 
   async function saveDraft() {
     setBusyKey("save-draft");
     setMessage(undefined);
+    setMessageIsError(false);
     const response = await saveFlowDefinition(draft);
     if (response.ok) {
       setFlows((current) => {
@@ -201,8 +207,10 @@ export function IntegrationManagementConsole({
       });
       setSelectedFlowId(response.data.flowId);
       setMessage(`${response.data.name} saved as a draft integration.`);
+      setMessageIsError(false);
     } else {
       setMessage(response.error ?? "Unable to save draft integration.");
+      setMessageIsError(true);
     }
     setBusyKey(undefined);
   }
@@ -210,15 +218,18 @@ export function IntegrationManagementConsole({
   async function applyFlowAction(flow: FlowDefinition, action: FlowLifecycleAction) {
     setBusyKey(`${flow.flowId}:${action}`);
     setMessage(undefined);
+    setMessageIsError(false);
     const response = await transitionFlowLifecycle(flow.flowId, action);
-    if (response.ok) {
+    if (response.ok && response.data.flow) {
       setFlows((current) =>
         current.map((item) => (item.flowId === response.data.flow.flowId ? response.data.flow : item))
       );
       setSelectedFlowId(response.data.flow.flowId);
       setMessage(response.data.message);
+      setMessageIsError(false);
     } else {
       setMessage(response.error ?? "Unable to update integration.");
+      setMessageIsError(true);
     }
     setBusyKey(undefined);
   }
@@ -243,9 +254,11 @@ export function IntegrationManagementConsole({
   async function runSelectedFlow(flow: FlowDefinition) {
     setBusyKey(`${flow.flowId}:run`);
     setMessage(undefined);
+    setMessageIsError(false);
     const response = await runFlow(flow.flowId);
     if (!response.ok) {
       setMessage(response.error ?? "Unable to run integration.");
+      setMessageIsError(true);
       setBusyKey(undefined);
       return;
     }
@@ -350,7 +363,11 @@ export function IntegrationManagementConsole({
       </div>
 
       {message ? (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+        <div className={`rounded-lg border px-4 py-3 text-sm ${
+          messageIsError
+            ? "border-rose-200 bg-rose-50 text-rose-900"
+            : "border-emerald-200 bg-emerald-50 text-emerald-900"
+        }`}>
           {message}
         </div>
       ) : null}
@@ -685,27 +702,43 @@ function IntegrationReviewPane({
           )}
         </div>
 
+        {isBuiltIn && (
+          <p className="mt-4 rounded-md border border-amber-300/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            Demo integration — runs only. Lifecycle changes and deletion are disabled.
+          </p>
+        )}
         <div className="mt-5 grid gap-2">
           <Button
             disabled={flow.status !== "published" || busyKey === `${flow.flowId}:run`}
             onClick={() => onRun(flow)}
             type="button"
           >
-            <Play className="h-4 w-4" />
-            {busyKey === `${flow.flowId}:run` ? "Running" : "Run integration"}
+            {busyKey === `${flow.flowId}:run` ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {busyKey === `${flow.flowId}:run` ? "Running…" : "Run integration"}
           </Button>
           <div className="grid grid-cols-2 gap-2">
-            {flowActionsForStatus(flow.status).map((action) => (
-              <Button
-                disabled={busyKey === `${flow.flowId}:${action}`}
-                key={action}
-                onClick={() => onFlowAction(flow, action)}
-                type="button"
-                variant="secondary"
-              >
-                {statusLabel(action)}
-              </Button>
-            ))}
+            {flowActionsForStatus(flow.status).map((action) => {
+              const isBusy = busyKey === `${flow.flowId}:${action}`;
+              return (
+                <Button
+                  disabled={isBuiltIn || isBusy}
+                  key={action}
+                  onClick={() => onFlowAction(flow, action)}
+                  title={isBuiltIn ? "Demo integrations cannot be modified" : undefined}
+                  type="button"
+                  variant="secondary"
+                >
+                  {isBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  {statusLabel(action)}
+                </Button>
+              );
+            })}
           </div>
           <Button
             disabled={isBuiltIn || busyKey === `${flow.flowId}:delete`}

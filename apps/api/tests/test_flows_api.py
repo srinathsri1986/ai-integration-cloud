@@ -846,3 +846,89 @@ def test_pagination_list_flows_respects_limit_and_offset() -> None:
     assert body["limit"] == 2
     assert body["offset"] == 0
     assert body["total"] >= 3  # seed flows always present
+
+
+# ── Release 5.1 regression tests ─────────────────────────────────────────────
+
+def _create_published_custom_flow(flow_id: str = "custom-flow-51") -> str:
+    """Helper: create and publish a custom (non-seed) flow."""
+    payload = {
+        "flowId": flow_id,
+        "name": f"Custom flow {flow_id}",
+        "description": "Release 5.1 regression test custom flow.",
+        "sourceConnector": "netsuite",
+        "targetModule": "finance_report",
+        "status": "draft",
+        "triggerType": "manual",
+        "steps": [
+            {
+                "id": "step-1",
+                "name": "Summary",
+                "description": "Approved summary step.",
+                "approvedTool": "cfo.dashboard_summary",
+            }
+        ],
+    }
+    r = client.post("/api/v1/flows/definitions", json=payload)
+    assert r.status_code == 200, r.text
+    for action in ["submit_for_approval", "approve", "publish"]:
+        resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": action})
+        assert resp.status_code == 200, f"Lifecycle {action} failed: {resp.text}"
+    return flow_id
+
+
+def test_51_global_runs_endpoint_returns_paginated_shape() -> None:
+    """GET /flows/runs returns {items, total, limit, offset} — used by Dashboard."""
+    resp = client.get("/api/v1/flows/runs?limit=20")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "items" in body
+    assert "total" in body
+    assert "limit" in body
+    assert "offset" in body
+    assert body["limit"] == 20
+
+
+def test_51_pause_published_custom_flow() -> None:
+    """Bug 2: Pausing a custom published flow must update its status to paused."""
+    flow_id = _create_published_custom_flow("custom-pause-test")
+    resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "pause"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["flow"]["status"] == "paused"
+    assert body["action"] == "pause"
+    # Verify the status persists in GET
+    get_resp = client.get(f"/api/v1/flows/{flow_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["status"] == "paused"
+
+
+def test_51_delete_paused_custom_flow() -> None:
+    """Bug 3: A paused custom flow must be deletable (no status guard on delete)."""
+    flow_id = _create_published_custom_flow("custom-delete-paused-test")
+    # Pause it first
+    pause_resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "pause"})
+    assert pause_resp.status_code == 200
+    # Then delete it
+    del_resp = client.delete(f"/api/v1/flows/{flow_id}")
+    assert del_resp.status_code == 200
+    # Verify it's gone
+    get_resp = client.get(f"/api/v1/flows/{flow_id}")
+    assert get_resp.status_code == 404
+
+
+def test_51_delete_builtin_flow_returns_409() -> None:
+    """Built-in demo flows must not be deletable — returns 409."""
+    resp = client.delete("/api/v1/flows/netsuite-cfo-dashboard-refresh")
+    assert resp.status_code == 409
+
+
+def test_51_pause_lifecycle_response_contains_flow_with_flowid() -> None:
+    """Bug 2 regression: lifecycle response body has flow.flowId (camelCase) not flow.flow_id."""
+    flow_id = _create_published_custom_flow("custom-resp-shape-test")
+    resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "pause"})
+    assert resp.status_code == 200
+    body = resp.json()
+    # The frontend uses response.data.flow.flowId — must be camelCase
+    assert "flowId" in body["flow"], "Expected camelCase 'flowId' in lifecycle response body"
+    assert "flow_id" not in body["flow"], "Unexpected snake_case 'flow_id' in lifecycle response"

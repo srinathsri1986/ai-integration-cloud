@@ -15,7 +15,6 @@ import {
 import type { FlowDefinition, FlowRunResponse } from "@netsuite-cfo/shared";
 
 import { Card } from "@/components/ui/card";
-import { SkeletonTile, SkeletonRow } from "@/components/ui/skeleton";
 
 interface DashboardConsoleProps {
   initialFlows: FlowDefinition[];
@@ -108,21 +107,14 @@ export function DashboardConsole({ initialFlows, initialRuns, isFallback }: Dash
       .slice(0, 10);
   }, [initialRuns]);
 
-  if (isFallback) {
-    return (
-      <div className="px-5 lg:px-8 py-6 space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <SkeletonTile key={i} />)}
-        </div>
-        <div className="space-y-2">
-          {[...Array(5)].map((_, i) => <SkeletonRow key={i} />)}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="px-5 lg:px-8 py-6 space-y-8">
+      {isFallback && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>Live data unavailable</strong> — showing last known state. Check that the API
+          service is running and refresh the page.
+        </div>
+      )}
       {/* KPI Tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiTile

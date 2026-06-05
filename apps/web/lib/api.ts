@@ -1086,6 +1086,14 @@ export async function getFlowRunsForFlow(
   );
 }
 
+export async function getRecentFlowRuns(limit = 20): Promise<ApiResult<FlowRunResponse[]>> {
+  return getApiResult(
+    `/api/v1/flows/runs?limit=${limit}`,
+    [],
+    (body) => body.items ?? []
+  );
+}
+
 export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunResponse>> {
   try {
     const response = await fetch(`${apiBaseUrl()}/api/v1/flows/${flowId}/run`, {

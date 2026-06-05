@@ -1,17 +1,15 @@
 import { DashboardConsole } from "@/components/dashboard-console";
 import { PlatformShell } from "@/components/platform-shell";
-import { getFlows, getFlowRunsForFlow } from "@/lib/api";
+import { getFlows, getRecentFlowRuns } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const flowsResult = await getFlows();
-  // Fetch recent runs for the first few flows to power the activity feed
-  const topFlowIds = flowsResult.data.items.slice(0, 5).map((f) => f.flowId);
-  const runResults = await Promise.all(
-    topFlowIds.map((id) => getFlowRunsForFlow(id, 10))
-  );
-  const allRuns = runResults.flatMap((r) => r.data);
+  const [flowsResult, runsResult] = await Promise.all([
+    getFlows(),
+    getRecentFlowRuns(20)
+  ]);
+  const allRuns = runsResult.data;
 
   return (
     <PlatformShell
