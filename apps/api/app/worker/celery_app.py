@@ -10,7 +10,7 @@ celery_app = Celery(
     "ai_integration_cloud",
     broker=_settings.redis_url,
     backend=_settings.redis_url,
-    include=["app.worker.tasks"],
+    include=["app.worker.tasks", "app.worker.beat_tasks"],
 )
 
 celery_app.conf.update(
@@ -23,4 +23,11 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_always_eager=os.environ.get("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true",
+    beat_schedule={
+        "check-scheduled-flows": {
+            "task": "app.worker.beat_tasks.check_scheduled_flows",
+            "schedule": 60.0,  # every 60 seconds
+        },
+    },
+    beat_schedule_filename="/tmp/celerybeat-schedule",
 )

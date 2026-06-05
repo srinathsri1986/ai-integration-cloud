@@ -62,6 +62,23 @@ services:
     ports:
       - "8000:8000"
 
+  celery-beat:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    command: ["celery", "-A", "app.worker.celery_app.celery_app", "beat", "--loglevel=info"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://cfo_app:local_dev_password@postgres:5432/cfo_orchestrator}
+      ENVIRONMENT: ${ENVIRONMENT:-local}
+      NETSUITE_MODE: ${NETSUITE_MODE:-mock}
+      PLACEHOLDER_JWT_SECRET: ${PLACEHOLDER_JWT_SECRET:-local-dev-only}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   celery-worker:
     build:
       context: ..

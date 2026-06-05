@@ -214,9 +214,11 @@ class FlowSuggestionService:
             )
 
         if "monthly" in normalized or "schedule" in normalized:
-            trigger_type = "schedule_placeholder"
+            trigger_type = "schedule"
+            trigger_cron = "0 0 1 * *"  # 1st of each month at midnight
         else:
             trigger_type = "manual"
+            trigger_cron = None
 
         if any(term in normalized for term in ["narrative", "summary", "ai", "cfo"]):
             steps.append(
@@ -241,6 +243,7 @@ class FlowSuggestionService:
             targetModule="cfo_dashboard",
             status="draft",
             triggerType=trigger_type,
+            triggerCron=trigger_cron,
             steps=steps[:8],
         )
 

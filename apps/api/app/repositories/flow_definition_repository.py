@@ -49,6 +49,10 @@ class FlowDefinitionRepository:
             record.target_module = flow.target_module
             record.status = flow.status
             record.trigger_type = flow.trigger_type
+            record.trigger_cron = flow.trigger_cron
+            # preserve existing webhook_secret — only set if not already present
+            if flow.webhook_secret and not record.webhook_secret:
+                record.webhook_secret = flow.webhook_secret
             record.mapping_definition_id = flow.mapping_definition_id
             record.steps = [step.model_dump(by_alias=True) for step in flow.steps]
 
@@ -97,6 +101,36 @@ class FlowDefinitionRepository:
             if record.tenant_id is not None and record.tenant_id != self._tenant_id:
                 raise KeyError(record.flow_id)
 
+    def list_scheduled_flow_specs(self) -> list[dict]:
+        """Return minimal specs for all published scheduled flows (for Beat scheduler)."""
+        records = self.session.scalars(
+            select(FlowDefinitionRecord).where(
+                FlowDefinitionRecord.status == "published",
+                FlowDefinitionRecord.trigger_type == "schedule",
+                FlowDefinitionRecord.trigger_cron.isnot(None),
+            )
+        ).all()
+        return [
+            {
+                "flow_id": r.flow_id,
+                "tenant_id": r.tenant_id,
+                "trigger_cron": r.trigger_cron,
+                "last_run_at": r.last_run_at,
+            }
+            for r in records
+        ]
+
+    def get_by_webhook_secret(self, flow_id: str, webhook_secret: str) -> FlowDefinition:
+        record = self.session.scalars(
+            select(FlowDefinitionRecord).where(
+                FlowDefinitionRecord.flow_id == flow_id,
+                FlowDefinitionRecord.webhook_secret == webhook_secret,
+            ).limit(1)
+        ).first()
+        if record is None:
+            raise KeyError(flow_id)
+        return self._to_model(record)
+
     def _to_record(self, flow: FlowDefinition) -> FlowDefinitionRecord:
         return FlowDefinitionRecord(
             flow_id=flow.flow_id,
@@ -106,6 +140,8 @@ class FlowDefinitionRepository:
             target_module=flow.target_module,
             status=flow.status,
             trigger_type=flow.trigger_type,
+            trigger_cron=flow.trigger_cron,
+            webhook_secret=flow.webhook_secret,
             mapping_definition_id=flow.mapping_definition_id,
             last_run_at=flow.last_run_at,
             last_run_status=flow.last_run_status,
@@ -122,6 +158,8 @@ class FlowDefinitionRepository:
             targetModule=record.target_module,
             status=status,
             triggerType=record.trigger_type,
+            triggerCron=getattr(record, "trigger_cron", None),
+            webhookSecret=getattr(record, "webhook_secret", None),
             mappingDefinitionId=record.mapping_definition_id,
             lastRunAt=record.last_run_at,
             lastRunStatus=record.last_run_status,

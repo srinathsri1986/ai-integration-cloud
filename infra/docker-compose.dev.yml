@@ -22,6 +22,15 @@ services:
         - action: rebuild
           path: ../apps/api/pyproject.toml
 
+  celery-beat:
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../apps/api/app
+          target: /app/app
+        - action: rebuild
+          path: ../apps/api/pyproject.toml
+
   celery-worker:
     develop:
       watch:

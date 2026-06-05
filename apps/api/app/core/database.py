@@ -27,6 +27,7 @@ def init_db() -> None:
     _ensure_users_table()
     _ensure_lightweight_columns()
     _ensure_async_execution_columns()
+    _ensure_trigger_columns()
 
 
 def _ensure_tenant_columns() -> None:
@@ -68,6 +69,30 @@ def _ensure_users_table() -> None:
         elif dialect_name == "postgresql":
             connection.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ"
+            )
+
+
+def _ensure_trigger_columns() -> None:
+    """Add trigger_cron and webhook_secret to flow_definitions for older schemas."""
+    with engine.begin() as connection:
+        dialect_name = connection.dialect.name
+        if dialect_name == "sqlite":
+            rows = connection.exec_driver_sql("PRAGMA table_info(flow_definitions)").fetchall()
+            cols = {row[1] for row in rows}
+            if "trigger_cron" not in cols:
+                connection.exec_driver_sql(
+                    "ALTER TABLE flow_definitions ADD COLUMN trigger_cron VARCHAR(100)"
+                )
+            if "webhook_secret" not in cols:
+                connection.exec_driver_sql(
+                    "ALTER TABLE flow_definitions ADD COLUMN webhook_secret VARCHAR(64)"
+                )
+        elif dialect_name == "postgresql":
+            connection.exec_driver_sql(
+                "ALTER TABLE flow_definitions ADD COLUMN IF NOT EXISTS trigger_cron VARCHAR(100)"
+            )
+            connection.exec_driver_sql(
+                "ALTER TABLE flow_definitions ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(64)"
             )
 
 

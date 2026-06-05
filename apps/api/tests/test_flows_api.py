@@ -326,7 +326,7 @@ def test_flow_suggestion_generates_governed_draft_and_audit_log() -> None:
     body = response.json()
     assert body["suggestedFlow"]["status"] == "draft"
     assert body["suggestedFlow"]["sourceConnector"] == "netsuite"
-    assert body["suggestedFlow"]["triggerType"] == "schedule_placeholder"
+    assert body["suggestedFlow"]["triggerType"] == "schedule"
     assert [step["approvedTool"] for step in body["suggestedFlow"]["steps"]] == [
         "cfo.dashboard_summary",
         "cfo.pl_vs_budget",

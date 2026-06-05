@@ -1,3 +1,4 @@
+import secrets
 from datetime import UTC, datetime
 from threading import Lock
 from time import perf_counter
@@ -134,6 +135,8 @@ class FlowService:
             return FlowDefinitionRepository(session, tenant_id).get_flow(flow_id)
 
     def upsert_flow(self, request: FlowDefinitionUpsertRequest, tenant_id: int | None = None) -> FlowDefinition:
+        # Generate a webhook secret for any flow that might use webhook trigger
+        webhook_secret = secrets.token_urlsafe(32)
         flow = FlowDefinition(
             flowId=request.flow_id,
             name=request.name,
@@ -142,6 +145,8 @@ class FlowService:
             targetModule=request.target_module,
             status=request.status,
             triggerType=request.trigger_type,
+            triggerCron=request.trigger_cron,
+            webhookSecret=webhook_secret,
             mappingDefinitionId=request.mapping_definition_id,
             lastRunAt=None,
             lastRunStatus="never_run",
@@ -218,6 +223,29 @@ class FlowService:
             raise ValueError(f"Cannot apply {action} to a {current_status} flow.")
 
         return next_status
+
+    def trigger_webhook(self, flow_id: str, secret: str) -> FlowRunResponse:
+        """Validate webhook secret and enqueue the flow run. No auth required."""
+        from app.db.models import FlowDefinitionRecord
+        from app.repositories.flow_definition_repository import FlowDefinitionRepository
+
+        # Fetch with tenant_id from the record itself
+        with SessionLocal() as session:
+            record = session.query(FlowDefinitionRecord).filter(
+                FlowDefinitionRecord.flow_id == flow_id,
+                FlowDefinitionRecord.webhook_secret == secret,
+            ).first()
+            if record is None:
+                raise KeyError(flow_id)
+            tenant_id: int | None = record.tenant_id
+            flow = FlowDefinitionRepository(session, tenant_id).get_flow(flow_id)
+
+        if flow.status != "published":
+            raise ValueError("Flow must be published before it can be triggered via webhook.")
+        if flow.trigger_type != "webhook":
+            raise ValueError("This flow is not configured for webhook triggers.")
+
+        return self.enqueue_flow_run(flow_id, tenant_id=tenant_id)
 
     def enqueue_flow_run(self, flow_id: FlowId, tenant_id: int | None = None) -> FlowRunResponse:
         """Create a running record and enqueue async execution. Returns 202-style response."""

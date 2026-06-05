@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from croniter import croniter
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 FlowId = str
@@ -8,7 +9,7 @@ FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paus
 FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause"]
 FlowRunStatus = Literal["never_run", "running", "succeeded", "failed"]
 FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
-FlowTriggerType = Literal["manual", "schedule_placeholder"]
+FlowTriggerType = Literal["manual", "schedule", "webhook"]
 ApprovedFlowTool = Literal[
     "cfo.dashboard_summary",
     "cfo.pl_vs_budget",
@@ -35,6 +36,8 @@ class FlowDefinition(BaseModel):
     target_module: str = Field(alias="targetModule")
     status: FlowStatus
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
+    trigger_cron: str | None = Field(default=None, alias="triggerCron")
+    webhook_secret: str | None = Field(default=None, alias="webhookSecret")
     mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId")
     last_run_at: str | None = Field(default=None, alias="lastRunAt")
     last_run_status: FlowRunStatus = Field(alias="lastRunStatus")
@@ -49,6 +52,7 @@ class FlowDefinitionUpsertRequest(BaseModel):
     target_module: str = Field(alias="targetModule", min_length=3, max_length=80)
     status: FlowStatus = "draft"
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
+    trigger_cron: str | None = Field(default=None, alias="triggerCron", max_length=100)
     mapping_definition_id: str | None = Field(default=None, alias="mappingDefinitionId", max_length=96)
     steps: list[FlowStep] = Field(min_length=1, max_length=8)
 
@@ -61,6 +65,15 @@ class FlowDefinitionUpsertRequest(BaseModel):
             raise ValueError("Flow definitions cannot contain raw query or code execution language.")
 
         return value
+
+    @model_validator(mode="after")
+    def validate_trigger_config(self) -> "FlowDefinitionUpsertRequest":
+        if self.trigger_type == "schedule":
+            if not self.trigger_cron:
+                raise ValueError("trigger_cron is required when trigger_type is 'schedule'.")
+            if not croniter.is_valid(self.trigger_cron):
+                raise ValueError(f"trigger_cron '{self.trigger_cron}' is not a valid cron expression.")
+        return self
 
     @field_validator("status")
     @classmethod

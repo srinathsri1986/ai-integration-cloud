@@ -283,7 +283,7 @@ export const flowLifecycleActionSchema = z.enum([
 ]);
 export const flowRunStatusSchema = z.enum(["never_run", "running", "succeeded", "failed"]);
 export const flowRunStepStatusSchema = z.enum(["succeeded", "failed", "skipped"]);
-export const flowTriggerTypeSchema = z.enum(["manual", "schedule_placeholder"]);
+export const flowTriggerTypeSchema = z.enum(["manual", "schedule", "webhook"]);
 export const approvedFlowToolSchema = z.enum([
   "cfo.dashboard_summary",
   "cfo.pl_vs_budget",
@@ -318,6 +318,8 @@ export const flowDefinitionSchema = z.object({
   targetModule: z.string(),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
+  triggerCron: z.string().nullable().optional(),
+  webhookSecret: z.string().nullable().optional(),
   mappingDefinitionId: z.string().nullable().optional(),
   lastRunAt: z.string().nullable(),
   lastRunStatus: flowRunStatusSchema,
@@ -334,6 +336,7 @@ export const flowDefinitionUpsertRequestSchema = z.object({
   targetModule: z.string().min(3).max(80),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
+  triggerCron: z.string().max(100).nullable().optional(),
   mappingDefinitionId: z.string().max(96).nullable().optional(),
   steps: z.array(flowStepSchema).min(1).max(8)
 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   CircleDot,
+  ClipboardCopy,
   FilePenLine,
   Link2,
   PauseCircle,
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
+  Webhook,
   Workflow
 } from "lucide-react";
 import type {
@@ -105,6 +107,7 @@ function emptyDraft(): FlowDefinitionUpsertRequest {
       }
     ],
     targetModule: "salesforce_opportunity",
+    triggerCron: null,
     triggerType: "manual"
   };
 }
@@ -491,6 +494,66 @@ export function IntegrationManagementConsole({
                   value={draft.description}
                 />
               </label>
+              <label className="text-sm font-medium text-slate-900 md:col-span-2">
+                Trigger type
+                <select
+                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                  onChange={(event) => {
+                    const t = event.target.value as FlowDefinitionUpsertRequest["triggerType"];
+                    setDraft((current) => ({
+                      ...current,
+                      triggerType: t,
+                      triggerCron: t === "schedule" ? (current.triggerCron ?? "0 9 * * 1") : null
+                    }));
+                  }}
+                  value={draft.triggerType}
+                >
+                  <option value="manual">Manual — run on demand</option>
+                  <option value="schedule">Schedule — cron</option>
+                  <option value="webhook">Webhook — inbound HTTP</option>
+                </select>
+              </label>
+              {draft.triggerType === "schedule" && (
+                <div className="md:col-span-2 space-y-2">
+                  <label className="text-sm font-medium text-slate-900">
+                    Cron expression
+                    <input
+                      className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 font-mono text-sm outline-none focus:border-primary"
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, triggerCron: event.target.value || null }))
+                      }
+                      placeholder="0 9 * * 1"
+                      type="text"
+                      value={draft.triggerCron ?? ""}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "Every Monday 9am", cron: "0 9 * * 1" },
+                      { label: "Daily midnight", cron: "0 0 * * *" },
+                      { label: "1st of month", cron: "0 0 1 * *" },
+                      { label: "Hourly", cron: "0 * * * *" }
+                    ].map(({ label, cron }) => (
+                      <button
+                        className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                        key={cron}
+                        onClick={() => setDraft((current) => ({ ...current, triggerCron: cron }))}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Format: <code className="font-mono">minute hour day-of-month month day-of-week</code>
+                  </p>
+                </div>
+              )}
+              {draft.triggerType === "webhook" && (
+                <p className="md:col-span-2 text-xs text-muted-foreground">
+                  A webhook URL and secret will be generated when this integration is published.
+                </p>
+              )}
             </div>
 
             <Button className="mt-4 w-full" disabled={busyKey === "save-draft"} onClick={saveDraft} type="button">
@@ -574,6 +637,15 @@ function IntegrationReviewPane({
           <DarkMetric label="Target" value={flow.targetModule} />
           <DarkMetric label="Trigger" value={statusLabel(flow.triggerType)} />
           <DarkMetric label="Last run" value={statusLabel(flow.lastRunStatus)} />
+          {flow.triggerType === "schedule" && flow.triggerCron && (
+            <div className="col-span-2 rounded-md border border-white/10 bg-white/5 px-3 py-2">
+              <p className="text-xs text-slate-400 mb-1">Cron schedule</p>
+              <code className="font-mono text-xs text-slate-200">{flow.triggerCron}</code>
+            </div>
+          )}
+          {flow.triggerType === "webhook" && flow.status === "published" && flow.webhookSecret && (
+            <WebhookUrlBlock flowId={flow.flowId} webhookSecret={flow.webhookSecret} />
+          )}
         </div>
 
         <div className="mt-5 grid gap-2">
@@ -738,6 +810,44 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function WebhookUrlBlock({ flowId, webhookSecret }: { flowId: string; webhookSecret: string }) {
+  const apiBase =
+    typeof window !== "undefined"
+      ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000")
+      : "http://localhost:8000";
+  const url = `${apiBase}/api/v1/webhooks/${flowId}/${webhookSecret}`;
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="col-span-2 rounded-md border border-white/10 bg-white/5 px-3 py-2">
+      <p className="text-xs text-slate-400 mb-1">Webhook URL</p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate font-mono text-xs text-slate-200">{url}</code>
+        <button
+          className="shrink-0 rounded border border-white/15 bg-white/10 p-1.5 hover:bg-white/20"
+          onClick={handleCopy}
+          title="Copy webhook URL"
+          type="button"
+        >
+          {copied ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+          ) : (
+            <ClipboardCopy className="h-3.5 w-3.5 text-slate-300" />
+          )}
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">POST to this URL to trigger the integration.</p>
     </div>
   );
 }
