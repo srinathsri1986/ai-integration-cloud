@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import FlowRunRecord
@@ -62,12 +62,26 @@ class FlowRunRepository:
         self.session.add(record)
         self.session.commit()
 
+    def count(
+        self,
+        *,
+        flow_id: str | None = None,
+        status: str | None = None,
+    ) -> int:
+        """Total runs matching the given filters for this tenant."""
+        statement = self._scope(select(func.count()).select_from(FlowRunRecord))
+        if flow_id:
+            statement = statement.where(FlowRunRecord.flow_id == flow_id)
+        if status:
+            statement = statement.where(FlowRunRecord.status == status)
+        return self.session.scalar(statement) or 0
+
     def list_runs(
         self,
         *,
         flow_id: str | None = None,
         status: str | None = None,
-        limit: int = 100,
+        limit: int = 50,
         offset: int = 0,
     ) -> list[FlowRunResponse]:
         statement = self._scope(

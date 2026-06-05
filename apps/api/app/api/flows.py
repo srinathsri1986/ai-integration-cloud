@@ -10,6 +10,8 @@ from app.models.flows import (
     FlowRunResponse,
     FlowSuggestionRequest,
     FlowSuggestionResponse,
+    PaginatedFlowRuns,
+    PaginatedFlows,
 )
 from app.services.flow_suggestion_service import LiveAIRequiredError, flow_suggestion_service
 from app.services.flow_service import flow_service
@@ -17,24 +19,33 @@ from app.services.flow_service import flow_service
 router = APIRouter(prefix="/flows", tags=["flows"])
 
 
-@router.get("", response_model=list[FlowDefinition])
-def list_flows(user=Depends(require_permissions("flow:read"))) -> list[FlowDefinition]:
-    return flow_service.list_flows(tenant_id=user.tenant_id)
+@router.get("", response_model=PaginatedFlows)
+def list_flows(
+    limit: int = 50,
+    offset: int = 0,
+    user=Depends(require_permissions("flow:read")),
+) -> PaginatedFlows:
+    return flow_service.list_flows(
+        tenant_id=user.tenant_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
-@router.get("/runs", response_model=list[FlowRunResponse])
+@router.get("/runs", response_model=PaginatedFlowRuns)
 def list_flow_runs(
     flow_id: str | None = None,
     run_status: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
     offset: int = 0,
     user=Depends(require_permissions("flow:read")),
-) -> list[FlowRunResponse]:
-    return flow_service.list_runs(tenant_id=user.tenant_id,
+) -> PaginatedFlowRuns:
+    return flow_service.list_runs(
+        tenant_id=user.tenant_id,
         flow_id=flow_id,
         status=run_status,
-        limit=min(max(limit, 1), 500),
-        offset=max(offset, 0),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -122,6 +133,30 @@ def delete_flow_definition(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+
+@router.get("/{flow_id}/runs", response_model=PaginatedFlowRuns)
+def list_flow_runs_for_flow(
+    flow_id: FlowId,
+    limit: int = 10,
+    offset: int = 0,
+    user=Depends(require_permissions("flow:read")),
+) -> PaginatedFlowRuns:
+    """Paginated run history for a specific flow. Convenience alias for GET /runs?flow_id=X."""
+    try:
+        # Verify flow exists and is visible
+        flow_service.get_flow(flow_id, tenant_id=user.tenant_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown flow.",
+        ) from exc
+    return flow_service.list_runs(
+        tenant_id=user.tenant_id,
+        flow_id=flow_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)

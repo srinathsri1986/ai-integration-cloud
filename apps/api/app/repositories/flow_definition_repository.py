@@ -1,4 +1,4 @@
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import FlowDefinitionRecord
@@ -21,10 +21,19 @@ class FlowDefinitionRepository:
                 existing.status = flow.status
         self.session.commit()
 
-    def list_flows(self) -> list[FlowDefinition]:
+    def count(self) -> int:
+        """Total number of flows visible to this tenant."""
+        return self.session.scalar(
+            self._scope(select(func.count()).select_from(FlowDefinitionRecord))
+        ) or 0
+
+    def list_flows(self, limit: int = 50, offset: int = 0) -> list[FlowDefinition]:
         records = self.session.scalars(
             self._scope(
-                select(FlowDefinitionRecord).order_by(FlowDefinitionRecord.created_at.asc())
+                select(FlowDefinitionRecord)
+                .order_by(FlowDefinitionRecord.created_at.asc())
+                .limit(limit)
+                .offset(offset)
             )
         ).all()
         return [self._to_model(record) for record in records]

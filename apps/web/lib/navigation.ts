@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   Gauge,
   GitBranch,
+  LayoutDashboard,
   Map,
   Settings
 } from "lucide-react";
@@ -20,6 +21,13 @@ export type PlatformRoute = {
 };
 
 export const platformRoutes: PlatformRoute[] = [
+  {
+    description: "Integration estate overview",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    label: "Dashboard",
+    roles: ["Integration Admin", "Developer", "CFO", "Finance Controller", "Viewer"]
+  },
   {
     description: "Executive finance cockpit",
     href: "/cfo",

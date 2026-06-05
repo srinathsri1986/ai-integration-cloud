@@ -58,7 +58,13 @@ def test_list_flows_returns_mock_catalog() -> None:
     response = client.get("/api/v1/flows")
 
     assert response.status_code == 200
-    body = response.json()
+    data = response.json()
+    # v5.0: paginated response wrapper
+    assert "items" in data
+    assert data["total"] == 3
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    body = data["items"]
     assert [flow["flowId"] for flow in body] == [
         "netsuite-cfo-dashboard-refresh",
         "netsuite-project-risk-refresh",
@@ -123,7 +129,8 @@ def test_run_cfo_dashboard_flow_updates_last_run_and_audit_log() -> None:
     assert "token" not in logs[0]
     assert "secret" not in logs[0]
 
-    runs = client.get("/api/v1/flows/runs").json()
+    runs_data = client.get("/api/v1/flows/runs").json()
+    runs = runs_data["items"]
     assert len(runs) == 1
     assert runs[0]["requestId"] == request_id
     assert runs[0]["flowId"] == "netsuite-cfo-dashboard-refresh"
@@ -148,14 +155,14 @@ def test_flow_run_history_supports_filters_and_pagination() -> None:
     client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
     client.post("/api/v1/flows/netsuite-project-risk-refresh/run")
 
-    by_flow = client.get("/api/v1/flows/runs?flow_id=netsuite-project-risk-refresh").json()
+    by_flow = client.get("/api/v1/flows/runs?flow_id=netsuite-project-risk-refresh").json()["items"]
     assert len(by_flow) == 1
     assert by_flow[0]["flowId"] == "netsuite-project-risk-refresh"
 
-    by_status = client.get("/api/v1/flows/runs?run_status=succeeded").json()
+    by_status = client.get("/api/v1/flows/runs?run_status=succeeded").json()["items"]
     assert len(by_status) == 2
 
-    paged = client.get("/api/v1/flows/runs?limit=1&offset=1").json()
+    paged = client.get("/api/v1/flows/runs?limit=1&offset=1").json()["items"]
     assert len(paged) == 1
 
     missing = client.get("/api/v1/flows/runs/not-a-real-run")
@@ -201,7 +208,7 @@ def test_create_flow_definition_uses_approved_tools_and_writes_audit_log() -> No
     assert body["status"] == "draft"
     assert body["steps"][0]["approvedTool"] == "cfo.dashboard_summary"
 
-    flows = client.get("/api/v1/flows").json()
+    flows = client.get("/api/v1/flows").json()["items"]
     assert "custom-cfo-refresh" in [flow["flowId"] for flow in flows]
 
     logs = client.get("/api/v1/audit/logs").json()
@@ -680,3 +687,162 @@ def test_run_subsidiary_flow_uses_approved_services_only() -> None:
     logs = client.get("/api/v1/audit/logs").json()
     assert logs[0]["detectedIntent"] == "FLOW_RUN"
     assert logs[1]["detectedIntent"] == "SUBSIDIARY_DRILLDOWN"
+
+
+# ── Release 5.0 new feature tests ─────────────────────────────────────────────
+
+def test_flow_run_history_endpoint_returns_paginated_shape() -> None:
+    """GET /{flow_id}/runs returns PaginatedFlowRuns shape."""
+    # Run the flow first so there is at least one run in history
+    run_resp = client.post("/api/v1/flows/netsuite-cfo-dashboard-refresh/run")
+    assert run_resp.status_code == 202
+
+    resp = client.get("/api/v1/flows/netsuite-cfo-dashboard-refresh/runs?limit=5")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "items" in body
+    assert "total" in body
+    assert "limit" in body
+    assert "offset" in body
+    assert body["limit"] == 5
+    assert body["offset"] == 0
+    assert isinstance(body["items"], list)
+    assert len(body["items"]) >= 1
+    run = body["items"][0]
+    assert "requestId" in run
+    assert "flowId" in run
+    assert "status" in run
+
+
+def test_flow_run_history_endpoint_returns_404_for_unknown_flow() -> None:
+    resp = client.get("/api/v1/flows/does-not-exist/runs")
+    assert resp.status_code == 404
+
+
+def test_unpause_lifecycle_restores_published_flow() -> None:
+    """draft → submit_for_approval → approve → publish → pause → unpause cycles cleanly."""
+    # Create a custom flow in draft state
+    payload = {
+        "flowId": "unpause-test-flow",
+        "name": "Unpause test flow",
+        "description": "Flow for testing the unpause lifecycle action.",
+        "sourceConnector": "netsuite",
+        "targetModule": "cfo_dashboard",
+        "status": "draft",
+        "triggerType": "manual",
+        "steps": [
+            {
+                "id": "step-1",
+                "name": "CFO Summary",
+                "description": "Load CFO dashboard summary.",
+                "approvedTool": "cfo.dashboard_summary",
+            }
+        ],
+    }
+    create_resp = client.post("/api/v1/flows/definitions", json=payload)
+    assert create_resp.status_code == 200
+    flow_id = create_resp.json()["flowId"]
+
+    # Walk the full lifecycle
+    for action in ["submit_for_approval", "approve", "publish"]:
+        r = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": action})
+        assert r.status_code == 200, f"Action {action!r} failed: {r.text}"
+
+    # Pause
+    pause_resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "pause"})
+    assert pause_resp.status_code == 200
+    assert pause_resp.json()["flow"]["status"] == "paused"
+
+    # Unpause — restores to published without re-approval
+    unpause_resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "unpause"})
+    assert unpause_resp.status_code == 200
+    assert unpause_resp.json()["flow"]["status"] == "published"
+
+
+def test_unpause_rejected_for_non_paused_flow() -> None:
+    """unpause on a draft flow must return 409 (invalid transition)."""
+    payload = {
+        "flowId": "unpause-invalid-flow",
+        "name": "Unpause invalid flow",
+        "description": "Should not be unpaused from draft state.",
+        "sourceConnector": "netsuite",
+        "targetModule": "cfo_dashboard",
+        "status": "draft",
+        "triggerType": "manual",
+        "steps": [
+            {
+                "id": "step-1",
+                "name": "CFO Summary",
+                "description": "Load CFO dashboard summary.",
+                "approvedTool": "cfo.dashboard_summary",
+            }
+        ],
+    }
+    create_resp = client.post("/api/v1/flows/definitions", json=payload)
+    assert create_resp.status_code == 200
+    flow_id = create_resp.json()["flowId"]
+
+    resp = client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "unpause"})
+    assert resp.status_code == 409
+
+
+def _create_published_webhook_flow(flow_id: str = "webhook-sig-test-flow") -> str:
+    """Helper: create + publish a webhook-type flow, return its flow_id."""
+    payload = {
+        "flowId": flow_id,
+        "name": f"Webhook signature test {flow_id}",
+        "description": "Webhook-triggered flow for HMAC signature tests.",
+        "sourceConnector": "netsuite",
+        "targetModule": "cfo_dashboard",
+        "status": "draft",
+        "triggerType": "webhook",
+        "webhookSecret": "test-hmac-secret",
+        "steps": [
+            {
+                "id": "step-1",
+                "name": "CFO Summary",
+                "description": "Load CFO dashboard summary.",
+                "approvedTool": "cfo.dashboard_summary",
+            }
+        ],
+    }
+    r = client.post("/api/v1/flows/definitions", json=payload)
+    assert r.status_code == 200, r.text
+    for action in ["submit_for_approval", "approve", "publish"]:
+        client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": action})
+    return flow_id
+
+
+def test_webhook_endpoint_returns_401_without_valid_signature() -> None:
+    """POST /webhooks/{flow_id} with no signature header must return 401."""
+    flow_id = _create_published_webhook_flow("webhook-nosig-flow")
+    resp = client.post(
+        f"/api/v1/webhooks/{flow_id}",
+        content=b'{"event": "test"}',
+        headers={"Content-Type": "application/json"},
+    )
+    # No X-Hub-Signature-256 header → 401
+    assert resp.status_code == 401
+
+
+def test_webhook_endpoint_returns_404_for_unknown_flow() -> None:
+    resp = client.post(
+        "/api/v1/webhooks/does-not-exist",
+        content=b'{}',
+        headers={
+            "Content-Type": "application/json",
+            "X-Hub-Signature-256": "sha256=badhash",
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_pagination_list_flows_respects_limit_and_offset() -> None:
+    """GET /flows?limit=2&offset=0 returns at most 2 items."""
+    resp = client.get("/api/v1/flows?limit=2&offset=0")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) <= 2
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert body["total"] >= 3  # seed flows always present

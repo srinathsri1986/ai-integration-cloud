@@ -10,6 +10,8 @@ from app.core.config import get_settings
 from app.core.config_validation import validate_settings_or_raise
 from app.core.database import init_db
 from app.core.logging import configure_logging
+from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.request_logging import RequestLoggingMiddleware
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -43,8 +45,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
-    expose_headers=["Set-Cookie"],
+    expose_headers=["Set-Cookie", "X-Request-ID"],
 )
+# Starlette applies middleware in reverse-registration order.
+# Execution order: CORS → RateLimit → RequestLogging → route handler
+app.add_middleware(RateLimitMiddleware, redis_url=settings.redis_url)
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api/v1")

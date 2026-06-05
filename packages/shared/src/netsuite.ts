@@ -279,7 +279,8 @@ export const flowLifecycleActionSchema = z.enum([
   "approve",
   "reject",
   "publish",
-  "pause"
+  "pause",
+  "unpause",
 ]);
 export const flowRunStatusSchema = z.enum(["never_run", "running", "succeeded", "failed"]);
 export const flowRunStepStatusSchema = z.enum(["succeeded", "failed", "skipped"]);
@@ -580,3 +581,13 @@ export const loginResponseSchema = z.object({
 });
 
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+/** Generic paginated API response wrapper used by all list endpoints in v5.0+. */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}

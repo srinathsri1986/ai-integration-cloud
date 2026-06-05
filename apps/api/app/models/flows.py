@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 FlowId = str
 FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
-FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause"]
+FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause", "unpause"]
 FlowRunStatus = Literal["never_run", "running", "succeeded", "failed"]
 FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
 FlowTriggerType = Literal["manual", "schedule", "webhook"]
@@ -148,3 +148,21 @@ class FlowRunResponse(BaseModel):
     data: dict[str, Any]
     execution_timeline: list[FlowRunTimelineStep] = Field(default_factory=list, alias="executionTimeline")
     inspection: FlowRunInspection | None = Field(default=None, alias="inspection")
+
+
+class PaginatedFlows(BaseModel):
+    """Paginated list of flow definitions returned by GET /flows."""
+
+    items: list[FlowDefinition]
+    total: int
+    limit: int
+    offset: int
+
+
+class PaginatedFlowRuns(BaseModel):
+    """Paginated list of flow runs returned by GET /flows/runs and GET /flows/{id}/runs."""
+
+    items: list[FlowRunResponse]
+    total: int
+    limit: int
+    offset: int

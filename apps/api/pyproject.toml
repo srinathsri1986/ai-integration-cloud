@@ -21,7 +21,8 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pydantic[email]>=2.0.0",
   "celery[redis]>=5.4.0",
-  "croniter>=2.0.0"
+  "croniter>=2.0.0",
+  "alembic>=1.14.0"
 ]
 
 [project.optional-dependencies]

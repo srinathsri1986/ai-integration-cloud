@@ -39,7 +39,17 @@ import type {
   YoyComparisonResponse
 } from "@netsuite-cfo/shared";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// Browser-facing URL (exposed to client bundle via NEXT_PUBLIC_ prefix)
+const PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// Server-only URL for SSR fetches inside Docker (container-to-container)
+// Falls back to PUBLIC_API_BASE_URL for local dev (both resolve to localhost)
+const SERVER_API_BASE_URL = process.env.SERVER_API_BASE_URL ?? PUBLIC_API_BASE_URL;
+
+/** Returns the correct base URL depending on execution context. */
+function apiBaseUrl(): string {
+  return typeof window === "undefined" ? SERVER_API_BASE_URL : PUBLIC_API_BASE_URL;
+}
+
 export const LOCAL_AUTH_TOKEN_KEY = "netsuite-cfo-placeholder-token";
 const LOCAL_AUTH_STORAGE_KEY = LOCAL_AUTH_TOKEN_KEY;
 export const LOCAL_AUTH_ROLE_KEY = "netsuite-cfo-placeholder-role";
@@ -719,7 +729,7 @@ async function getApiResult<T>(
   transform: (body: any) => T
 ): Promise<ApiResult<T>> {
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${apiBaseUrl()}${path}`, {
       cache: "no-store"
     });
 
@@ -839,7 +849,7 @@ export async function discoverRestApiSchema(
   request: RestApiSchemaDiscoveryRequest
 ): Promise<ClientApiResult<RestApiSchemaDiscoveryResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/discover-schema`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/discover-schema`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -874,7 +884,7 @@ export async function promoteRestApiSchema(
   request: RestApiSchemaPromotionRequest
 ): Promise<ClientApiResult<RestApiSchemaPromotionResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/promote-schema`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/promote-schema`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -909,7 +919,7 @@ export async function testNetSuiteConnection(): Promise<
   ClientApiResult<NetSuiteConnectionTestResponse>
 > {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/netsuite/test`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/netsuite/test`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"
@@ -940,7 +950,7 @@ export async function testRestApiConnection(): Promise<
   ClientApiResult<RestApiConnectionTestResponse>
 > {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/test`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/test`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"
@@ -971,7 +981,7 @@ export async function updateNetSuiteConnectorConfig(
   request: NetSuiteConnectorConfigUpdate
 ): Promise<ClientApiResult<NetSuiteConnectorConfig>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/netsuite/config`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/netsuite/config`, {
       body: JSON.stringify({ ...request, mockMode: true, authMode: "placeholder" }),
       cache: "no-store",
       headers: {
@@ -1006,7 +1016,7 @@ export async function updateRestApiConnectorConfig(
   request: RestApiConnectorConfigUpdate
 ): Promise<ClientApiResult<RestApiConnectorConfig>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/connectors/rest-api/config`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/connectors/rest-api/config`, {
       body: JSON.stringify({ ...request, mockMode: true, authMode: "placeholder" }),
       cache: "no-store",
       headers: {
@@ -1037,13 +1047,48 @@ export async function updateRestApiConnectorConfig(
   }
 }
 
-export async function getFlows(): Promise<ApiResult<FlowDefinition[]>> {
-  return getApiResult("/api/v1/flows", fallbackFlows, (body) => body);
+const fallbackPaginatedFlows = {
+  items: fallbackFlows,
+  total: fallbackFlows.length,
+  limit: 50,
+  offset: 0,
+};
+
+export async function getFlows(): Promise<ApiResult<{ items: FlowDefinition[]; total: number; limit: number; offset: number }>> {
+  return getApiResult(
+    "/api/v1/flows",
+    fallbackPaginatedFlows,
+    (body) => ({
+      items: Array.isArray(body) ? body : (body.items ?? []),
+      total: body.total ?? (Array.isArray(body) ? body.length : 0),
+      limit: body.limit ?? 50,
+      offset: body.offset ?? 0,
+    })
+  );
+}
+
+export async function getFlow(flowId: FlowId): Promise<ApiResult<FlowDefinition>> {
+  return getApiResult(
+    `/api/v1/flows/${flowId}`,
+    fallbackFlows[0],
+    (body) => body
+  );
+}
+
+export async function getFlowRunsForFlow(
+  flowId: FlowId,
+  limit = 10
+): Promise<ApiResult<FlowRunResponse[]>> {
+  return getApiResult(
+    `/api/v1/flows/${flowId}/runs?limit=${limit}`,
+    [],
+    (body) => body.items ?? []
+  );
 }
 
 export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}/run`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/${flowId}/run`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"
@@ -1072,7 +1117,7 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
 
 export async function getFlowRun(requestId: string): Promise<ClientApiResult<FlowRunResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/runs/${requestId}`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/runs/${requestId}`, {
       cache: "no-store",
       headers: authHeaders()
     });
@@ -1103,7 +1148,7 @@ export async function transitionFlowLifecycle(
   action: FlowLifecycleAction
 ): Promise<ClientApiResult<FlowLifecycleResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}/lifecycle`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/${flowId}/lifecycle`, {
       body: JSON.stringify({ action }),
       cache: "no-store",
       headers: {
@@ -1138,7 +1183,7 @@ export async function deleteFlowDefinition(
   flowId: FlowId
 ): Promise<ClientApiResult<{ flowId: string; message: string }>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/${flowId}`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/${flowId}`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "DELETE"
@@ -1170,7 +1215,7 @@ export async function saveFlowDefinition(
   request: FlowDefinitionUpsertRequest
 ): Promise<ClientApiResult<FlowDefinition>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/definitions`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/definitions`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -1205,7 +1250,7 @@ export async function suggestFlowDefinition(
   request: FlowSuggestionRequest
 ): Promise<ClientApiResult<FlowSuggestionResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/flows/suggestions`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/suggestions`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -1241,7 +1286,7 @@ export async function suggestMappingDefinition(
   request: MappingSuggestionRequest
 ): Promise<ClientApiResult<MappingSuggestionResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/suggestions`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/suggestions`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -1285,7 +1330,7 @@ export async function suggestMappingDefinition(
 
 export async function getMappingDefinitions(): Promise<ClientApiResult<MappingDefinition[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/definitions`, {
       cache: "no-store",
       headers: authHeaders()
     });
@@ -1315,7 +1360,7 @@ export async function saveMappingDefinition(
   request: MappingDefinitionUpsertRequest
 ): Promise<ClientApiResult<MappingDefinition>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/definitions`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -1358,7 +1403,7 @@ export async function transitionMappingLifecycle(
   note?: string
 ): Promise<ClientApiResult<MappingLifecycleResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}/lifecycle`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/definitions/${mappingId}/lifecycle`, {
       body: JSON.stringify({ action, note }),
       cache: "no-store",
       headers: {
@@ -1393,7 +1438,7 @@ export async function deleteMappingDefinition(
   mappingId: string
 ): Promise<ClientApiResult<{ mappingId: string; message: string }>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/definitions/${mappingId}`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "DELETE"
@@ -1425,7 +1470,7 @@ export async function simulateMappingDefinition(
   mappingId: string
 ): Promise<ClientApiResult<MappingSimulationResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/mappings/definitions/${mappingId}/simulate`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/mappings/definitions/${mappingId}/simulate`, {
       cache: "no-store",
       headers: authHeaders(),
       method: "POST"
@@ -1456,7 +1501,7 @@ export async function submitOrchestratorQuery(
   request: OrchestratorQueryRequest
 ): Promise<ClientApiResult<OrchestratorQueryResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/orchestrator/query`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/orchestrator/query`, {
       body: JSON.stringify(request),
       cache: "no-store",
       headers: {
@@ -1495,7 +1540,7 @@ export type LoginPayload = { email: string; password: string };
 export async function registerUser(payload: RegisterPayload): Promise<ClientApiResult<{ email: string; message: string }>> {
   const fallback = { email: payload.email, message: "Registration failed." };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/auth/register`, {
       body: JSON.stringify(payload),
       cache: "no-store",
       credentials: "include",
@@ -1515,7 +1560,7 @@ export async function registerUser(payload: RegisterPayload): Promise<ClientApiR
 export async function loginUser(payload: LoginPayload): Promise<ClientApiResult<LoginResponse>> {
   const fallback: LoginResponse = { accessToken: "", tokenType: "bearer", user: { email: payload.email, role: "Integration Admin", userId: "" } };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/auth/login`, {
       body: JSON.stringify(payload),
       cache: "no-store",
       credentials: "include",
@@ -1538,7 +1583,7 @@ export async function loginUser(payload: LoginPayload): Promise<ClientApiResult<
 
 export async function logoutUser(): Promise<void> {
   try {
-    await fetch(`${API_BASE_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include", cache: "no-store" });
+    await fetch(`${apiBaseUrl()}/api/v1/auth/logout`, { method: "POST", credentials: "include", cache: "no-store" });
   } catch {
     // best-effort
   }
@@ -1552,7 +1597,7 @@ export async function logoutUser(): Promise<void> {
 export async function forgotPassword(email: string): Promise<ClientApiResult<{ message: string }>> {
   const fallback = { message: "If that email exists, a reset link has been sent." };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/forgot-password`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/auth/forgot-password`, {
       body: JSON.stringify({ email }),
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
@@ -1568,7 +1613,7 @@ export async function forgotPassword(email: string): Promise<ClientApiResult<{ m
 export async function resetPassword(token: string, password: string): Promise<ClientApiResult<{ message: string }>> {
   const fallback = { message: "Password reset failed." };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/reset-password`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/auth/reset-password`, {
       body: JSON.stringify({ token, password }),
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
@@ -1598,7 +1643,7 @@ export async function loginWithRole(role: LoginResponse["user"]["role"]): Promis
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/auth/login/placeholder`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/auth/login/placeholder`, {
       body: JSON.stringify({ email: "local-dev@example.com", role }),
       cache: "no-store",
       headers: {
@@ -1654,7 +1699,7 @@ export type PendingInvite = { id: number; email: string; role: string };
 export async function getCurrentTenant(): Promise<ClientApiResult<TenantInfo>> {
   const fallback: TenantInfo = { id: 0, name: "Local Workspace", slug: "local", plan: "MVP" };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/tenants/me`, {
       cache: "no-store",
       credentials: "include",
       headers: authHeaders()
@@ -1669,7 +1714,7 @@ export async function getCurrentTenant(): Promise<ClientApiResult<TenantInfo>> {
 export async function getTenantMembers(): Promise<ClientApiResult<TenantMember[]>> {
   const fallback: TenantMember[] = [];
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/tenants/me/members`, {
       cache: "no-store",
       credentials: "include",
       headers: authHeaders()
@@ -1684,7 +1729,7 @@ export async function getTenantMembers(): Promise<ClientApiResult<TenantMember[]
 export async function getPendingInvites(): Promise<ClientApiResult<PendingInvite[]>> {
   const fallback: PendingInvite[] = [];
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/invites`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/tenants/me/members/invites`, {
       cache: "no-store",
       credentials: "include",
       headers: authHeaders()
@@ -1699,7 +1744,7 @@ export async function getPendingInvites(): Promise<ClientApiResult<PendingInvite
 export async function inviteMember(email: string, role: string): Promise<ClientApiResult<{ message: string; email: string; role: string }>> {
   const fallback = { message: "Invite failed.", email, role };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/invite`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/tenants/me/members/invite`, {
       body: JSON.stringify({ email, role }),
       cache: "no-store",
       credentials: "include",
@@ -1717,7 +1762,7 @@ export async function inviteMember(email: string, role: string): Promise<ClientA
 export async function removeMember(userId: number): Promise<ClientApiResult<{ message: string }>> {
   const fallback = { message: "Remove failed." };
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/tenants/me/members/${userId}`, {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/tenants/me/members/${userId}`, {
       cache: "no-store",
       credentials: "include",
       headers: authHeaders(),

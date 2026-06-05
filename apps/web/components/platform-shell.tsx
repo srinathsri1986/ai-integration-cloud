@@ -8,6 +8,7 @@ import type { UserRole } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EnvironmentSelector } from "@/components/environment-selector";
 import { getCurrentTenant, LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, LOCAL_AUTH_TOKEN_KEY, logoutUser, type TenantInfo } from "@/lib/api";
 import { routesForRole } from "@/lib/navigation";
 
@@ -134,7 +135,8 @@ export function PlatformShell({
               <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">{title}</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <EnvironmentSelector />
               <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">{tenantName}</Badge>
               <Badge className="border-sky-200 bg-sky-50 text-sky-900">{plan} plan</Badge>
               <Badge className="border-slate-200 bg-white text-slate-700">{role}</Badge>

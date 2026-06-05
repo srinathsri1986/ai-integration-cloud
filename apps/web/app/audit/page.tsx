@@ -1,17 +1,26 @@
-import { AuditLogPanel } from "@/components/audit-log-panel";
+import { GovernanceConsole } from "@/components/governance-console";
 import { PlatformShell } from "@/components/platform-shell";
+import { getAuditLogs, getFlows } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-export default function AuditPage() {
+export default async function AuditPage() {
+  const [flowsResult, auditResult] = await Promise.all([
+    getFlows(),
+    getAuditLogs()
+  ]);
+
   return (
     <PlatformShell
       active="/audit"
-      subtitle="Review every governed AI call, tool call, fallback event, flow run, and connector action from a single control surface."
+      subtitle="Approve pending integrations, review every governed tool call, and export audit trails."
       title="Governance Center"
     >
       <div className="-mx-5 lg:-mx-8">
-        <AuditLogPanel />
+        <GovernanceConsole
+          initialFlows={flowsResult.data.items}
+          initialAuditLogs={auditResult.data}
+        />
       </div>
     </PlatformShell>
   );

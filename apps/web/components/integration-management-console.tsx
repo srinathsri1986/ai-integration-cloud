@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Calendar,
   CheckCircle2,
   CircleDot,
   ClipboardCopy,
   FilePenLine,
+  Hand,
   Link2,
   PauseCircle,
   Play,
@@ -31,6 +33,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DeleteFlowModal } from "@/components/delete-flow-modal";
 import {
   type ApiResult,
   deleteFlowDefinition,
@@ -71,6 +74,7 @@ function flowActionsForStatus(status: FlowDefinition["status"]): FlowLifecycleAc
   if (status === "pending_approval") return ["approve", "reject"];
   if (status === "approved") return ["publish", "reject"];
   if (status === "published") return ["pause"];
+  if (status === "paused") return ["unpause"];
   return ["submit_for_approval"];
 }
 
@@ -80,6 +84,31 @@ function mappingActionsForStatus(status: MappingDefinition["status"]): MappingLi
   if (status === "approved") return ["publish", "reject"];
   if (status === "published") return ["pause"];
   return ["submit_for_approval"];
+}
+
+function TriggerBadge({ triggerType, cronValue }: { triggerType: string; cronValue?: string | null }) {
+  if (triggerType === "schedule") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+        <Calendar className="h-3 w-3" />
+        {cronValue ? cronValue : "schedule"}
+      </span>
+    );
+  }
+  if (triggerType === "webhook") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+        <Webhook className="h-3 w-3" />
+        webhook
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+      <Hand className="h-3 w-3" />
+      manual
+    </span>
+  );
 }
 
 function statusBadgeClass(status: string) {
@@ -115,11 +144,11 @@ function emptyDraft(): FlowDefinitionUpsertRequest {
 export function IntegrationManagementConsole({
   initialFlows
 }: {
-  initialFlows: ApiResult<FlowDefinition[]>;
+  initialFlows: ApiResult<{ items: FlowDefinition[]; total: number; limit: number; offset: number }>;
 }) {
   const router = useRouter();
-  const [flows, setFlows] = useState(initialFlows.data);
-  const [selectedFlowId, setSelectedFlowId] = useState(initialFlows.data[0]?.flowId);
+  const [flows, setFlows] = useState(initialFlows.data.items);
+  const [selectedFlowId, setSelectedFlowId] = useState(initialFlows.data.items[0]?.flowId);
   const [filter, setFilter] = useState<Filter>("all");
   const [message, setMessage] = useState<string | undefined>(
     initialFlows.isFallback ? initialFlows.error : undefined
@@ -127,6 +156,7 @@ export function IntegrationManagementConsole({
   const [busyKey, setBusyKey] = useState<string | undefined>();
   const [lastRuns, setLastRuns] = useState<Record<string, FlowRunResponse>>({});
   const [mappings, setMappings] = useState<MappingDefinition[]>([]);
+  const [deleteModalFlow, setDeleteModalFlow] = useState<FlowDefinition | null>(null);
   const [mappingSimulation, setMappingSimulation] = useState<MappingSimulationResponse | undefined>();
   const [draft, setDraft] = useState<FlowDefinitionUpsertRequest>(emptyDraft());
 
@@ -254,22 +284,16 @@ export function IntegrationManagementConsole({
     setBusyKey(undefined);
   }
 
-  async function deleteFlow(flow: FlowDefinition) {
-    const confirmed = window.confirm(`Delete ${flow.name}? This removes the saved integration.`);
-    if (!confirmed) return;
+  function deleteFlow(flow: FlowDefinition) {
+    setDeleteModalFlow(flow);
+  }
 
-    setBusyKey(`${flow.flowId}:delete`);
-    setMessage(undefined);
-    const response = await deleteFlowDefinition(flow.flowId);
-    if (response.ok) {
-      const nextFlows = flows.filter((item) => item.flowId !== flow.flowId);
-      setFlows(nextFlows);
-      setSelectedFlowId(nextFlows[0]?.flowId);
-      setMessage(response.data.message);
-    } else {
-      setMessage(response.error ?? "Unable to delete integration.");
-    }
-    setBusyKey(undefined);
+  function handleFlowDeleted(flowId: string) {
+    const nextFlows = flows.filter((item) => item.flowId !== flowId);
+    setFlows(nextFlows);
+    setSelectedFlowId(nextFlows[0]?.flowId);
+    setMessage("Integration deleted.");
+    setDeleteModalFlow(null);
   }
 
   async function deleteMapping(mapping: MappingDefinition) {
@@ -291,6 +315,16 @@ export function IntegrationManagementConsole({
 
   return (
     <section className="space-y-6 px-6 pb-12">
+      {/* Delete confirmation modal */}
+      {deleteModalFlow && (
+        <DeleteFlowModal
+          flow={deleteModalFlow}
+          open={deleteModalFlow !== null}
+          onClose={() => setDeleteModalFlow(null)}
+          onDeleted={handleFlowDeleted}
+        />
+      )}
+
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div>
@@ -371,7 +405,10 @@ export function IntegrationManagementConsole({
                   onKeyDown={(e) => e.key === "Enter" && setSelectedFlowId(flow.flowId)}
                 >
                   <span>
-                    <span className="block text-sm font-semibold text-slate-950">{flow.name}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="block text-sm font-semibold text-slate-950">{flow.name}</span>
+                      <TriggerBadge triggerType={flow.triggerType} cronValue={flow.triggerCron} />
+                    </span>
                     <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                       {flow.sourceConnector} to {flow.targetModule}
                     </span>
@@ -643,8 +680,8 @@ function IntegrationReviewPane({
               <code className="font-mono text-xs text-slate-200">{flow.triggerCron}</code>
             </div>
           )}
-          {flow.triggerType === "webhook" && flow.status === "published" && flow.webhookSecret && (
-            <WebhookUrlBlock flowId={flow.flowId} webhookSecret={flow.webhookSecret} />
+          {flow.triggerType === "webhook" && flow.status === "published" && (
+            <WebhookUrlBlock flowId={flow.flowId} />
           )}
         </div>
 
@@ -814,18 +851,19 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function WebhookUrlBlock({ flowId, webhookSecret }: { flowId: string; webhookSecret: string }) {
+function WebhookUrlBlock({ flowId }: { flowId: string; webhookSecret?: string }) {
   const apiBase =
     typeof window !== "undefined"
       ? (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000")
       : "http://localhost:8000";
-  const url = `${apiBase}/api/v1/webhooks/${flowId}/${webhookSecret}`;
-  const [copied, setCopied] = useState(false);
+  // HMAC-secured endpoint — secret travels in X-Hub-Signature-256 header, not the URL
+  const url = `${apiBase}/api/v1/webhooks/${flowId}`;
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   function handleCopy() {
     void navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedId(flowId);
+      setTimeout(() => setCopiedId(null), 2500);
     });
   }
 
@@ -835,19 +873,21 @@ function WebhookUrlBlock({ flowId, webhookSecret }: { flowId: string; webhookSec
       <div className="flex items-center gap-2">
         <code className="flex-1 truncate font-mono text-xs text-slate-200">{url}</code>
         <button
-          className="shrink-0 rounded border border-white/15 bg-white/10 p-1.5 hover:bg-white/20"
+          className="shrink-0 inline-flex items-center gap-1 rounded border border-white/15 bg-white/10 px-2 py-1 text-xs hover:bg-white/20 transition-colors"
           onClick={handleCopy}
           title="Copy webhook URL"
           type="button"
         >
-          {copied ? (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+          {copiedId === flowId ? (
+            <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /><span className="text-emerald-400">Copied!</span></>
           ) : (
-            <ClipboardCopy className="h-3.5 w-3.5 text-slate-300" />
+            <><ClipboardCopy className="h-3.5 w-3.5 text-slate-300" /><span className="text-slate-300">Copy</span></>
           )}
         </button>
       </div>
-      <p className="mt-1 text-xs text-slate-500">POST to this URL to trigger the integration.</p>
+      <p className="mt-1 text-xs text-slate-500">
+        POST to this URL with <code className="font-mono">X-Hub-Signature-256</code> header to trigger.
+      </p>
     </div>
   );
 }

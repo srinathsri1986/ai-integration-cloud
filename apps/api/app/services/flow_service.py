@@ -14,6 +14,8 @@ from app.models.flows import (
     FlowLifecycleResponse,
     FlowRunResponse,
     FlowRunTimelineStep,
+    PaginatedFlowRuns,
+    PaginatedFlows,
 )
 from app.models.orchestrator import OrchestratorQueryRequest
 from app.repositories.flow_definition_repository import FlowDefinitionRepository
@@ -124,10 +126,20 @@ class FlowService:
         with SessionLocal() as session:
             FlowDefinitionRepository(session, tenant_id).seed_missing(list(_initial_flows().values()))
 
-    def list_flows(self, tenant_id: int | None = None) -> list[FlowDefinition]:
+    def list_flows(
+        self,
+        tenant_id: int | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> PaginatedFlows:
         self._seed_flows()
+        limit = min(max(limit, 1), 500)
+        offset = max(offset, 0)
         with SessionLocal() as session:
-            return FlowDefinitionRepository(session, tenant_id).list_flows()
+            repo = FlowDefinitionRepository(session, tenant_id)
+            total = repo.count()
+            items = repo.list_flows(limit=limit, offset=offset)
+        return PaginatedFlows(items=items, total=total, limit=limit, offset=offset)
 
     def get_flow(self, flow_id: str, tenant_id: int | None = None) -> FlowDefinition:
         self._seed_flows()
@@ -216,13 +228,22 @@ class FlowService:
             "pending_approval": {"approve": "approved", "reject": "draft", "pause": "paused"},
             "approved": {"publish": "published", "reject": "draft", "pause": "paused"},
             "published": {"pause": "paused"},
-            "paused": {"submit_for_approval": "pending_approval"},
+            "paused": {"submit_for_approval": "pending_approval", "unpause": "published"},
         }
         next_status = allowed.get(current_status, {}).get(action)
         if next_status is None:
             raise ValueError(f"Cannot apply {action} to a {current_status} flow.")
 
         return next_status
+
+    def trigger_webhook_verified(self, flow_id: str, tenant_id: int | None = None) -> FlowRunResponse:
+        """Enqueue a webhook-triggered flow run. Caller has already verified the HMAC signature."""
+        flow = self.get_flow(flow_id, tenant_id)
+        if flow.status != "published":
+            raise ValueError("Flow must be published before it can be triggered via webhook.")
+        if flow.trigger_type != "webhook":
+            raise ValueError("This flow is not configured for webhook triggers.")
+        return self.enqueue_flow_run(flow_id, tenant_id=tenant_id)
 
     def trigger_webhook(self, flow_id: str, secret: str) -> FlowRunResponse:
         """Validate webhook secret and enqueue the flow run. No auth required."""
@@ -524,16 +545,16 @@ class FlowService:
         *,
         flow_id: str | None = None,
         status: str | None = None,
-        limit: int = 100,
+        limit: int = 50,
         offset: int = 0,
-    ) -> list[FlowRunResponse]:
+    ) -> PaginatedFlowRuns:
+        limit = min(max(limit, 1), 500)
+        offset = max(offset, 0)
         with SessionLocal() as session:
-            return FlowRunRepository(session, tenant_id).list_runs(
-                flow_id=flow_id,
-                status=status,
-                limit=limit,
-                offset=offset,
-            )
+            repo = FlowRunRepository(session, tenant_id)
+            total = repo.count(flow_id=flow_id, status=status)
+            items = repo.list_runs(flow_id=flow_id, status=status, limit=limit, offset=offset)
+        return PaginatedFlowRuns(items=items, total=total, limit=limit, offset=offset)
 
     def get_run(self, request_id: str, tenant_id: int | None = None) -> FlowRunResponse:
         with SessionLocal() as session:
