@@ -40,7 +40,8 @@ import type {
 } from "@netsuite-cfo/shared";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const LOCAL_AUTH_STORAGE_KEY = "netsuite-cfo-placeholder-token";
+export const LOCAL_AUTH_TOKEN_KEY = "netsuite-cfo-placeholder-token";
+const LOCAL_AUTH_STORAGE_KEY = LOCAL_AUTH_TOKEN_KEY;
 export const LOCAL_AUTH_ROLE_KEY = "netsuite-cfo-placeholder-role";
 export const LOCAL_AUTH_EMAIL_KEY = "netsuite-cfo-placeholder-email";
 

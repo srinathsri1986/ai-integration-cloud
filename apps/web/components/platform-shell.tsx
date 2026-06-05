@@ -8,7 +8,7 @@ import type { UserRole } from "@netsuite-cfo/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getCurrentTenant, LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, logoutUser, type TenantInfo } from "@/lib/api";
+import { getCurrentTenant, LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, LOCAL_AUTH_TOKEN_KEY, logoutUser, type TenantInfo } from "@/lib/api";
 import { routesForRole } from "@/lib/navigation";
 
 type PlatformShellProps = {
@@ -37,9 +37,15 @@ export function PlatformShell({
     if (storedRole) setRole(storedRole);
     if (storedEmail) setEmail(storedEmail);
 
-    getCurrentTenant().then((result) => {
-      if (result.ok) setTenant(result.data);
-    });
+    // Only call the tenant endpoint when a real JWT exists.
+    // The placeholder dev token has no tenant_id and always returns 403.
+    const token = window.localStorage.getItem(LOCAL_AUTH_TOKEN_KEY);
+    const isRealJwt = token ? token.split(".").length === 3 : false;
+    if (isRealJwt) {
+      getCurrentTenant().then((result) => {
+        if (result.ok) setTenant(result.data);
+      });
+    }
   }, []);
 
   const routes = routesForRole(role);
