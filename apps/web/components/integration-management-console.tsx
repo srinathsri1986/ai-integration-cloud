@@ -732,12 +732,12 @@ function IntegrationReviewPane({
 
   return (
     <aside className="sticky top-5 h-fit space-y-4">
-      <Card className="border-slate-900 bg-slate-950 text-white shadow-xl">
+      <Card className="border-l-4 border-l-teal-500 bg-white shadow-card-md">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <Badge className="border-white/15 bg-white/10 text-white">Review pane</Badge>
-            <h3 className="mt-4 text-2xl font-semibold tracking-normal">{flow.name}</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-300">{flow.description}</p>
+            <Badge className="border-teal-200 bg-teal-50 text-teal-700">Review pane</Badge>
+            <h3 className="mt-4 text-xl font-bold tracking-tight text-slate-900">{flow.name}</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{flow.description}</p>
           </div>
           <Badge className={statusBadgeClass(flow.status)}>{statusLabel(flow.status)}</Badge>
         </div>
@@ -983,9 +983,9 @@ function WebhookUrlBlock({ flowId }: { flowId: string; webhookSecret?: string })
 
 function DarkMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/10 p-3">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 truncate font-semibold text-white">{value}</p>
+    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+      <p className="text-xs font-medium text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p>
     </div>
   );
 }

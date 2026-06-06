@@ -187,16 +187,16 @@ export function FlowCanvasWorkbench({
       <Card className="overflow-hidden p-0">
         <div className="grid min-h-[560px] lg:grid-cols-[260px_minmax(0,1fr)_320px]">
           {/* ── Left palette ── */}
-          <aside className="border-b border-border bg-slate-950 p-4 text-white lg:border-b-0 lg:border-r">
+          <aside className="border-b border-border bg-slate-900 p-4 text-white lg:border-b-0 lg:border-r">
             <div className="flex items-center gap-2">
-              <GripVertical className="h-4 w-4 text-sky-300" />
-              <p className="text-sm font-semibold">Node palette</p>
+              <GripVertical className="h-4 w-4 text-teal-400" />
+              <p className="text-sm font-semibold text-white">Node palette</p>
             </div>
 
             {/* Connector selector */}
             <div className="mt-3 relative">
               <select
-                className="w-full appearance-none rounded-md border border-slate-700 bg-slate-800 px-3 py-2 pr-8 text-xs text-slate-100 outline-none focus:border-sky-400"
+                className="w-full appearance-none rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 pr-8 text-xs text-slate-100 outline-none focus:border-teal-500"
                 value={selectedConnectorId}
                 onChange={(e) => handleConnectorChange(e.target.value)}
               >
@@ -210,17 +210,17 @@ export function FlowCanvasWorkbench({
             </div>
 
             <div className="mt-3 space-y-2">
-              <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-                <CalendarClock className="h-4 w-4 text-sky-300" />
-                <p className="mt-2 text-sm font-medium">Manual trigger</p>
-                <p className="mt-1 text-xs leading-5 text-slate-300">Fixed start node</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
+                <CalendarClock className="h-4 w-4 text-teal-400" />
+                <p className="mt-2 text-sm font-medium text-white">Manual trigger</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">Fixed start node</p>
               </div>
-              <div className="rounded-md border border-slate-700 bg-slate-900 p-3">
-                <DatabaseZap className="h-4 w-4 text-sky-300" />
-                <p className="mt-2 text-sm font-medium">
+              <div className="rounded-lg border border-slate-700 bg-slate-800 p-3">
+                <DatabaseZap className="h-4 w-4 text-teal-400" />
+                <p className="mt-2 text-sm font-medium text-white">
                   {selectedConnector?.name ?? selectedConnectorId}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-slate-300">
+                <p className="mt-1 text-xs leading-5 text-slate-400">
                   {selectedConnector?.authScheme ?? "mock"} · governed
                 </p>
               </div>
@@ -234,7 +234,7 @@ export function FlowCanvasWorkbench({
               ) : (
                 palette.map((item) => (
                   <button
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 p-3 text-left transition-colors hover:border-sky-300"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 p-3 text-left transition-colors hover:border-teal-500 hover:bg-slate-700"
                     draggable
                     key={item.tool}
                     onDragStart={(event) =>
@@ -242,9 +242,9 @@ export function FlowCanvasWorkbench({
                     }
                     type="button"
                   >
-                    <FileCheck2 className="h-4 w-4 text-sky-300" />
-                    <p className="mt-2 text-sm font-medium">{item.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-300">{item.tool}</p>
+                    <FileCheck2 className="h-4 w-4 text-teal-400" />
+                    <p className="mt-2 text-sm font-medium text-white">{item.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">{item.tool}</p>
                   </button>
                 ))
               )}

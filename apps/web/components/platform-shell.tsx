@@ -3,13 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrainCircuit, Building2, LogOut, ShieldCheck } from "lucide-react";
+import { BrainCircuit, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import type { UserRole } from "@ai-integration-cloud/shared";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EnvironmentSelector } from "@/components/environment-selector";
-import { getCurrentTenant, LOCAL_AUTH_EMAIL_KEY, LOCAL_AUTH_ROLE_KEY, LOCAL_AUTH_TOKEN_KEY, logoutUser, type TenantInfo } from "@/lib/api";
+import {
+  getCurrentTenant,
+  LOCAL_AUTH_EMAIL_KEY,
+  LOCAL_AUTH_ROLE_KEY,
+  LOCAL_AUTH_TOKEN_KEY,
+  logoutUser,
+  type TenantInfo,
+} from "@/lib/api";
 import { routesForRole } from "@/lib/navigation";
 
 type PlatformShellProps = {
@@ -25,7 +31,7 @@ export function PlatformShell({
   children,
   eyebrow = "AI Integration Cloud",
   subtitle,
-  title
+  title,
 }: PlatformShellProps) {
   const pathname = usePathname();
   const [role, setRole] = useState<UserRole>("Integration Admin");
@@ -38,8 +44,6 @@ export function PlatformShell({
     if (storedRole) setRole(storedRole);
     if (storedEmail) setEmail(storedEmail);
 
-    // Only call the tenant endpoint when a real JWT exists.
-    // The placeholder dev token has no tenant_id and always returns 403.
     const token = window.localStorage.getItem(LOCAL_AUTH_TOKEN_KEY);
     const isRealJwt = token ? token.split(".").length === 3 : false;
     if (isRealJwt) {
@@ -51,114 +55,153 @@ export function PlatformShell({
 
   const routes = routesForRole(role);
   const tenantName = tenant?.name ?? "Local Workspace";
-  const plan = tenant?.plan ? tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1) : "MVP";
+  const plan = tenant?.plan
+    ? tenant.plan.charAt(0).toUpperCase() + tenant.plan.slice(1)
+    : "MVP";
+  const initials = email.slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.10),transparent_34rem),linear-gradient(180deg,#f8fafc_0%,#eef2f6_100%)]">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-72 border-r border-white/70 bg-white/85 px-4 py-5 shadow-xl shadow-slate-200/60 backdrop-blur xl:block">
-        <Link className="flex items-center gap-3 rounded-md px-2 py-2" href="/cfo">
-          <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <BrainCircuit className="h-5 w-5" />
-          </span>
-          <span>
-            <span className="block text-sm font-semibold leading-5">AI Integration Cloud</span>
-            <span className="block text-xs text-muted-foreground">Governed iPaaS</span>
-          </span>
-        </Link>
+    <div className="min-h-screen bg-background">
+      {/* ── Dark sidebar ───────────────────────────────────────── */}
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col bg-slate-900 xl:flex">
+        {/* Teal top accent bar */}
+        <div className="h-0.5 w-full bg-gradient-to-r from-teal-400 via-teal-500 to-cyan-400" />
 
-        <div className="mt-7 space-y-1">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 py-5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-500 shadow-lg shadow-teal-900/40">
+            <BrainCircuit className="h-5 w-5 text-white" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold leading-5 text-white">AI Integration Cloud</p>
+            <p className="text-[11px] font-medium text-slate-400">Governed iPaaS</p>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="mx-5 h-px bg-slate-800" />
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           {routes.map((route) => {
             const Icon = route.icon;
             const isActive = active === route.href || pathname === route.href;
 
             return (
               <Link
-                className={`flex items-center gap-3 rounded-md px-3 py-3 text-sm transition-colors ${
-                  isActive
-                    ? "bg-slate-950 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-                }`}
-                href={route.href}
                 key={route.href}
+                href={route.href}
+                className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                  isActive
+                    ? "bg-teal-600 text-white shadow-sm shadow-teal-900/30"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                }`}
               >
-                <Icon className="h-4 w-4" />
+                <Icon
+                  className={`h-4 w-4 shrink-0 ${
+                    isActive ? "text-teal-100" : "text-slate-500 group-hover:text-slate-300"
+                  }`}
+                />
                 <span>
-                  <span className="block font-medium">{route.label}</span>
-                  <span className={isActive ? "text-xs text-slate-300" : "text-xs text-muted-foreground"}>
+                  <span className="block font-medium leading-5">{route.label}</span>
+                  <span
+                    className={`block text-[11px] leading-4 ${
+                      isActive ? "text-teal-200" : "text-slate-500 group-hover:text-slate-400"
+                    }`}
+                  >
                     {route.description}
                   </span>
                 </span>
               </Link>
             );
           })}
-        </div>
+        </nav>
 
-        <div className="absolute bottom-5 left-4 right-4 space-y-2">
-          {/* Workspace card */}
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+        {/* Bottom panel */}
+        <div className="mx-3 mb-4 space-y-2">
+          {/* Workspace */}
+          <div className="rounded-lg bg-slate-800 px-3 py-2.5">
             <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 shrink-0 text-slate-500" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-teal-600/20 text-teal-400">
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{tenantName}</p>
-                <p className="text-xs text-muted-foreground">{plan} plan</p>
+                <p className="truncate text-xs font-semibold text-white">{tenantName}</p>
+                <p className="text-[11px] text-slate-400">{plan} plan</p>
               </div>
             </div>
           </div>
 
-          {/* User card */}
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-4 w-4 text-primary" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">{role}</p>
-                <p className="mt-0.5 truncate text-xs leading-5 text-muted-foreground">{email}</p>
+          {/* User */}
+          <div className="rounded-lg bg-slate-800 px-3 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-white">{role}</p>
+                <p className="truncate text-[11px] text-slate-400">{email}</p>
               </div>
             </div>
-            <Button
-              className="mt-3 w-full"
-              onClick={async () => { await logoutUser(); window.location.href = "/login"; }}
+            <button
               type="button"
-              variant="secondary"
+              onClick={async () => {
+                await logoutUser();
+                window.location.href = "/login";
+              }}
+              className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-600 hover:text-white"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3 w-3" />
               Sign out
-            </Button>
+            </button>
           </div>
         </div>
       </aside>
 
-      <div className="xl:pl-72">
-        <header className="sticky top-0 z-10 border-b border-white/70 bg-white/80 backdrop-blur">
-          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+      {/* ── Main content ────────────────────────────────────────── */}
+      <div className="xl:pl-64">
+        {/* Sticky page header */}
+        <header className="sticky top-0 z-10 border-b border-border bg-white/95 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-8">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">{eyebrow}</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">{title}</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-primary">
+                {eyebrow}
+              </p>
+              <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900">{title}</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <EnvironmentSelector />
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">{tenantName}</Badge>
-              <Badge className="border-sky-200 bg-sky-50 text-sky-900">{plan} plan</Badge>
-              <Badge className="border-slate-200 bg-white text-slate-700">{role}</Badge>
+              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                {tenantName}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
+                {plan} plan
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                <ShieldCheck className="h-3 w-3 text-slate-400" />
+                {role}
+              </span>
             </div>
           </div>
 
-          <nav className="flex gap-2 overflow-x-auto px-5 pb-4 xl:hidden">
+          {/* Mobile nav */}
+          <nav className="flex gap-1.5 overflow-x-auto px-5 pb-3 xl:hidden">
             {routes.map((route) => {
               const Icon = route.icon;
               const isActive = active === route.href || pathname === route.href;
 
               return (
                 <Link
-                  className={`inline-flex shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                    isActive
-                      ? "border-slate-950 bg-slate-950 text-white"
-                      : "border-border bg-white text-slate-700"
-                  }`}
-                  href={route.href}
                   key={route.href}
+                  href={route.href}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "border-teal-600 bg-teal-600 text-white"
+                      : "border-border bg-white text-slate-600 hover:border-teal-300 hover:text-teal-700"
+                  }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-3.5 w-3.5" />
                   {route.label}
                 </Link>
               );
