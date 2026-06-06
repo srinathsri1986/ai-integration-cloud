@@ -126,6 +126,8 @@ export function DataMappingStudio() {
   const [discoveredTargetObject, setDiscoveredTargetObject] = useState<MappingObject | undefined>();
   const [promotedRestObjects, setPromotedRestObjects] = useState<MappingObject[]>([]);
   const [isPromotingSchema, setIsPromotingSchema] = useState(false);
+  // R14 canvas: tracks whether the drag-and-drop canvas reports all required target fields mapped
+  const [canvasAllRequiredMapped, setCanvasAllRequiredMapped] = useState(false);
 
   const allMappingObjects = useMemo(
     () => [
@@ -159,7 +161,9 @@ export function DataMappingStudio() {
   );
   const usesSessionDiscoveredObject =
     sourceObjectId.startsWith("rest-discovered-") || targetObjectId.startsWith("rest-discovered-");
-  const canReview = mappings.length > 0 && missingRequiredTargets.length === 0;
+  // canReview: canvas path trusts the canvas's own required-field tracking;
+  // classic tray path uses the static catalog required-fields check.
+  const canReview = mappings.length > 0 && (canvasAllRequiredMapped || missingRequiredTargets.length === 0);
   const canSimulateCurrentMapping =
     lastSavedMappingId === mappingId || savedMappings.some((mapping) => mapping.mappingId === mappingId);
 
@@ -173,6 +177,7 @@ export function DataMappingStudio() {
     srcObjId: string,
     tgtConnId: string,
     tgtObjId: string,
+    allRequiredMapped: boolean,
   ) {
     // Mirror canvas state back into studio state so save/review steps still work
     setMappings(
@@ -183,13 +188,18 @@ export function DataMappingStudio() {
         transform: m.transform,
       })),
     );
+    setCanvasAllRequiredMapped(allRequiredMapped);
+    // Convert canvas object IDs to catalog format: "netsuite"+"project" → "netsuite-project"
+    // Canvas objectId comes from the schema API (e.g. "project", "Opportunity", "cost_center")
+    const toCatalogId = (connId: string, objId: string) =>
+      `${connId}-${objId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
     // Auto-generate mapping ID + name from connector/object names
     const newId   = `${srcConnId}-${srcObjId}--${tgtConnId}-${tgtObjId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const newName = `${srcConnId} ${srcObjId} → ${tgtConnId} ${tgtObjId}`;
     setMappingId(newId);
     setMappingName(newName);
-    setSourceObjectId(`${srcConnId}.${srcObjId}`);
-    setTargetObjectId(`${tgtConnId}.${tgtObjId}`);
+    setSourceObjectId(toCatalogId(srcConnId, srcObjId));
+    setTargetObjectId(toCatalogId(tgtConnId, tgtObjId));
     setSimulation(undefined);
     setLastSavedMappingId(undefined);
   }

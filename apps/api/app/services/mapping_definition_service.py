@@ -147,8 +147,8 @@ class MappingDefinitionService:
                 raise ValueError(f"Unknown source field: {row.source_field}")
             if row.target_field not in target_fields:
                 raise ValueError(f"Unknown target field: {row.target_field}")
-            if row.target_field in seen_targets:
-                raise ValueError(f"Target field is mapped more than once: {row.target_field}")
+            # Many-to-one and one-to-many are supported: multiple sources may map to one target
+            # and one source may map to multiple targets (many:many canvas patterns).
             if row.transform == "format_date" and source_fields[row.source_field].type != "date":
                 raise ValueError("format_date can only be used with date source fields")
             seen_targets.add(row.target_field)

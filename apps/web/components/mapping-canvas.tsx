@@ -42,13 +42,17 @@ export type CanvasMappingRow = {
 export interface MappingCanvasProps {
   /** Pre-seed mappings (e.g. when opening a saved definition). */
   initialMappings?: CanvasMappingRow[];
-  /** Called whenever the canvas mapping state changes. */
+  /**
+   * Called whenever the canvas mapping state changes.
+   * @param allRequiredMapped - true when every required target field has ≥1 mapping
+   */
   onMappingsChange?: (
     mappings: CanvasMappingRow[],
     sourceConnectorId: string,
     sourceObjectId: string,
     targetConnectorId: string,
     targetObjectId: string,
+    allRequiredMapped: boolean,
   ) => void;
 }
 
@@ -112,6 +116,11 @@ function schemaFields(schema: ConnectorSchema | null, objectId: string): Connect
 // ---------------------------------------------------------------------------
 
 export function MappingCanvas({ initialMappings = [], onMappingsChange }: MappingCanvasProps) {
+  // Stable ref for the callback — prevents it from being a useEffect dependency
+  // and causing an infinite re-render loop when the parent re-creates the function.
+  const onMappingsChangeRef = useRef(onMappingsChange);
+  useEffect(() => { onMappingsChangeRef.current = onMappingsChange; });
+
   // --- Connector / object selection ---
   const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
 
@@ -131,6 +140,9 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
   // --- DnD state ---
   const [dragging, setDragging]           = useState<string | null>(null);
   const [hoveredTarget, setHoveredTarget] = useState<string | null>(null);
+  // Ref stores the field being dragged — more reliable than dataTransfer.getData()
+  // which React can clear before the drop handler fires.
+  const dragSourceRef = useRef<string | null>(null);
 
   // --- SVG lines ---
   const [svgLines, setSvgLines]   = useState<SvgLine[]>([]);
@@ -188,8 +200,14 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
   // -------------------------------------------------------------------------
 
   useEffect(() => {
-    onMappingsChange?.(mappings, srcConnId, srcObjId, tgtConnId, tgtObjId);
-  }, [mappings, srcConnId, srcObjId, tgtConnId, tgtObjId, onMappingsChange]);
+    // Use ref so this never re-triggers because the parent re-created the callback.
+    // allRequiredMapped: every required target field has at least one mapping pointing to it.
+    const mappedTgt = new Set(mappings.map((m) => m.targetField));
+    const requiredTgt = tgtFields.filter((f) => f.required);
+    const allRequiredMapped = mappings.length > 0 && requiredTgt.every((f) => mappedTgt.has(f.name));
+    onMappingsChangeRef.current?.(mappings, srcConnId, srcObjId, tgtConnId, tgtObjId, allRequiredMapped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mappings, srcConnId, srcObjId, tgtConnId, tgtObjId]);
 
   // -------------------------------------------------------------------------
   // SVG line computation
@@ -226,24 +244,43 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
   // -------------------------------------------------------------------------
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>, fieldName: string) {
-    e.dataTransfer.setData("text/plain", fieldName);
-    e.dataTransfer.effectAllowed = "link";
+    // Store in ref — this is the reliable path.
+    // dataTransfer.getData() can return "" in the drop handler because React's
+    // synthetic event system clears the event object before the handler fires.
+    dragSourceRef.current = fieldName;
+    e.dataTransfer.setData("text/plain", fieldName); // fallback for native DnD
+    e.dataTransfer.effectAllowed = "copy";
     setDragging(fieldName);
   }
 
-  function handleDragEnd() { setDragging(null); }
-
-  function handleDragOver(e: React.DragEvent<HTMLDivElement>, fieldName: string) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "link";
-    setHoveredTarget(fieldName);
+  function handleDragEnd() {
+    dragSourceRef.current = null;
+    setDragging(null);
+    setHoveredTarget(null);
   }
 
-  function handleDragLeave() { setHoveredTarget(null); }
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>, fieldName: string) {
+    // Must preventDefault to allow drop
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    if (hoveredTarget !== fieldName) setHoveredTarget(fieldName);
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    // Only clear hover when truly leaving the drop zone (not just moving to a child).
+    // relatedTarget is where the cursor is going; if it's inside the current target, ignore.
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
+    setHoveredTarget(null);
+  }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>, targetFieldName: string) {
     e.preventDefault();
-    const sourceFieldName = e.dataTransfer.getData("text/plain");
+    e.stopPropagation();
+    // Read from ref first (React-safe), fall back to dataTransfer
+    const sourceFieldName = dragSourceRef.current ?? e.dataTransfer.getData("text/plain");
+    dragSourceRef.current = null;
     setDragging(null);
     setHoveredTarget(null);
     if (!sourceFieldName || sourceFieldName === targetFieldName) return;
@@ -259,10 +296,13 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
     void srcF; // used for future inference in R18
 
     setMappings((prev) => {
-      // Replace existing target mapping if target already mapped
-      const without = prev.filter((m) => m.targetField !== targetFieldName);
+      // Skip exact duplicate (same source → same target already mapped)
+      if (prev.some((m) => m.sourceField === sourceFieldName && m.targetField === targetFieldName)) {
+        return prev;
+      }
+      // Allow many-to-many: one source → many targets, many sources → one target
       return [
-        ...without,
+        ...prev,
         {
           id: `${sourceFieldName}--${targetFieldName}`,
           sourceField: sourceFieldName,
@@ -294,6 +334,26 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
 
   const mappedSrcFields = new Set(mappings.map((m) => m.sourceField));
   const mappedTgtFields = new Set(mappings.map((m) => m.targetField));
+
+  // Cardinality: count how many times each src/tgt field appears in mappings
+  const srcMappingCount = mappings.reduce<Record<string, number>>((acc, m) => {
+    acc[m.sourceField] = (acc[m.sourceField] ?? 0) + 1;
+    return acc;
+  }, {});
+  const tgtMappingCount = mappings.reduce<Record<string, number>>((acc, m) => {
+    acc[m.targetField] = (acc[m.targetField] ?? 0) + 1;
+    return acc;
+  }, {});
+  const hasOneTgtMultiSrc = Object.values(tgtMappingCount).some((c) => c > 1); // many → 1
+  const hasOneSrcMultiTgt = Object.values(srcMappingCount).some((c) => c > 1); // 1 → many
+  const cardinality =
+    hasOneTgtMultiSrc && hasOneSrcMultiTgt
+      ? "many:many"
+      : hasOneTgtMultiSrc
+      ? "many:1"
+      : hasOneSrcMultiTgt
+      ? "1:many"
+      : "1:1";
 
   const srcColor = getColor(srcConnId);
   const tgtColor = getColor(tgtConnId);
@@ -553,7 +613,9 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
                             : "border-slate-200 bg-white border-dashed hover:border-slate-300"
                         }`}
                       >
-                        <div className="min-w-0 flex-1">
+                        {/* pointer-events-none on ALL children prevents dragLeave
+                            firing falsely when cursor moves onto a child element */}
+                        <div className="pointer-events-none min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="truncate font-mono text-[11px] font-semibold text-slate-800">
                               {field.name}
@@ -568,14 +630,14 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
                           </div>
                           <p className="mt-0.5 truncate text-[10px] text-slate-400">{field.label}</p>
                         </div>
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium ${typeColor(field.type)}`}>
+                        <span className={`pointer-events-none shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium ${typeColor(field.type)}`}>
                           {field.type}
                         </span>
                         {isMapped && (
-                          <Link2 className={`h-3 w-3 shrink-0 ${tgtColor.text}`} />
+                          <Link2 className={`pointer-events-none h-3 w-3 shrink-0 ${tgtColor.text}`} />
                         )}
                         {isHovered && !isMapped && (
-                          <span className="shrink-0 rounded bg-teal-100 px-1 text-[9px] font-bold text-teal-700">
+                          <span className="pointer-events-none shrink-0 rounded bg-teal-100 px-1 text-[9px] font-bold text-teal-700">
                             Drop
                           </span>
                         )}
@@ -599,6 +661,17 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
               <Link2 className="h-4 w-4 text-teal-600" />
               <span className="text-sm font-semibold text-slate-900">
                 {mappings.length} field {mappings.length === 1 ? "mapping" : "mappings"}
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
+                cardinality === "1:1"
+                  ? "bg-teal-50 text-teal-700 ring-teal-200"
+                  : cardinality === "1:many"
+                  ? "bg-indigo-50 text-indigo-700 ring-indigo-200"
+                  : cardinality === "many:1"
+                  ? "bg-violet-50 text-violet-700 ring-violet-200"
+                  : "bg-rose-50 text-rose-700 ring-rose-200"
+              }`}>
+                {cardinality}
               </span>
             </div>
             {requiredUnmapped.length === 0 ? (

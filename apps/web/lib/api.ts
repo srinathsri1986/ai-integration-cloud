@@ -305,22 +305,14 @@ const fallbackRestApiConnectorConfig: RestApiConnectorConfig = {
 };
 
 const fallbackConnectorList: ConnectorListItem[] = [
-  {
-    id: "netsuite",
-    name: "NetSuite",
-    status: "not_configured",
-    mockMode: true,
-    mode: "mock",
-    lastTestedAt: null
-  },
-  {
-    id: "rest-api",
-    name: "REST API",
-    status: "not_configured",
-    mockMode: true,
-    mode: "mock",
-    lastTestedAt: null
-  }
+  { id: "salesforce", name: "Salesforce",      status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "netsuite",   name: "Oracle NetSuite",  status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "sap",        name: "SAP",              status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "oracle",     name: "Oracle ERP",       status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "hcm",        name: "HCM (Workday)",    status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "postgres",   name: "PostgreSQL",       status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "rest-api",   name: "REST API",         status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
+  { id: "slack",      name: "Slack",            status: "not_configured", mockMode: true, mode: "mock", lastTestedAt: null },
 ];
 
 const fallbackConnectionTestResponse: NetSuiteConnectionTestResponse = {
@@ -720,7 +712,9 @@ async function getApiResult<T>(
 ): Promise<ApiResult<T>> {
   try {
     const response = await fetch(`${apiBaseUrl()}${path}`, {
-      cache: "no-store"
+      cache: "no-store",
+      // Include auth token on the client; authHeaders() returns {} on the server
+      headers: authHeaders(),
     });
 
     if (!response.ok) {
