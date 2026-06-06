@@ -1,7 +1,7 @@
 import os
 
 
-os.environ["DATABASE_URL"] = "sqlite+pysqlite:////private/tmp/cfo_orchestrator_tests.db"
+os.environ["DATABASE_URL"] = "sqlite+pysqlite:////tmp/cfo_orchestrator_tests.db"
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["NETSUITE_MODE"] = "mock"
 os.environ["OPENAI_API_KEY"] = ""
@@ -17,7 +17,7 @@ def pytest_sessionstart(session) -> None:
     from app.core.config import get_settings
     from app.core.database import init_db
 
-    db_path = "/private/tmp/cfo_orchestrator_tests.db"
+    db_path = "/tmp/cfo_orchestrator_tests.db"
     if _os.path.exists(db_path):
         _os.remove(db_path)
 

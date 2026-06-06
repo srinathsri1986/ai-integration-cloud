@@ -32,6 +32,11 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+    # Loads .env.local (gitignored) so real Slack/encryption vars reach the container.
+    # Falls back gracefully if the file doesn't exist (CI / production use Docker secrets instead).
+    env_file:
+      - path: ../.env.local
+        required: false
     environment:
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000}
@@ -46,6 +51,14 @@ services:
       NETSUITE_TIMEOUT_SECONDS: ${NETSUITE_TIMEOUT_SECONDS:-15}
       NETSUITE_TOKEN_ID: ${NETSUITE_TOKEN_ID:-}
       NETSUITE_TOKEN_SECRET: ${NETSUITE_TOKEN_SECRET:-}
+      # ── Slack OAuth2 connector ──────────────────────────────────────────────
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-http://localhost:8000/api/v1/connectors/slack/oauth/callback}
+      SLACK_SCOPES: ${SLACK_SCOPES:-chat:write,channels:read,channels:join}
+      # ── Connector credential encryption ────────────────────────────────────
+      # In production: store this key in AWS Secrets Manager — never in source.
+      CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:-}
       # Future hardening: replace local env secret values with Docker secrets or vault references.
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:7b}

@@ -5,8 +5,11 @@ import {
   FileSpreadsheet,
   Globe2,
   Layers3,
+  MessageSquare,
   ServerCog,
-  ShieldCheck
+  ShieldCheck,
+  Users2,
+  Zap
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -109,6 +112,39 @@ export const integrationSystems: IntegrationSystem[] = [
     id: "integration-cloud",
     name: "AI Integration Cloud",
     objects: ["Approvals", "Audit events", "AI actions", "Mappings"],
+    readiness: "Ready"
+  },
+  {
+    auth: "Token placeholder",
+    category: "ERP",
+    color: "border-blue-200 bg-blue-50 text-blue-950",
+    description: "Cost centers, journal entries, vendors, and procurement data.",
+    icon: Layers3,
+    id: "sap",
+    name: "SAP",
+    objects: ["Cost centers", "Journal entries", "Vendors", "Purchase orders"],
+    readiness: "Template"
+  },
+  {
+    auth: "OAuth placeholder",
+    category: "HCM",
+    color: "border-green-200 bg-green-50 text-green-950",
+    description: "Employee records, headcount, org charts, and compensation bands.",
+    icon: Users2,
+    id: "hcm",
+    name: "HCM (Workday / SuccessFactors)",
+    objects: ["Employees", "Departments", "Open roles", "Compensation"],
+    readiness: "Template"
+  },
+  {
+    auth: "OAuth2",
+    category: "Messaging",
+    color: "border-orange-200 bg-orange-50 text-orange-950",
+    description: "Channel messages, Block Kit notifications, and channel listings.",
+    icon: MessageSquare,
+    id: "slack",
+    name: "Slack",
+    objects: ["Messages", "Block Kit", "Channels", "Alerts"],
     readiness: "Ready"
   }
 ];

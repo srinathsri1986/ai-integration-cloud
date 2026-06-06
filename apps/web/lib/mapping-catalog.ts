@@ -221,6 +221,245 @@ export const mappingObjects: MappingObject[] = [
         type: "date"
       }
     ]
+  },
+  // ── SAP ──────────────────────────────────────────────────────────────────
+  {
+    displayName: "SAP Cost Center Entry",
+    id: "sap-cost-center",
+    systemId: "sap",
+    fields: [
+      {
+        description: "SAP cost center identifier.",
+        name: "cost_center_id",
+        required: true,
+        sample: "CC-1200",
+        type: "string"
+      },
+      {
+        description: "Cost center display name.",
+        name: "description",
+        required: true,
+        sample: "Finance Operations",
+        type: "string"
+      },
+      {
+        description: "Controlling area code.",
+        name: "controlling_area",
+        required: true,
+        sample: "0001",
+        type: "string"
+      },
+      {
+        description: "Validity start date.",
+        name: "valid_from",
+        sample: "2026-01-01",
+        type: "date"
+      },
+      {
+        description: "Approved budget for the cost center.",
+        name: "budget_amount",
+        sample: 850000,
+        type: "number"
+      }
+    ]
+  },
+  {
+    displayName: "SAP Journal Entry Line",
+    id: "sap-journal-line",
+    systemId: "sap",
+    fields: [
+      {
+        description: "SAP company code.",
+        name: "company_code",
+        required: true,
+        sample: "1000",
+        type: "string"
+      },
+      {
+        description: "GL account number.",
+        name: "gl_account",
+        required: true,
+        sample: "400000",
+        type: "string"
+      },
+      {
+        description: "Transaction amount.",
+        name: "amount",
+        required: true,
+        sample: 12500,
+        type: "number"
+      },
+      {
+        description: "Journal posting date.",
+        name: "posting_date",
+        required: true,
+        sample: "2026-06-01",
+        type: "date"
+      },
+      {
+        description: "External document reference.",
+        name: "reference",
+        sample: "INV-2026-0042",
+        type: "string"
+      }
+    ]
+  },
+  // ── Oracle ────────────────────────────────────────────────────────────────
+  {
+    displayName: "Oracle GL Balance",
+    id: "oracle-gl-balance",
+    systemId: "oracle-fusion",
+    fields: [
+      {
+        description: "Oracle ledger identifier.",
+        name: "ledger_id",
+        required: true,
+        sample: "1",
+        type: "string"
+      },
+      {
+        description: "Chart of accounts segment.",
+        name: "account_segment",
+        required: true,
+        sample: "01-000-1110-0000-000",
+        type: "string"
+      },
+      {
+        description: "Accounting period.",
+        name: "period_name",
+        required: true,
+        sample: "JUN-26",
+        type: "string"
+      },
+      {
+        description: "Entered debit amount.",
+        name: "entered_dr",
+        sample: 45000,
+        type: "number"
+      },
+      {
+        description: "Entered credit amount.",
+        name: "entered_cr",
+        sample: 0,
+        type: "number"
+      }
+    ]
+  },
+  // ── HCM ──────────────────────────────────────────────────────────────────
+  {
+    displayName: "HCM Employee Record",
+    id: "hcm-employee",
+    systemId: "hcm",
+    fields: [
+      {
+        description: "HCM system employee identifier.",
+        name: "employee_id",
+        required: true,
+        sample: "EMP-4421",
+        type: "string"
+      },
+      {
+        description: "Employee full name.",
+        name: "full_name",
+        required: true,
+        sample: "Maya Rao",
+        type: "string"
+      },
+      {
+        description: "Assigned department.",
+        name: "department",
+        required: true,
+        sample: "Finance",
+        type: "string"
+      },
+      {
+        description: "Employment start date.",
+        name: "start_date",
+        sample: "2023-03-15",
+        type: "date"
+      },
+      {
+        description: "Annual salary (base).",
+        name: "salary",
+        sample: 110000,
+        type: "number"
+      },
+      {
+        description: "Direct manager employee ID.",
+        name: "manager_id",
+        sample: "EMP-1001",
+        type: "string"
+      }
+    ]
+  },
+  // ── PostgreSQL ────────────────────────────────────────────────────────────
+  {
+    displayName: "PostgreSQL Analytics Row",
+    id: "postgres-analytics-row",
+    systemId: "postgresql",
+    fields: [
+      {
+        description: "Unique row identifier.",
+        name: "row_id",
+        required: true,
+        sample: "row-8821",
+        type: "string"
+      },
+      {
+        description: "Name of the analytics metric.",
+        name: "metric_name",
+        required: true,
+        sample: "monthly_revenue",
+        type: "string"
+      },
+      {
+        description: "Numeric metric value.",
+        name: "metric_value",
+        required: true,
+        sample: 245000.5,
+        type: "number"
+      },
+      {
+        description: "Metric dimension or segment.",
+        name: "dimension",
+        sample: "APAC",
+        type: "string"
+      },
+      {
+        description: "Timestamp the metric was recorded.",
+        name: "recorded_at",
+        sample: "2026-06-01",
+        type: "date"
+      }
+    ]
+  },
+  // ── Slack ─────────────────────────────────────────────────────────────────
+  {
+    displayName: "Slack Channel Message",
+    id: "slack-channel-message",
+    systemId: "slack",
+    fields: [
+      {
+        description: "Target Slack channel name or ID.",
+        name: "channel",
+        required: true,
+        sample: "#finance-alerts",
+        type: "string"
+      },
+      {
+        description: "Plain-text message body.",
+        name: "text",
+        required: true,
+        sample: "Budget variance alert: Acme Manufacturing is 12% over budget.",
+        type: "string"
+      },
+      {
+        description: "Display name for the message author.",
+        name: "username",
+        sample: "AI Integration Cloud",
+        type: "string"
+      }
+    ]
   }
 ];
 

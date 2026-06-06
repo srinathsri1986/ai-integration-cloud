@@ -9,6 +9,7 @@ COPY apps/api/pyproject.toml ./pyproject.toml
 COPY apps/api/app ./app
 COPY apps/api/alembic ./alembic
 COPY apps/api/alembic.ini ./alembic.ini
+COPY apps/api/tests ./tests
 RUN pip install --no-cache-dir ".[dev]"
 
 EXPOSE 8000

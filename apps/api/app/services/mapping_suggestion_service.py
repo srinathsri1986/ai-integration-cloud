@@ -218,16 +218,42 @@ class MappingSuggestionService:
         source_fields = {field.name: field for field in source_object.fields}
         target_fields = {field.name: field for field in target_object.fields}
         candidates = [
+            # NetSuite → Salesforce
             ("customer_name", "AccountName", "direct", 0.94, "Customer names align to the target account reference."),
             ("budget_amount", "Amount", "direct", 0.91, "Budget and amount fields share numeric finance meaning."),
             ("due_date", "CloseDate", "format_date", 0.88, "Date values need target system date formatting."),
             ("account_manager", "OwnerName", "direct", 0.84, "Owner fields represent the responsible business person."),
             ("project_id", "Name", "rename", 0.8, "Project identifier can seed a reviewed opportunity name."),
+            # REST API / CSV → Salesforce / REST
             ("project_id", "externalId", "rename", 0.78, "The project identifier can seed an external reference."),
             ("customer", "displayName", "rename", 0.86, "Customer text can become the display name."),
             ("invoice_number", "externalId", "rename", 0.82, "Invoice number can be retained as an external identifier."),
             ("amount", "Amount", "direct", 0.9, "Amount fields share numeric meaning."),
             ("invoice_date", "CloseDate", "format_date", 0.8, "Invoice date can be formatted for target dates."),
+            # SAP Cost Center → Oracle GL
+            ("cost_center_id", "account_segment", "rename", 0.79, "Cost center maps to an Oracle GL account segment."),
+            ("budget_amount", "entered_dr", "direct", 0.83, "Budget amount maps to the GL debit side."),
+            ("valid_from", "period_name", "format_date", 0.72, "Validity date can be formatted as an Oracle period name."),
+            ("controlling_area", "ledger_id", "rename", 0.68, "Controlling area codes can seed Oracle ledger identifiers."),
+            # SAP Journal → Salesforce
+            ("reference", "Name", "rename", 0.75, "Document reference can seed the opportunity name."),
+            ("amount", "Amount", "direct", 0.9, "Amount fields share numeric meaning."),
+            ("posting_date", "CloseDate", "format_date", 0.82, "Posting date can be formatted as a Salesforce close date."),
+            # HCM Employee → Salesforce Opportunity (team assignment)
+            ("full_name", "OwnerName", "direct", 0.88, "Employee name directly maps to the opportunity owner."),
+            ("employee_id", "externalId", "rename", 0.76, "Employee ID can become an external reference."),
+            # HCM Employee → Slack alert
+            ("full_name", "text", "rename", 0.82, "Employee name seeds the Slack message body."),
+            ("department", "channel", "rename", 0.70, "Department name maps to a Slack channel identifier."),
+            # PostgreSQL Analytics → SAP Journal (budget variance posting)
+            ("metric_value", "amount", "direct", 0.86, "Metric value maps to the SAP transaction amount."),
+            ("metric_name", "gl_account", "lookup_placeholder", 0.72, "Metric name requires a lookup to resolve the GL account."),
+            ("recorded_at", "posting_date", "format_date", 0.85, "Metric timestamp maps to the SAP posting date."),
+            ("row_id", "reference", "rename", 0.74, "Row ID can serve as the document reference."),
+            # NetSuite → SAP journal (cross-system repost)
+            ("budget_amount", "amount", "direct", 0.88, "Budget amount maps to the SAP journal amount."),
+            ("due_date", "posting_date", "format_date", 0.85, "Project due date can map to the SAP posting date."),
+            ("customer_name", "reference", "rename", 0.72, "Customer name can seed the SAP document reference."),
         ]
         suggestions: list[MappingSuggestionItem] = []
         seen_targets: set[str] = set()

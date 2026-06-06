@@ -6,14 +6,24 @@ from app.models.mapping import (
     MappingDefinitionUpsertRequest,
     MappingLifecycleRequest,
     MappingLifecycleResponse,
+    MappingObject,
     MappingSimulationResponse,
     MappingSuggestionRequest,
     MappingSuggestionResponse,
 )
+from app.services.mapping_catalog import list_mapping_objects
 from app.services.mapping_definition_service import mapping_definition_service
 from app.services.mapping_suggestion_service import LiveAIRequiredError, mapping_suggestion_service
 
 router = APIRouter(prefix="/mappings", tags=["mappings"])
+
+
+@router.get("/objects", response_model=list[MappingObject])
+def list_mapping_objects_route(
+    user=Depends(require_permissions("flow:read")),
+) -> list[MappingObject]:
+    """Return all registered mapping objects (source/target schemas for the mapping studio)."""
+    return list_mapping_objects()
 
 
 @router.get("/definitions", response_model=list[MappingDefinition])

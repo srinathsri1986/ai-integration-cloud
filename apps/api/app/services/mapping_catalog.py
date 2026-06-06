@@ -173,6 +173,245 @@ MAPPING_OBJECTS: list[MappingObject] = [
             },
         ],
     ),
+    # ── SAP ──────────────────────────────────────────────────────────────────
+    MappingObject(
+        id="sap-cost-center",
+        displayName="SAP Cost Center Entry",
+        systemId="sap",
+        fields=[
+            {
+                "name": "cost_center_id",
+                "description": "SAP cost center identifier.",
+                "type": "string",
+                "required": True,
+                "sample": "CC-1200",
+            },
+            {
+                "name": "description",
+                "description": "Cost center display name.",
+                "type": "string",
+                "required": True,
+                "sample": "Finance Operations",
+            },
+            {
+                "name": "controlling_area",
+                "description": "Controlling area code.",
+                "type": "string",
+                "required": True,
+                "sample": "0001",
+            },
+            {
+                "name": "valid_from",
+                "description": "Validity start date.",
+                "type": "date",
+                "sample": "2026-01-01",
+            },
+            {
+                "name": "budget_amount",
+                "description": "Approved budget for the cost center.",
+                "type": "number",
+                "sample": 850000,
+            },
+        ],
+    ),
+    MappingObject(
+        id="sap-journal-line",
+        displayName="SAP Journal Entry Line",
+        systemId="sap",
+        fields=[
+            {
+                "name": "company_code",
+                "description": "SAP company code.",
+                "type": "string",
+                "required": True,
+                "sample": "1000",
+            },
+            {
+                "name": "gl_account",
+                "description": "GL account number.",
+                "type": "string",
+                "required": True,
+                "sample": "400000",
+            },
+            {
+                "name": "amount",
+                "description": "Transaction amount.",
+                "type": "number",
+                "required": True,
+                "sample": 12500.00,
+            },
+            {
+                "name": "posting_date",
+                "description": "Journal posting date.",
+                "type": "date",
+                "required": True,
+                "sample": "2026-06-01",
+            },
+            {
+                "name": "reference",
+                "description": "External document reference.",
+                "type": "string",
+                "sample": "INV-2026-0042",
+            },
+        ],
+    ),
+    # ── Oracle ────────────────────────────────────────────────────────────────
+    MappingObject(
+        id="oracle-gl-balance",
+        displayName="Oracle GL Balance",
+        systemId="oracle-fusion",
+        fields=[
+            {
+                "name": "ledger_id",
+                "description": "Oracle ledger identifier.",
+                "type": "string",
+                "required": True,
+                "sample": "1",
+            },
+            {
+                "name": "account_segment",
+                "description": "Chart of accounts segment.",
+                "type": "string",
+                "required": True,
+                "sample": "01-000-1110-0000-000",
+            },
+            {
+                "name": "period_name",
+                "description": "Accounting period.",
+                "type": "string",
+                "required": True,
+                "sample": "JUN-26",
+            },
+            {
+                "name": "entered_dr",
+                "description": "Entered debit amount.",
+                "type": "number",
+                "sample": 45000.00,
+            },
+            {
+                "name": "entered_cr",
+                "description": "Entered credit amount.",
+                "type": "number",
+                "sample": 0.00,
+            },
+        ],
+    ),
+    # ── HCM (Workday / SuccessFactors) ────────────────────────────────────────
+    MappingObject(
+        id="hcm-employee",
+        displayName="HCM Employee Record",
+        systemId="hcm",
+        fields=[
+            {
+                "name": "employee_id",
+                "description": "HCM system employee identifier.",
+                "type": "string",
+                "required": True,
+                "sample": "EMP-4421",
+            },
+            {
+                "name": "full_name",
+                "description": "Employee full name.",
+                "type": "string",
+                "required": True,
+                "sample": "Maya Rao",
+            },
+            {
+                "name": "department",
+                "description": "Assigned department.",
+                "type": "string",
+                "required": True,
+                "sample": "Finance",
+            },
+            {
+                "name": "start_date",
+                "description": "Employment start date.",
+                "type": "date",
+                "sample": "2023-03-15",
+            },
+            {
+                "name": "salary",
+                "description": "Annual salary (base).",
+                "type": "number",
+                "sample": 110000,
+            },
+            {
+                "name": "manager_id",
+                "description": "Direct manager employee ID.",
+                "type": "string",
+                "sample": "EMP-1001",
+            },
+        ],
+    ),
+    # ── PostgreSQL ────────────────────────────────────────────────────────────
+    MappingObject(
+        id="postgres-analytics-row",
+        displayName="PostgreSQL Analytics Row",
+        systemId="postgresql",
+        fields=[
+            {
+                "name": "row_id",
+                "description": "Unique row identifier.",
+                "type": "string",
+                "required": True,
+                "sample": "row-8821",
+            },
+            {
+                "name": "metric_name",
+                "description": "Name of the analytics metric.",
+                "type": "string",
+                "required": True,
+                "sample": "monthly_revenue",
+            },
+            {
+                "name": "metric_value",
+                "description": "Numeric metric value.",
+                "type": "number",
+                "required": True,
+                "sample": 245000.50,
+            },
+            {
+                "name": "dimension",
+                "description": "Metric dimension or segment.",
+                "type": "string",
+                "sample": "APAC",
+            },
+            {
+                "name": "recorded_at",
+                "description": "Timestamp the metric was recorded.",
+                "type": "date",
+                "sample": "2026-06-01",
+            },
+        ],
+    ),
+    # ── Slack ─────────────────────────────────────────────────────────────────
+    MappingObject(
+        id="slack-channel-message",
+        displayName="Slack Channel Message",
+        systemId="slack",
+        fields=[
+            {
+                "name": "channel",
+                "description": "Target Slack channel name or ID.",
+                "type": "string",
+                "required": True,
+                "sample": "#finance-alerts",
+            },
+            {
+                "name": "text",
+                "description": "Plain-text message body.",
+                "type": "string",
+                "required": True,
+                "sample": "Budget variance alert: Acme Manufacturing is 12% over budget.",
+            },
+            {
+                "name": "username",
+                "description": "Display name for the message author.",
+                "type": "string",
+                "sample": "AI Integration Cloud",
+            },
+        ],
+    ),
 ]
 
 APPROVED_MAPPING_TRANSFORMS = [
