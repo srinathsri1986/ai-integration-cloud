@@ -353,14 +353,23 @@ class FlowService:
 
         return next_status
 
-    def trigger_webhook_verified(self, flow_id: str, tenant_id: int | None = None) -> FlowRunResponse:
-        """Enqueue a webhook-triggered flow run. Caller has already verified the HMAC signature."""
+    def trigger_webhook_verified(
+        self,
+        flow_id: str,
+        tenant_id: int | None = None,
+        delivery_id: str | None = None,
+    ) -> FlowRunResponse:
+        """Enqueue a webhook-triggered flow run. Caller has already verified the HMAC signature.
+
+        *delivery_id* is passed through to ``enqueue_flow_run`` so the Celery task can
+        resolve the delivery record (mark succeeded/failed/dead_letter) on completion.
+        """
         flow = self.get_flow(flow_id, tenant_id)
         if flow.status != "published":
             raise ValueError("Flow must be published before it can be triggered via webhook.")
         if flow.trigger_type != "webhook":
             raise ValueError("This flow is not configured for webhook triggers.")
-        return self.enqueue_flow_run(flow_id, tenant_id=tenant_id)
+        return self.enqueue_flow_run(flow_id, tenant_id=tenant_id, delivery_id=delivery_id)
 
     def trigger_webhook(self, flow_id: str, secret: str) -> FlowRunResponse:
         """Validate webhook secret and enqueue the flow run. No auth required."""
@@ -385,8 +394,17 @@ class FlowService:
 
         return self.enqueue_flow_run(flow_id, tenant_id=tenant_id)
 
-    def enqueue_flow_run(self, flow_id: FlowId, tenant_id: int | None = None) -> FlowRunResponse:
-        """Create a running record and enqueue async execution. Returns 202-style response."""
+    def enqueue_flow_run(
+        self,
+        flow_id: FlowId,
+        tenant_id: int | None = None,
+        delivery_id: str | None = None,
+    ) -> FlowRunResponse:
+        """Create a running record and enqueue async execution. Returns 202-style response.
+
+        *delivery_id* is the webhook delivery tracking ID — present only for
+        webhook-triggered runs, None for manual / scheduled triggers.
+        """
         from app.worker.tasks import execute_flow_task
 
         request_id = str(uuid4())
@@ -395,7 +413,8 @@ class FlowService:
         with SessionLocal() as session:
             FlowRunRepository(session, tenant_id).create_running(flow_id, request_id, started)
 
-        execute_flow_task.delay(flow_id, request_id, tenant_id)
+        # Pass delivery_id to the task so it can resolve the delivery record on completion
+        execute_flow_task.delay(flow_id, request_id, tenant_id, delivery_id)
 
         return FlowRunResponse(
             requestId=request_id,

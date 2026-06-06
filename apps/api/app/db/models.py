@@ -191,6 +191,46 @@ class FlowDefinitionRecord(Base):
     )
 
 
+class WebhookDeliveryRecord(Base):
+    """Tracks every inbound webhook delivery attempt — status, retries, dead-letters."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        Index("ix_webhook_deliveries_flow_id_received_at", "flow_id", "received_at"),
+        Index("ix_webhook_deliveries_status", "status"),
+        Index("ix_webhook_deliveries_tenant_id", "tenant_id"),
+        Index("ix_webhook_deliveries_delivery_id", "delivery_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    delivery_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    flow_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=True)
+    received_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    # SHA-256 hex digest of the raw body — audit trail without storing the payload itself
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # pending | processing | succeeded | failed | dead_letter
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="processing")
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # request_id of the resulting flow run (populated on success or first attempt)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    next_retry_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    completed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+
+
 class MappingDefinitionRecord(Base):
     __tablename__ = "mapping_definitions"
     __table_args__ = (

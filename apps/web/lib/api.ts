@@ -1881,3 +1881,68 @@ export async function removeMember(userId: number): Promise<ClientApiResult<{ me
     return { data: fallback, error: error instanceof Error ? error.message : "API unavailable", isFallback: true, ok: false };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Webhook delivery tracking — Release 12.0
+// ---------------------------------------------------------------------------
+
+export interface WebhookDelivery {
+  deliveryId: string;
+  flowId: string;
+  receivedAt: string;
+  payloadHash: string;
+  status: "processing" | "succeeded" | "failed" | "dead_letter";
+  attemptCount: number;
+  maxAttempts: number;
+  lastError: string | null;
+  requestId: string | null;
+  nextRetryAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WebhookDeliveryStats {
+  total: number;
+  succeeded: number;
+  failed: number;
+  deadLetter: number;
+  processing: number;
+}
+
+const _fallbackDeliveries: WebhookDelivery[] = [];
+const _fallbackStats: WebhookDeliveryStats = { total: 0, succeeded: 0, failed: 0, deadLetter: 0, processing: 0 };
+
+export async function getWebhookDeliveries(opts?: {
+  flowId?: string;
+  status?: string;
+  limit?: number;
+}): Promise<ApiResult<WebhookDelivery[]>> {
+  const params = new URLSearchParams();
+  if (opts?.flowId)  params.set("flow_id", opts.flowId);
+  if (opts?.status)  params.set("status", opts.status);
+  if (opts?.limit)   params.set("limit", String(opts.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return getApiResult(`/api/v1/webhooks/deliveries${qs}`, _fallbackDeliveries, (b) => b);
+}
+
+export async function getWebhookDeliveryStats(): Promise<ApiResult<WebhookDeliveryStats>> {
+  return getApiResult("/api/v1/webhooks/deliveries/stats", _fallbackStats, (b) => b);
+}
+
+export async function getDeadLetterCount(): Promise<ApiResult<number>> {
+  return getApiResult("/api/v1/webhooks/deliveries/dead-letter-count", 0, (b) => b);
+}
+
+export async function retryWebhookDelivery(deliveryId: string): Promise<ClientApiResult<unknown>> {
+  const fallback = {};
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}/api/v1/webhooks/deliveries/${encodeURIComponent(deliveryId)}/retry`,
+      { method: "POST", credentials: "include" }
+    );
+    const body = await response.json();
+    if (!response.ok) return { data: fallback, error: body?.detail ?? `HTTP ${response.status}`, isFallback: true, ok: false };
+    return { data: body, isFallback: false, ok: true };
+  } catch (err) {
+    return { data: fallback, error: err instanceof Error ? err.message : "API unavailable", isFallback: true, ok: false };
+  }
+}

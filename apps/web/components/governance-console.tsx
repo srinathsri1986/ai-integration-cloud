@@ -12,7 +12,9 @@ import {
   Filter,
   Loader2,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
+  Webhook,
   Zap,
   ZapOff,
 } from "lucide-react";
@@ -22,19 +24,25 @@ import { EmptyState } from "@/components/empty-state";
 import {
   type AuditLogsFilter,
   type AuditMetrics,
+  type WebhookDelivery,
+  type WebhookDeliveryStats,
   auditExportUrl,
   getAuditLogs,
   getAuditMetrics,
+  getWebhookDeliveries,
+  getWebhookDeliveryStats,
+  retryWebhookDelivery,
   transitionFlowLifecycle,
 } from "@/lib/api";
 
-type Tab = "approvals" | "audit";
+type Tab = "approvals" | "audit" | "webhooks";
 type StatusFilter = "all" | "succeeded" | "failed";
 
 interface GovernanceConsoleProps {
   initialFlows: FlowDefinition[];
   initialAuditLogs: AuditLogEntry[];
   initialMetrics?: AuditMetrics;
+  initialWebhookStats?: WebhookDeliveryStats;
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +552,206 @@ function AuditTab({
 }
 
 // ---------------------------------------------------------------------------
+// Webhooks tab — delivery log, stats, retry
+// ---------------------------------------------------------------------------
+
+const _STATUS_COLORS: Record<string, string> = {
+  succeeded:   "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  processing:  "bg-blue-50 text-blue-700 ring-blue-200",
+  failed:      "bg-amber-50 text-amber-700 ring-amber-200",
+  dead_letter: "bg-rose-50 text-rose-700 ring-rose-200",
+};
+
+function DeliveryStatusBadge({ status }: { status: string }) {
+  const cls = _STATUS_COLORS[status] ?? "bg-slate-100 text-slate-600";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${cls}`}>
+      {status.replace("_", " ")}
+    </span>
+  );
+}
+
+function WebhooksTab({ initialStats }: { initialStats?: WebhookDeliveryStats }) {
+  const [deliveries, setDeliveries]   = useState<WebhookDelivery[]>([]);
+  const [stats, setStats]             = useState<WebhookDeliveryStats | undefined>(initialStats);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [loading, setLoading]         = useState(false);
+  const [retryingId, setRetryingId]   = useState<string | null>(null);
+  const [banner, setBanner]           = useState<{ type: "success"|"error"; msg: string } | null>(null);
+
+  async function refresh() {
+    setLoading(true);
+    const [dResult, sResult] = await Promise.all([
+      getWebhookDeliveries({ status: statusFilter === "all" ? undefined : statusFilter, limit: 200 }),
+      getWebhookDeliveryStats(),
+    ]);
+    setDeliveries(dResult.data);
+    setStats(sResult.data);
+    setLoading(false);
+  }
+
+  useEffect(() => { void refresh(); }, [statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleRetry(delivery: WebhookDelivery) {
+    setRetryingId(delivery.deliveryId);
+    const result = await retryWebhookDelivery(delivery.deliveryId);
+    setRetryingId(null);
+    if (result.ok) {
+      setBanner({ type: "success", msg: `Delivery ${delivery.deliveryId.slice(0, 8)}… re-queued successfully.` });
+      void refresh();
+    } else {
+      setBanner({ type: "error", msg: result.error ?? "Retry failed." });
+    }
+  }
+
+  const deadLetterCount = stats?.deadLetter ?? 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Stats strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {[
+          { label: "Total",       value: stats?.total ?? 0,       accent: "teal"    },
+          { label: "Succeeded",   value: stats?.succeeded ?? 0,   accent: "emerald" },
+          { label: "Processing",  value: stats?.processing ?? 0,  accent: "blue"    },
+          { label: "Failed",      value: stats?.failed ?? 0,      accent: "amber"   },
+          { label: "Dead Letter", value: stats?.deadLetter ?? 0,  accent: "rose"    },
+        ].map(({ label, value, accent }) => (
+          <div key={label} className="rounded-xl border border-slate-100 bg-white px-4 py-3 shadow-card">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-slate-400">{label}</p>
+            <p className={`mt-1 text-2xl font-bold tabular-nums leading-none text-${accent}-600`}>
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Banner */}
+      {banner && (
+        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-xs ${
+          banner.type === "success"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-rose-200 bg-rose-50 text-rose-800"
+        }`}>
+          <span>{banner.msg}</span>
+          <button type="button" onClick={() => setBanner(null)} className="opacity-60 hover:opacity-100">✕</button>
+        </div>
+      )}
+
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Filter className="h-3.5 w-3.5 text-slate-400" />
+        {(["all", "processing", "succeeded", "failed", "dead_letter"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStatusFilter(s)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+              statusFilter === s
+                ? "border-teal-600 bg-teal-600 text-white"
+                : "border-slate-200 text-slate-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
+            }`}
+          >
+            {s.replace("_", " ")}
+            {s === "dead_letter" && deadLetterCount > 0 && (
+              <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
+                {deadLetterCount}
+              </span>
+            )}
+          </button>
+        ))}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={refresh}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 disabled:opacity-50"
+        >
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          Refresh
+        </button>
+      </div>
+
+      {/* Deliveries table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-slate-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      ) : deliveries.length === 0 ? (
+        <EmptyState
+          icon={<Webhook className="h-10 w-10 text-slate-300" />}
+          title="No webhook deliveries yet"
+          description="Once a webhook-triggered flow receives a POST, deliveries will appear here."
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-card">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                {["Delivery ID", "Flow", "Status", "Attempts", "Received", "Next Retry / Completed", ""].map((h) => (
+                  <th key={h} className="py-2.5 pl-4 pr-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {deliveries.map((d) => (
+                <tr key={d.deliveryId} className="border-b border-slate-100 text-xs transition-colors hover:bg-slate-50/70">
+                  <td className="max-w-[120px] truncate py-3 pl-4 pr-3 font-mono text-slate-600">
+                    {d.deliveryId.slice(0, 12)}…
+                  </td>
+                  <td className="py-3 pr-3">
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                      {d.flowId}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-3">
+                    <DeliveryStatusBadge status={d.status} />
+                  </td>
+                  <td className="py-3 pr-3 tabular-nums text-slate-500">
+                    {d.attemptCount} / {d.maxAttempts}
+                  </td>
+                  <td className="py-3 pr-3 tabular-nums text-slate-400">
+                    {d.receivedAt
+                      ? new Date(d.receivedAt).toLocaleString(undefined, {
+                          month: "short", day: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })
+                      : "—"}
+                  </td>
+                  <td className="py-3 pr-3 text-slate-400">
+                    {d.nextRetryAt
+                      ? <span className="text-amber-600">{new Date(d.nextRetryAt).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
+                      : d.completedAt
+                        ? new Date(d.completedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                        : "—"}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {(d.status === "failed" || d.status === "dead_letter") && (
+                      <button
+                        type="button"
+                        disabled={retryingId === d.deliveryId}
+                        onClick={() => handleRetry(d)}
+                        className="flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-700 transition-colors hover:bg-teal-100 disabled:opacity-50"
+                      >
+                        {retryingId === d.deliveryId
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <RotateCcw className="h-3 w-3" />}
+                        Retry
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main governance console
 // ---------------------------------------------------------------------------
 
@@ -551,16 +759,17 @@ export function GovernanceConsole({
   initialFlows,
   initialAuditLogs,
   initialMetrics,
+  initialWebhookStats,
 }: GovernanceConsoleProps) {
   const [tab, setTab] = useState<Tab>("approvals");
 
-  const pendingCount = initialFlows.filter((f) => f.status === "pending_approval").length;
+  const pendingCount    = initialFlows.filter((f) => f.status === "pending_approval").length;
 
   return (
     <div className="space-y-5 px-5 py-6 lg:px-8">
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
-        {(["approvals", "audit"] as Tab[]).map((t) => (
+        {(["approvals", "audit", "webhooks"] as Tab[]).map((t) => (
           <button
             key={t}
             type="button"
@@ -580,10 +789,20 @@ export function GovernanceConsole({
                   </span>
                 )}
               </span>
-            ) : (
+            ) : t === "audit" ? (
               <span className="flex items-center gap-1.5">
                 Audit Log
                 <Activity className="h-3.5 w-3.5 opacity-60" />
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                Webhooks
+                <Webhook className="h-3.5 w-3.5 opacity-60" />
+                {(initialWebhookStats?.deadLetter ?? 0) > 0 && (
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white">
+                    {initialWebhookStats!.deadLetter}
+                  </span>
+                )}
               </span>
             )}
           </button>
@@ -593,6 +812,9 @@ export function GovernanceConsole({
       {tab === "approvals" && <ApprovalsTab flows={initialFlows} />}
       {tab === "audit" && (
         <AuditTab initialLogs={initialAuditLogs} initialMetrics={initialMetrics} />
+      )}
+      {tab === "webhooks" && (
+        <WebhooksTab initialStats={initialWebhookStats} />
       )}
     </div>
   );
