@@ -56,6 +56,13 @@ services:
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
       SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-http://localhost:8000/api/v1/connectors/slack/oauth/callback}
       SLACK_SCOPES: ${SLACK_SCOPES:-chat:write,channels:read,channels:join}
+      # ── Salesforce OAuth2 connector ─────────────────────────────────────────
+      # Create a Connected App in Salesforce Setup → App Manager.
+      # Callback URL: http://localhost:8000/api/v1/connectors/salesforce/oauth/callback
+      SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:-}
+      SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:-}
+      SALESFORCE_REDIRECT_URI: ${SALESFORCE_REDIRECT_URI:-http://localhost:8000/api/v1/connectors/salesforce/oauth/callback}
+      SALESFORCE_LOGIN_URL: ${SALESFORCE_LOGIN_URL:-https://login.salesforce.com}
       # ── Connector credential encryption ────────────────────────────────────
       # In production: store this key in AWS Secrets Manager — never in source.
       CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY:-}

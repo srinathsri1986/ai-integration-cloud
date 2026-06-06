@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     slack_redirect_uri: str = "http://localhost:8000/api/v1/connectors/slack/oauth/callback"
     slack_scopes: str = "chat:write,channels:read,channels:join"
 
+    # ── Salesforce OAuth2 connector ───────────────────────────────────────────
+    # Create a Connected App in Salesforce Setup → App Manager.
+    # Callback URL: http://localhost:8000/api/v1/connectors/salesforce/oauth/callback
+    salesforce_client_id: str = ""
+    salesforce_client_secret: str = ""
+    salesforce_redirect_uri: str = "http://localhost:8000/api/v1/connectors/salesforce/oauth/callback"
+    salesforce_login_url: str = "https://login.salesforce.com"
+
     # ── Connector credential encryption ──────────────────────────────────────
     # Fernet symmetric key for encrypting OAuth tokens at rest in the DB.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

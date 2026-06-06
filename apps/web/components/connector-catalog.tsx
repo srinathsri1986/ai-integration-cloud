@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ConnectorDefinition, ConnectorTool } from "@ai-integration-cloud/shared";
 import type { ApiResult } from "@/lib/api";
@@ -13,11 +13,11 @@ import {
   Link2Off,
   Loader2,
   RefreshCw,
+  Settings2,
   Wrench,
   XCircle,
   Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const API_BASE =
   typeof window !== "undefined"
@@ -46,7 +46,6 @@ function getColor(connectorId: string) {
   return connectorColors[connectorId] ?? defaultColor;
 }
 
-// Connector display name initials for the avatar
 function connectorInitials(name: string) {
   return name
     .split(/[\s/]+/)
@@ -95,38 +94,229 @@ function AuthBadge({ scheme }: { scheme: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Config modal — REST API (base_url + api_key) and PostgreSQL (connection_string)
+// ---------------------------------------------------------------------------
+
+interface ConfigModalProps {
+  connectorId: string;
+  authScheme: string;
+  onClose: () => void;
+  onSuccess: (connectorId: string) => void;
+}
+
+function ConfigModal({ connectorId, authScheme, onClose, onSuccess }: ConfigModalProps) {
+  const [baseUrl, setBaseUrl]           = useState("");
+  const [apiKey, setApiKey]             = useState("");
+  const [connStr, setConnStr]           = useState("");
+  const [saving, setSaving]             = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const isRestApi = connectorId === "rest-api";
+  const isPostgres = connectorId === "postgres";
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      let endpoint = "";
+      let body: Record<string, string> = {};
+
+      if (isRestApi) {
+        endpoint = `${API_BASE}/api/v1/connectors/rest-api/live-config`;
+        body = { base_url: baseUrl, api_key: apiKey };
+      } else if (isPostgres) {
+        endpoint = `${API_BASE}/api/v1/connectors/postgres/live-config`;
+        body = { connection_string: connStr };
+      }
+
+      const resp = await fetch(endpoint, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${_getToken()}` },
+        body: JSON.stringify(body),
+        credentials: "include",
+      });
+
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.detail ?? `HTTP ${resp.status}`);
+      }
+
+      onSuccess(connectorId);
+      onClose();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-bold text-slate-900">
+            Configure {isRestApi ? "REST API" : "PostgreSQL"} Connector
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <XCircle className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {isRestApi && (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  Base URL <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.yourservice.com"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Must start with https://. This is the root URL for all approved templates.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                  API Key <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-••••••••••••••••"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Encrypted at rest. Sent as <code className="font-mono">Authorization: Bearer …</code>
+                </p>
+              </div>
+            </>
+          )}
+
+          {isPostgres && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Connection String <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={connStr}
+                onChange={(e) => setConnStr(e.target.value)}
+                placeholder="postgresql://user:password@host:5432/dbname"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
+              />
+              <p className="mt-1 text-[11px] text-slate-400">
+                Encrypted at rest. Only pre-approved parameterised query templates are executed — no raw SQL.
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Save & Activate
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function _getToken(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem("auth_token") ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// Main catalog component
+// ---------------------------------------------------------------------------
+
 export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
   const searchParams = useSearchParams();
   const [connectors, setConnectors] = useState<ConnectorDefinition[]>(initialConnectors.data);
   const [testResults, setTestResults] = useState<
     Record<string, { ok: boolean; message: string; mode?: string } | null>
   >({});
-  const [testingId, setTestingId]         = useState<string | null>(null);
-  const [expandedId, setExpandedId]       = useState<string | null>(null);
-  const [tools, setTools]                 = useState<Record<string, ConnectorTool[]>>({});
-  const [loadingTools, setLoadingTools]   = useState<string | null>(null);
+  const [testingId, setTestingId]           = useState<string | null>(null);
+  const [expandedId, setExpandedId]         = useState<string | null>(null);
+  const [tools, setTools]                   = useState<Record<string, ConnectorTool[]>>({});
+  const [loadingTools, setLoadingTools]     = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const [banner, setBanner]               = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [banner, setBanner]                 = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [configModal, setConfigModal]       = useState<{ connectorId: string; authScheme: string } | null>(null);
 
   useEffect(() => {
-    const connected  = searchParams.get("slack_connected");
-    const workspace  = searchParams.get("workspace");
-    const slackError = searchParams.get("slack_error");
-    if (connected === "1") {
+    // Handle OAuth2 callback redirects from multiple connectors
+    const slackConnected   = searchParams.get("slack_connected");
+    const slackWorkspace   = searchParams.get("workspace");
+    const slackError       = searchParams.get("slack_error");
+    const sfConnected      = searchParams.get("salesforce_connected");
+    const sfInstanceUrl    = searchParams.get("instance_url");
+    const sfError          = searchParams.get("salesforce_error");
+
+    if (slackConnected === "1") {
       setBanner({
         type: "success",
-        message: `Slack connected${workspace ? ` to workspace "${workspace}"` : ""}. Connector is now live.`,
+        message: `Slack connected${slackWorkspace ? ` to workspace "${slackWorkspace}"` : ""}. Connector is now live.`,
       });
-      setConnectors((prev) =>
-        prev.map((c) =>
-          c.connectorId === "slack" ? { ...c, mode: "live" as const, status: "configured" } : c
-        )
-      );
+      _setLive("slack");
     } else if (slackError) {
       setBanner({ type: "error", message: `Slack OAuth error: ${slackError}` });
     }
+
+    if (sfConnected === "1") {
+      setBanner({
+        type: "success",
+        message: `Salesforce connected${sfInstanceUrl ? ` to ${sfInstanceUrl}` : ""}. Connector is now live.`,
+      });
+      _setLive("salesforce");
+    } else if (sfError) {
+      setBanner({ type: "error", message: `Salesforce OAuth error: ${sfError}` });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function _setLive(connectorId: string) {
+    setConnectors((prev) =>
+      prev.map((c) =>
+        c.connectorId === connectorId ? { ...c, mode: "live" as const, status: "configured" } : c
+      )
+    );
+  }
 
   async function handleTest(connectorId: string) {
     setTestingId(connectorId);
@@ -150,13 +340,19 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
     window.location.href = `${API_BASE}/api/v1/connectors/${connectorId}/oauth/authorize`;
   }
 
-  async function handleDisconnect(connectorId: string) {
+  async function handleDisconnect(connectorId: string, authScheme: string) {
     setDisconnectingId(connectorId);
     try {
-      const resp = await fetch(
-        `${API_BASE}/api/v1/connectors/${connectorId}/oauth/disconnect`,
-        { method: "DELETE", credentials: "include" }
-      );
+      // OAuth2 connectors → /oauth/disconnect  |  form connectors → /live-config/disconnect
+      const path = authScheme === "oauth2"
+        ? `/api/v1/connectors/${connectorId}/oauth/disconnect`
+        : `/api/v1/connectors/${connectorId}/live-config/disconnect`;
+
+      const resp = await fetch(`${API_BASE}${path}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { Authorization: `Bearer ${_getToken()}` },
+      });
       if (resp.ok) {
         setConnectors((prev) =>
           prev.map((c) =>
@@ -174,8 +370,23 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
     setDisconnectingId(null);
   }
 
+  function handleConfigSaved(connectorId: string) {
+    _setLive(connectorId);
+    setBanner({ type: "success", message: `${connectorId} connector activated in live mode.` });
+  }
+
   return (
     <section>
+      {/* Config modal */}
+      {configModal && (
+        <ConfigModal
+          connectorId={configModal.connectorId}
+          authScheme={configModal.authScheme}
+          onClose={() => setConfigModal(null)}
+          onSuccess={handleConfigSaved}
+        />
+      )}
+
       {/* Banner */}
       {banner && (
         <div
@@ -203,15 +414,16 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {connectors.map((c) => {
-          const testResult    = testResults[c.connectorId];
-          const isTesting     = testingId === c.connectorId;
-          const isExpanded    = expandedId === c.connectorId;
-          const connectorTools = tools[c.connectorId] ?? [];
-          const isLoadingTools = loadingTools === c.connectorId;
-          const isLive        = c.mode === "live";
+          const testResult      = testResults[c.connectorId];
+          const isTesting       = testingId === c.connectorId;
+          const isExpanded      = expandedId === c.connectorId;
+          const connectorTools  = tools[c.connectorId] ?? [];
+          const isLoadingTools  = loadingTools === c.connectorId;
+          const isLive          = c.mode === "live";
           const isDisconnecting = disconnectingId === c.connectorId;
-          const supportsOAuth = c.authScheme === "oauth2";
-          const color         = getColor(c.connectorId);
+          const supportsOAuth   = c.authScheme === "oauth2";
+          const supportsForm    = c.authScheme === "api_key" || c.authScheme === "basic";
+          const color           = getColor(c.connectorId);
 
           return (
             <div
@@ -224,7 +436,6 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
               {/* Header */}
               <div className="p-4 pb-3">
                 <div className="flex items-start justify-between gap-3">
-                  {/* Avatar + name */}
                   <div className="flex items-center gap-3">
                     <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${color.bg} ${color.text}`}>
                       {connectorInitials(c.name)}
@@ -237,7 +448,6 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
                   <StatusBadge status={c.status} mode={c.mode ?? "mock"} />
                 </div>
 
-                {/* Badges */}
                 <div className="mt-3 flex flex-wrap items-center gap-1.5">
                   <AuthBadge scheme={c.authScheme} />
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
@@ -249,9 +459,7 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
               {/* Test result */}
               {testResult && (
                 <div className={`mx-4 mb-3 rounded-lg px-3 py-2 text-xs ${
-                  testResult.ok
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "bg-rose-50 text-rose-700"
+                  testResult.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
                 }`}>
                   {testResult.mode && (
                     <span className="mr-1.5 rounded bg-white/60 px-1 py-0.5 font-mono text-[10px]">
@@ -264,13 +472,13 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
 
               {/* Actions */}
               <div className="mt-auto space-y-2 p-4 pt-0">
-                {/* OAuth Connect / Disconnect */}
+                {/* OAuth2 connectors (Slack, Salesforce) */}
                 {supportsOAuth && (
                   isLive ? (
                     <button
                       type="button"
                       disabled={isDisconnecting}
-                      onClick={() => handleDisconnect(c.connectorId)}
+                      onClick={() => handleDisconnect(c.connectorId, c.authScheme)}
                       className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
                     >
                       {isDisconnecting
@@ -287,6 +495,42 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
                       <Zap className="h-3.5 w-3.5" />
                       Connect
                       <ExternalLink className="h-3 w-3 opacity-60" />
+                    </button>
+                  )
+                )}
+
+                {/* Form-based connectors (REST API, PostgreSQL) */}
+                {supportsForm && (
+                  isLive ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfigModal({ connectorId: c.connectorId, authScheme: c.authScheme })}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100"
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                        Edit Config
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isDisconnecting}
+                        onClick={() => handleDisconnect(c.connectorId, c.authScheme)}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                      >
+                        {isDisconnecting
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Link2Off className="h-3.5 w-3.5" />}
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfigModal({ connectorId: c.connectorId, authScheme: c.authScheme })}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/20 transition-colors hover:bg-teal-700"
+                    >
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Configure
                     </button>
                   )
                 )}

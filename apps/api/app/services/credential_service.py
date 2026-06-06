@@ -189,6 +189,45 @@ class ConnectorCredentialService:
         record = self._fetch_config(connector_id, tenant_id)
         return record["status"] if record else "not_configured"
 
+    def store_credentials(
+        self,
+        connector_id: str,
+        creds: dict[str, Any],
+        tenant_id: int | None = None,
+        extra_meta: dict | None = None,
+    ) -> None:
+        """Encrypt *creds* and persist for any connector type (API key, connection string, etc.).
+
+        The credential dict is encrypted and stored under ``encrypted_credentials``.
+        ``extra_meta`` is stored in plaintext alongside it (display name, instance URL, etc.).
+        """
+        encrypted = self._encrypt(creds)
+        config_json: dict[str, Any] = {"encrypted_credentials": encrypted}
+        if extra_meta:
+            config_json.update(extra_meta)
+        self._upsert_config(connector_id, tenant_id, config_json, status="configured", mode="live")
+        logger.info(
+            "Stored credentials for connector=%s tenant=%s", connector_id, tenant_id
+        )
+
+    def get_credentials(
+        self, connector_id: str, tenant_id: int | None = None
+    ) -> dict[str, Any] | None:
+        """Return the decrypted credentials dict, or *None* if not configured."""
+        record = self._fetch_config(connector_id, tenant_id)
+        if not record or record["mode"] != "live":
+            return None
+        config = record["config"]
+        if "encrypted_credentials" not in config:
+            return None
+        try:
+            return self._decrypt(config["encrypted_credentials"])
+        except Exception as exc:
+            logger.error(
+                "Failed to decrypt credentials for connector=%s: %s", connector_id, exc
+            )
+            return None
+
     def all_connector_modes(self) -> dict[str, str]:
         """Return a mapping of connector_id → mode for all configured connectors."""
         with SessionLocal() as session:
