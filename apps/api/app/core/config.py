@@ -1,6 +1,16 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_WEAK_SECRETS = frozenset({
+    "local-dev-only",
+    "local-dev-jwt-secret-change-in-production",
+    "changeme",
+    "secret",
+    "password",
+    "",
+})
 
 
 class Settings(BaseSettings):
@@ -13,6 +23,24 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:3000"
     placeholder_jwt_secret: str = "local-dev-only"
     jwt_secret_key: str = "local-dev-jwt-secret-change-in-production"
+
+    @model_validator(mode="after")
+    def _enforce_strong_secrets_in_production(self) -> "Settings":
+        """Refuse to start in non-local environments with known-weak secrets."""
+        if self.environment in ("local", "test"):
+            return self
+        weak_fields = []
+        if self.placeholder_jwt_secret in _WEAK_SECRETS:
+            weak_fields.append("PLACEHOLDER_JWT_SECRET")
+        if self.jwt_secret_key in _WEAK_SECRETS:
+            weak_fields.append("JWT_SECRET_KEY")
+        if weak_fields:
+            raise ValueError(
+                f"Refusing to start in environment={self.environment!r} with weak default "
+                f"secrets: {', '.join(weak_fields)}. "
+                "Set strong random values via environment variables or AWS Secrets Manager."
+            )
+        return self
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
