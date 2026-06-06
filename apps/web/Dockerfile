@@ -9,8 +9,8 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS build
 COPY packages/shared packages/shared
 COPY apps/web apps/web
-RUN pnpm --filter @netsuite-cfo/shared build
-RUN pnpm --filter @netsuite-cfo/web build
+RUN pnpm --filter @ai-integration-cloud/shared build
+RUN pnpm --filter @ai-integration-cloud/web build
 
 FROM node:22-slim AS runtime
 WORKDIR /app

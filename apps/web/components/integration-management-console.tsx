@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Calendar,
@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import type {
   ApprovedFlowTool,
+  ConnectorDefinition,
+  ConnectorTool,
   FlowDefinition,
   FlowDefinitionUpsertRequest,
   FlowLifecycleAction,
@@ -39,6 +41,8 @@ import {
   type ApiResult,
   deleteFlowDefinition,
   deleteMappingDefinition,
+  getConnectors,
+  getConnectorTools,
   getFlowRun,
   getMappingDefinitions,
   runFlow,
@@ -49,20 +53,15 @@ import {
 } from "@/lib/api";
 
 const builtInFlowIds = new Set([
-  "netsuite-cfo-dashboard-refresh",
-  "netsuite-project-risk-refresh",
-  "netsuite-subsidiary-drilldown-refresh"
+  "demo-netsuite-cfo-dashboard",
+  "demo-salesforce-opportunity-sync",
+  "demo-sap-journal-post",
+  "demo-oracle-financial-report",
+  "demo-hcm-headcount-snapshot",
+  "demo-postgres-analytics-pull",
+  "demo-rest-api-webhook-relay",
+  "demo-slack-alert-dispatch",
 ]);
-
-const approvedTools: ApprovedFlowTool[] = [
-  "cfo.dashboard_summary",
-  "cfo.pl_vs_budget",
-  "cfo.yoy_comparison",
-  "cfo.subsidiary_drilldown",
-  "cfo.running_projects",
-  "cfo.overdue_projects_by_account_manager",
-  "orchestrator.query"
-];
 
 type Filter = "all" | FlowDefinition["status"];
 
@@ -120,23 +119,23 @@ function statusBadgeClass(status: string) {
   return "border-violet-200 bg-violet-50 text-violet-900";
 }
 
-function emptyDraft(): FlowDefinitionUpsertRequest {
+function emptyDraft(connectorId = "netsuite", firstTool = "cfo.dashboard_summary"): FlowDefinitionUpsertRequest {
   return {
-    description: "Preview an approved integration using governed actions and an optional published mapping.",
-    flowId: "customer-event-to-salesforce-opportunity",
+    description: "Integration draft — configure approved actions and publish to run.",
+    flowId: `${connectorId}-integration-draft`,
     mappingDefinitionId: null,
-    name: "Customer Event to Salesforce Opportunity",
-    sourceConnector: "netsuite",
+    name: `${connectorId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Integration`,
+    sourceConnector: connectorId,
     status: "draft",
     steps: [
       {
-        approvedTool: "orchestrator.query",
-        description: "Route the approved business request through governed orchestration.",
-        id: "governed-orchestration",
-        name: "Governed orchestration"
+        approvedTool: firstTool as ApprovedFlowTool,
+        description: `Run approved action ${firstTool}.`,
+        id: firstTool.replaceAll(".", "-"),
+        name: firstTool
       }
     ],
-    targetModule: "salesforce_opportunity",
+    targetModule: connectorId.replace(/-/g, "_"),
     triggerCron: null,
     triggerType: "manual"
   };
@@ -161,6 +160,9 @@ export function IntegrationManagementConsole({
   const [deleteModalFlow, setDeleteModalFlow] = useState<FlowDefinition | null>(null);
   const [mappingSimulation, setMappingSimulation] = useState<MappingSimulationResponse | undefined>();
   const [draft, setDraft] = useState<FlowDefinitionUpsertRequest>(emptyDraft());
+  const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
+  const [draftConnectorTools, setDraftConnectorTools] = useState<ConnectorTool[]>([]);
+  const [loadingTools, setLoadingTools] = useState(false);
 
   const selectedFlow = flows.find((flow) => flow.flowId === selectedFlowId) ?? flows[0];
   const linkedMapping = mappings.find(
@@ -180,8 +182,25 @@ export function IntegrationManagementConsole({
     [flows]
   );
 
+  const loadToolsForConnector = useCallback(async (connectorId: string) => {
+    setLoadingTools(true);
+    const result = await getConnectorTools(connectorId);
+    if (!result.isFallback) setDraftConnectorTools(result.data);
+    setLoadingTools(false);
+  }, []);
+
   useEffect(() => {
     refreshMappings();
+    // Load connectors list and tools for the default connector
+    getConnectors().then((result) => {
+      if (!result.isFallback) {
+        setConnectors(result.data);
+        const defaultId = result.data[0]?.connectorId ?? "netsuite";
+        setDraft(emptyDraft(defaultId));
+        void loadToolsForConnector(defaultId);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function refreshMappings() {
@@ -492,6 +511,38 @@ export function IntegrationManagementConsole({
                 value={draft.targetModule}
               />
               <label className="text-sm font-medium text-slate-900">
+                Source connector
+                <select
+                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                  value={draft.sourceConnector}
+                  onChange={async (event) => {
+                    const connectorId = event.target.value;
+                    const result = await getConnectorTools(connectorId);
+                    const firstTool = !result.isFallback && result.data[0] ? result.data[0].toolId : "orchestrator.query";
+                    if (!result.isFallback) setDraftConnectorTools(result.data);
+                    setDraft((current) => ({
+                      ...current,
+                      sourceConnector: connectorId,
+                      targetModule: connectorId.replace(/-/g, "_"),
+                      steps: [{
+                        approvedTool: firstTool as ApprovedFlowTool,
+                        description: `Run approved action ${firstTool}.`,
+                        id: firstTool.replaceAll(".", "-"),
+                        name: firstTool
+                      }]
+                    }));
+                  }}
+                >
+                  {connectors.length === 0 ? (
+                    <option value="netsuite">netsuite</option>
+                  ) : connectors.map((c) => (
+                    <option key={c.connectorId} value={c.connectorId}>
+                      {c.name} ({c.connectorId})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm font-medium text-slate-900">
                 Published mapping
                 <select
                   className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
@@ -515,6 +566,7 @@ export function IntegrationManagementConsole({
                 Approved action
                 <select
                   className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
+                  disabled={loadingTools}
                   onChange={(event) => {
                     const tool = event.target.value as ApprovedFlowTool;
                     setDraft((current) => ({
@@ -524,16 +576,20 @@ export function IntegrationManagementConsole({
                           approvedTool: tool,
                           description: `Run approved action ${tool}.`,
                           id: tool.replaceAll(".", "-"),
-                          name: statusLabel(tool)
+                          name: tool
                         }
                       ]
                     }));
                   }}
                   value={draft.steps[0]?.approvedTool}
                 >
-                  {approvedTools.map((tool) => (
-                    <option key={tool} value={tool}>
-                      {tool}
+                  {loadingTools ? (
+                    <option value="">Loading tools…</option>
+                  ) : draftConnectorTools.length === 0 ? (
+                    <option value="orchestrator.query">orchestrator.query</option>
+                  ) : draftConnectorTools.map((t) => (
+                    <option key={t.toolId} value={t.toolId}>
+                      {t.toolId} — {t.label}
                     </option>
                   ))}
                 </select>

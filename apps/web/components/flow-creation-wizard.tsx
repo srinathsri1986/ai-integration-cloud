@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -12,12 +12,12 @@ import {
   Loader2,
   Webhook
 } from "lucide-react";
-import type { FlowDefinitionUpsertRequest, FlowTriggerType } from "@ai-integration-cloud/shared";
+import type { ConnectorDefinition, FlowDefinitionUpsertRequest, FlowTriggerType } from "@ai-integration-cloud/shared";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CronPreview } from "@/components/cron-preview";
-import { saveFlowDefinition } from "@/lib/api";
+import { getConnectors, saveFlowDefinition } from "@/lib/api";
 
 // --- Trigger type cards ---
 
@@ -59,6 +59,55 @@ function TriggerCard({ selected, onSelect, icon, label, description }: TriggerCa
   );
 }
 
+// --- Connector picker card ---
+
+const AUTH_SCHEME_COLORS: Record<string, string> = {
+  oauth2:       "bg-sky-100 text-sky-700",
+  api_key:      "bg-violet-100 text-violet-700",
+  basic:        "bg-amber-100 text-amber-700",
+  token_based:  "bg-indigo-100 text-indigo-700",
+  none:         "bg-slate-100 text-slate-600",
+};
+
+function ConnectorCard({
+  connector,
+  selected,
+  onSelect,
+}: {
+  connector: ConnectorDefinition;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const colorClass = AUTH_SCHEME_COLORS[connector.authScheme] ?? AUTH_SCHEME_COLORS.none;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`
+        relative flex flex-col gap-2 p-4 rounded-xl border-2 text-left transition-all
+        hover:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-400
+        ${selected
+          ? "border-sky-500 bg-sky-50 ring-2 ring-sky-400"
+          : "border-slate-200 bg-white hover:bg-sky-50/40"
+        }
+      `}
+    >
+      {selected && (
+        <div className="absolute top-2 right-2">
+          <Check className="h-3.5 w-3.5 text-sky-600" />
+        </div>
+      )}
+      <p className={`text-sm font-semibold leading-tight ${selected ? "text-sky-700" : "text-slate-800"}`}>
+        {connector.name}
+      </p>
+      <p className="font-mono text-[11px] text-slate-400">{connector.connectorId}</p>
+      <span className={`self-start rounded-full px-2 py-0.5 text-[10px] font-medium ${colorClass}`}>
+        {connector.authScheme}
+      </span>
+    </button>
+  );
+}
+
 // --- Step progress bar ---
 
 function StepBar({ current, total }: { current: number; total: number }) {
@@ -91,20 +140,36 @@ export function FlowCreationWizard() {
   const [triggerType, setTriggerType] = useState<FlowTriggerType>("manual");
   const [cronExpression, setCronExpression] = useState("0 9 * * 1-5");
   const [webhookSecret, setWebhookSecret] = useState("");
-  const [targetModule, setTargetModule] = useState("cfo_dashboard");
+  const [targetModule, setTargetModule] = useState("");
+  const [sourceConnector, setSourceConnector] = useState<string>("");
+  const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
+  const [loadingConnectors, setLoadingConnectors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch connectors the first time step 2 is entered
+  useEffect(() => {
+    if (step === 2 && connectors.length === 0 && !loadingConnectors) {
+      setLoadingConnectors(true);
+      getConnectors().then((result) => {
+        if (!result.isFallback) setConnectors(result.data);
+        setLoadingConnectors(false);
+      });
+    }
+  }, [step, connectors.length, loadingConnectors]);
 
   const canProceedStep1 = name.trim().length >= 3 && (
     triggerType !== "schedule" || cronExpression.trim().split(/\s+/).length === 5
   );
+  const canProceedStep2 = sourceConnector.length > 0;
+
+  const selectedConnector = connectors.find((c) => c.connectorId === sourceConnector);
 
   async function handleSubmit() {
-    if (!canProceedStep1) return;
+    if (!canProceedStep2) return;
     setSubmitting(true);
     setError(null);
 
-    // Derive a slug-style flowId from the name
     const flowId = name.trim().toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "")
@@ -118,15 +183,15 @@ export function FlowCreationWizard() {
       flowId,
       name: name.trim(),
       description: descriptionValue,
-      sourceConnector: "netsuite",
-      targetModule,
+      sourceConnector,
+      targetModule: targetModule.trim() || sourceConnector.replace(/-/g, "_"),
       status: "draft",
       triggerType,
       steps: [
         {
           id: "step-1",
           name: "Default step",
-          description: "Initial step — configure in Integration Studio.",
+          description: "Initial step — configure approved tool in Integration Studio.",
           approvedTool: "orchestrator.query"
         }
       ],
@@ -156,7 +221,7 @@ export function FlowCreationWizard() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. NetSuite CFO dashboard refresh"
+              placeholder="e.g. Salesforce opportunity sync"
               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
             />
           </div>
@@ -246,26 +311,47 @@ export function FlowCreationWizard() {
         </div>
       )}
 
-      {/* Step 2 — Connector Config */}
+      {/* Step 2 — Source Connector */}
       {step === 2 && (
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Source connector</label>
-            <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-mono text-slate-700">
-              netsuite
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Additional connectors will be available in Release 6.0.
-            </p>
+            <label className="block text-sm font-medium text-slate-700 mb-3">
+              Source connector <span className="text-rose-500">*</span>
+            </label>
+
+            {loadingConnectors ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500 py-6">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading connectors…
+              </div>
+            ) : connectors.length === 0 ? (
+              <p className="text-sm text-slate-500 py-4">
+                Unable to load connectors. Check the API is running.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {connectors.map((connector) => (
+                  <ConnectorCard
+                    key={connector.connectorId}
+                    connector={connector}
+                    selected={sourceConnector === connector.connectorId}
+                    onSelect={() => setSourceConnector(connector.connectorId)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Target module</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Target module{" "}
+              <span className="text-xs text-slate-400 font-normal ml-1">(optional — defaults to connector name)</span>
+            </label>
             <input
               type="text"
               value={targetModule}
               onChange={(e) => setTargetModule(e.target.value)}
-              placeholder="e.g. cfo_dashboard"
+              placeholder={sourceConnector ? sourceConnector.replace(/-/g, "_") : "e.g. salesforce_opportunity"}
               className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
             />
           </div>
@@ -274,7 +360,7 @@ export function FlowCreationWizard() {
             <Button variant="secondary" onClick={() => setStep(1)} className="gap-2">
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            <Button onClick={() => setStep(3)} className="gap-2">
+            <Button disabled={!canProceedStep2} onClick={() => setStep(3)} className="gap-2">
               Next <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
@@ -312,10 +398,21 @@ export function FlowCreationWizard() {
               )}
 
               <dt className="text-slate-500">Source</dt>
-              <dd className="font-mono text-xs text-slate-700">netsuite</dd>
+              <dd className="flex items-center gap-2">
+                <span className="font-mono text-xs text-slate-700">{sourceConnector}</span>
+                {selectedConnector && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${AUTH_SCHEME_COLORS[selectedConnector.authScheme] ?? AUTH_SCHEME_COLORS.none}`}>
+                    {selectedConnector.authScheme}
+                  </span>
+                )}
+              </dd>
 
-              <dt className="text-slate-500">Target</dt>
-              <dd className="font-mono text-xs text-slate-700">{targetModule}</dd>
+              {targetModule && (
+                <>
+                  <dt className="text-slate-500">Target</dt>
+                  <dd className="font-mono text-xs text-slate-700">{targetModule}</dd>
+                </>
+              )}
             </dl>
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-2">
               This integration will be created as a <strong>draft</strong>. Submit it for approval before it can run.
