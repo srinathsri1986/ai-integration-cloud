@@ -168,8 +168,12 @@ export function DataMappingStudio() {
     lastSavedMappingId === mappingId || savedMappings.some((mapping) => mapping.mappingId === mappingId);
 
   // --- R14: canvas-driven mappings (drag-and-drop) ---
-  // Accepted AI suggestions seeded into the canvas as initialMappings
+  // canvasInitialMappings: seeded from AI suggestions AND kept in sync with every canvas change so
+  // that navigating away from the "map" step and back does NOT lose manually dragged mappings.
   const [canvasInitialMappings, setCanvasInitialMappings] = useState<CanvasMappingRow[]>([]);
+  // canvasResetKey: increment to hard-reset the canvas (wipe all mappings + re-pick connectors).
+  // Only changes when the user deliberately starts a fresh canvas; NOT on every mapping change.
+  const [canvasResetKey, setCanvasResetKey] = useState(0);
 
   function handleCanvasChange(
     newMappings: CanvasMappingRow[],
@@ -179,7 +183,7 @@ export function DataMappingStudio() {
     tgtObjId: string,
     allRequiredMapped: boolean,
   ) {
-    // Mirror canvas state back into studio state so save/review steps still work
+    // Mirror canvas state back into studio so Review / Save steps work
     setMappings(
       newMappings.map((m) => ({
         id: m.id,
@@ -189,11 +193,17 @@ export function DataMappingStudio() {
       })),
     );
     setCanvasAllRequiredMapped(allRequiredMapped);
-    // Convert canvas object IDs to catalog format: "netsuite"+"project" → "netsuite-project"
-    // Canvas objectId comes from the schema API (e.g. "project", "Opportunity", "cost_center")
+
+    // Persist the full mapping list so navigating away and back restores it.
+    // (canvasResetKey is NOT changed here — only explicit resets increment it)
+    setCanvasInitialMappings(newMappings);
+
+    // Convert canvas object IDs → backend catalog format
+    // e.g.  "salesforce" + "Opportunity"  →  "salesforce-opportunity"
+    //        "sap"        + "cost_center"  →  "sap-cost-center"
     const toCatalogId = (connId: string, objId: string) =>
       `${connId}-${objId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
-    // Auto-generate mapping ID + name from connector/object names
+
     const newId   = `${srcConnId}-${srcObjId}--${tgtConnId}-${tgtObjId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const newName = `${srcConnId} ${srcObjId} → ${tgtConnId} ${tgtObjId}`;
     setMappingId(newId);
@@ -308,7 +318,7 @@ export function DataMappingStudio() {
         }
       ];
     });
-    // Seed accepted suggestions into the drag-and-drop canvas
+    // Seed into canvas — update initialMappings AND bump resetKey so canvas picks up new seeds
     setCanvasInitialMappings((current) => {
       const withoutTarget = current.filter((m) => m.targetField !== suggestion.targetField);
       return [
@@ -321,6 +331,7 @@ export function DataMappingStudio() {
         },
       ];
     });
+    setCanvasResetKey((k) => k + 1); // force canvas to re-read the new initialMappings
     setSuggestions((current) =>
       current.filter(
         (candidate) =>
@@ -350,14 +361,18 @@ export function DataMappingStudio() {
       return;
     }
 
-    if (missingRequiredTargets.length > 0) {
+    // When the drag-and-drop canvas is in use, trust its own required-field tracking.
+    // Fall back to the static catalog check only for the legacy click-to-map UI.
+    if (!canvasAllRequiredMapped && missingRequiredTargets.length > 0) {
       setMessage(`Map required fields first: ${missingRequiredTargets.map((field) => field.name).join(", ")}.`);
       return;
     }
 
     setIsSaving(true);
+    // Description uses mappingName when catalog objects aren't loaded for the canvas selection.
+    const description = `Maps ${mappingName} fields with governed transforms.`;
     const response = await saveMappingDefinition({
-      description: `Maps ${sourceObject.displayName} fields into ${targetObject.displayName} fields with governed transforms.`,
+      description,
       mappingId,
       mappings: mappings.map((mapping) => ({
         confidence: mapping.confidence ?? null,
@@ -970,7 +985,7 @@ export function DataMappingStudio() {
         </div>
 
         <MappingCanvas
-          key={canvasInitialMappings.map((m) => m.id).join(",")}
+          key={canvasResetKey}
           initialMappings={canvasInitialMappings}
           onMappingsChange={handleCanvasChange}
         />

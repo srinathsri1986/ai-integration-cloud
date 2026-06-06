@@ -20,7 +20,15 @@ export type PlatformRoute = {
   roles: UserRole[];
 };
 
+/**
+ * Core iPaaS platform routes.
+ *
+ * Route order = sidebar order.
+ * Core platform features come first; the Finance Analytics demo sits at the
+ * bottom so it's clearly a sample use-case showcase rather than a product pillar.
+ */
 export const platformRoutes: PlatformRoute[] = [
+  // ── Core platform ──────────────────────────────────────────────────────────
   {
     description: "Integration estate overview",
     href: "/dashboard",
@@ -29,53 +37,57 @@ export const platformRoutes: PlatformRoute[] = [
     roles: ["Integration Admin", "Developer", "CFO", "Finance Controller", "Viewer"]
   },
   {
-    description: "Executive finance cockpit",
-    href: "/cfo",
-    icon: BarChart3,
-    label: "CFO Dashboard",
-    roles: ["CFO", "Finance Controller", "Integration Admin", "Viewer"]
-  },
-  {
-    description: "Ask governed CFO questions",
-    href: "/orchestrator",
-    icon: Bot,
-    label: "Orchestrator",
-    roles: ["CFO", "Finance Controller", "Integration Admin", "Developer"]
-  },
-  {
-    description: "Guided no-code integration builder",
+    description: "Build and manage integration flows",
     href: "/flows",
     icon: GitBranch,
     label: "Integration Studio",
     roles: ["Integration Admin", "Developer"]
   },
   {
-    description: "Match fields between systems",
+    description: "Map fields between connected systems",
     href: "/mapping",
     icon: Map,
     label: "Data Mapping",
     roles: ["Integration Admin", "Developer"]
   },
   {
-    description: "Systems, APIs, and connector health",
+    description: "Connected systems, APIs, and health",
     href: "/connectors",
     icon: Cable,
-    label: "Systems",
+    label: "Connectors",
     roles: ["Integration Admin", "Developer"]
   },
   {
-    description: "Review tool and model activity",
+    description: "AI integration design and troubleshooting",
+    href: "/orchestrator",
+    icon: Bot,
+    label: "AI Assistant",
+    roles: ["Integration Admin", "Developer"]
+  },
+  {
+    description: "Audit trail, compliance, and governance",
     href: "/audit",
     icon: ClipboardCheck,
     label: "Governance",
     roles: ["Integration Admin", "Developer", "Viewer"]
   },
   {
-    description: "Local role and runtime controls",
+    description: "Role and runtime platform controls",
     href: "/admin",
     icon: Settings,
     label: "Admin",
     roles: ["Integration Admin", "Developer"]
+  },
+  // ── Sample use-case demo ───────────────────────────────────────────────────
+  // Demonstrates a live NetSuite + Salesforce integration built on this platform.
+  // Shown to finance personas so they can see platform output without needing
+  // to configure integrations themselves.
+  {
+    description: "Live demo: NetSuite finance analytics",
+    href: "/cfo",
+    icon: BarChart3,
+    label: "Finance Analytics",
+    roles: ["CFO", "Finance Controller", "Integration Admin", "Viewer"]
   }
 ];
 
@@ -87,38 +99,38 @@ export const personas: Array<{
 }> = [
   {
     defaultPath: "/cfo",
-    description: "Executive dashboard, narrative insight, variance, and project risk.",
+    description: "Live finance analytics powered by NetSuite integration — variance, projects, subsidiaries.",
     label: "CFO",
-    signal: "Board-ready finance view"
+    signal: "Finance integration demo"
   },
   {
     defaultPath: "/cfo",
-    description: "Variance review, drilldowns, CFO queries, and operating follow-up.",
+    description: "Integration-driven variance review, project risk, and operating follow-up.",
     label: "Finance Controller",
-    signal: "Close and review workspace"
+    signal: "Finance integration demo"
   },
   {
     defaultPath: "/flows",
-    description: "Connector setup, flow design, governance, and platform operations.",
+    description: "Connector setup, integration flow design, governance, and platform operations.",
     label: "Integration Admin",
     signal: "Integration command center"
   },
   {
-    defaultPath: "/orchestrator",
-    description: "Tool contracts, orchestration behavior, MCP readiness, and APIs.",
+    defaultPath: "/flows",
+    description: "Flow builder, data mapping, connector APIs, and AI integration assistant.",
     label: "Developer",
-    signal: "Builder and API workspace"
+    signal: "Builder workspace"
   },
   {
-    defaultPath: "/cfo",
-    description: "Read-only CFO visibility and limited governance review.",
+    defaultPath: "/dashboard",
+    description: "Read-only integration estate and governance visibility.",
     label: "Viewer",
     signal: "Controlled visibility"
   }
 ];
 
 export function defaultPathForRole(role: UserRole) {
-  return personas.find((persona) => persona.label === role)?.defaultPath ?? "/cfo";
+  return personas.find((persona) => persona.label === role)?.defaultPath ?? "/dashboard";
 }
 
 export function routesForRole(role: UserRole) {

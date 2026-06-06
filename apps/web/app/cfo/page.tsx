@@ -101,16 +101,17 @@ export default async function CfoPage() {
   return (
     <PlatformShell
       active="/cfo"
-      subtitle="Executive finance intelligence from approved CFO services, governed model calls, and safe NetSuite access patterns."
-      title="CFO Executive Dashboard"
+      eyebrow="Finance Analytics — Sample Integration"
+      subtitle="Live NetSuite data surfaced through a governed integration built on this platform. Demonstrates what end-users see when an iPaaS integration is live and published."
+      title="Finance Analytics Demo"
     >
       <div className="space-y-8">
         <section className="overflow-hidden rounded-2xl border border-white/80 bg-slate-950 text-white shadow-xl shadow-slate-300/50">
           <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
             <div>
-              <Badge className="border-white/15 bg-white/10 text-white">Finance control tower</Badge>
+              <Badge className="border-white/15 bg-white/10 text-white">Sample integration — NetSuite → Analytics</Badge>
               <h2 className="mt-5 max-w-3xl text-3xl font-semibold leading-tight tracking-normal">
-                Board-ready CFO view with governed AI insight.
+                Finance analytics built on a live iPaaS integration.
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
                 P/L variance, cash position, project exposure, subsidiary drilldowns, and
