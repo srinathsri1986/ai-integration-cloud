@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowRightLeft,
   Calendar,
   CheckCircle2,
   CircleDot,
   ClipboardCopy,
-  FilePenLine,
   Hand,
   Link2,
   Loader2,
+  Map,
   PauseCircle,
   Play,
   Plus,
@@ -21,11 +23,7 @@ import {
   Workflow
 } from "lucide-react";
 import type {
-  ApprovedFlowTool,
-  ConnectorDefinition,
-  ConnectorTool,
   FlowDefinition,
-  FlowDefinitionUpsertRequest,
   FlowLifecycleAction,
   FlowRunResponse,
   MappingDefinition,
@@ -39,14 +37,10 @@ import { Card } from "@/components/ui/card";
 import { DeleteFlowModal } from "@/components/delete-flow-modal";
 import {
   type ApiResult,
-  deleteFlowDefinition,
   deleteMappingDefinition,
-  getConnectors,
-  getConnectorTools,
   getFlowRun,
   getMappingDefinitions,
   runFlow,
-  saveFlowDefinition,
   simulateMappingDefinition,
   transitionFlowLifecycle,
   transitionMappingLifecycle
@@ -119,27 +113,6 @@ function statusBadgeClass(status: string) {
   return "border-violet-200 bg-violet-50 text-violet-900";
 }
 
-function emptyDraft(connectorId = "netsuite", firstTool = "cfo.dashboard_summary"): FlowDefinitionUpsertRequest {
-  return {
-    description: "Integration draft — configure approved actions and publish to run.",
-    flowId: `${connectorId}-integration-draft`,
-    mappingDefinitionId: null,
-    name: `${connectorId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} Integration`,
-    sourceConnector: connectorId,
-    status: "draft",
-    steps: [
-      {
-        approvedTool: firstTool as ApprovedFlowTool,
-        description: `Run approved action ${firstTool}.`,
-        id: firstTool.replaceAll(".", "-"),
-        name: firstTool
-      }
-    ],
-    targetModule: connectorId.replace(/-/g, "_"),
-    triggerCron: null,
-    triggerType: "manual"
-  };
-}
 
 export function IntegrationManagementConsole({
   initialFlows
@@ -159,19 +132,22 @@ export function IntegrationManagementConsole({
   const [mappings, setMappings] = useState<MappingDefinition[]>([]);
   const [deleteModalFlow, setDeleteModalFlow] = useState<FlowDefinition | null>(null);
   const [mappingSimulation, setMappingSimulation] = useState<MappingSimulationResponse | undefined>();
-  const [draft, setDraft] = useState<FlowDefinitionUpsertRequest>(emptyDraft());
-  const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
-  const [draftConnectorTools, setDraftConnectorTools] = useState<ConnectorTool[]>([]);
-  const [loadingTools, setLoadingTools] = useState(false);
 
   const selectedFlow = flows.find((flow) => flow.flowId === selectedFlowId) ?? flows[0];
   const linkedMapping = mappings.find(
     (mapping) => mapping.mappingId === selectedFlow?.mappingDefinitionId
   );
-  const publishedMappings = mappings.filter((mapping) => mapping.status === "published");
   const filteredFlows = useMemo(
     () => (filter === "all" ? flows : flows.filter((flow) => flow.status === filter)),
     [filter, flows]
+  );
+  const userFlows = useMemo(
+    () => filteredFlows.filter((flow) => !builtInFlowIds.has(flow.flowId)),
+    [filteredFlows]
+  );
+  const demoFlows = useMemo(
+    () => filteredFlows.filter((flow) => builtInFlowIds.has(flow.flowId)),
+    [filteredFlows]
   );
   const counts = useMemo(
     () =>
@@ -182,24 +158,8 @@ export function IntegrationManagementConsole({
     [flows]
   );
 
-  const loadToolsForConnector = useCallback(async (connectorId: string) => {
-    setLoadingTools(true);
-    const result = await getConnectorTools(connectorId);
-    if (!result.isFallback) setDraftConnectorTools(result.data);
-    setLoadingTools(false);
-  }, []);
-
   useEffect(() => {
     refreshMappings();
-    // Load connectors list and tools for the default connector
-    getConnectors().then((result) => {
-      if (!result.isFallback) {
-        setConnectors(result.data);
-        const defaultId = result.data[0]?.connectorId ?? "netsuite";
-        setDraft(emptyDraft(defaultId));
-        void loadToolsForConnector(defaultId);
-      }
-    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -210,28 +170,6 @@ export function IntegrationManagementConsole({
       setMessage(response.error ?? "Unable to load mapping definitions.");
       setMessageIsError(true);
     }
-  }
-
-  async function saveDraft() {
-    setBusyKey("save-draft");
-    setMessage(undefined);
-    setMessageIsError(false);
-    const response = await saveFlowDefinition(draft);
-    if (response.ok) {
-      setFlows((current) => {
-        const exists = current.some((flow) => flow.flowId === response.data.flowId);
-        return exists
-          ? current.map((flow) => (flow.flowId === response.data.flowId ? response.data : flow))
-          : [response.data, ...current];
-      });
-      setSelectedFlowId(response.data.flowId);
-      setMessage(`${response.data.name} saved as a draft integration.`);
-      setMessageIsError(false);
-    } else {
-      setMessage(response.error ?? "Unable to save draft integration.");
-      setMessageIsError(true);
-    }
-    setBusyKey(undefined);
   }
 
   async function applyFlowAction(flow: FlowDefinition, action: FlowLifecycleAction) {
@@ -421,6 +359,7 @@ export function IntegrationManagementConsole({
               </div>
             </div>
 
+            {/* User-created integrations */}
             <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
               <div className="grid min-w-[920px] grid-cols-[1.3fr_110px_110px_120px_150px] bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-muted-foreground">
                 <span>Integration</span>
@@ -429,247 +368,67 @@ export function IntegrationManagementConsole({
                 <span>Mapping</span>
                 <span>Actions</span>
               </div>
-              {filteredFlows.map((flow) => (
-                <div
-                  className={`grid min-w-[920px] w-full grid-cols-[1.3fr_110px_110px_120px_150px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 cursor-pointer ${
-                    selectedFlow?.flowId === flow.flowId ? "bg-sky-50/60" : "bg-white"
-                  }`}
-                  key={flow.flowId}
-                  onClick={() => setSelectedFlowId(flow.flowId)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && setSelectedFlowId(flow.flowId)}
-                >
-                  <span>
-                    <span className="flex items-center gap-2">
-                      <span className="block text-sm font-semibold text-slate-950">{flow.name}</span>
-                      <TriggerBadge triggerType={flow.triggerType} cronValue={flow.triggerCron} />
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                      {flow.sourceConnector} to {flow.targetModule}
-                    </span>
-                  </span>
-                  <Badge className={statusBadgeClass(flow.status)}>{statusLabel(flow.status)}</Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {flow.lastRunStatus === "never_run" ? "Never run" : statusLabel(flow.lastRunStatus)}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {flow.mappingDefinitionId ?? "None"}
-                  </span>
-                  <span className="flex justify-end gap-1">
-                    <Button
-                      disabled={builtInFlowIds.has(flow.flowId)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        deleteFlow(flow);
-                      }}
-                      title={
-                        builtInFlowIds.has(flow.flowId)
-                          ? "Built-in demo integrations are protected"
-                          : "Delete integration"
-                      }
-                      type="button"
-                      variant="secondary"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="bg-white">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Create draft</p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-950">
-                  Save a new integration draft
-                </h3>
-              </div>
-              <Badge className="border-violet-200 bg-violet-50 text-violet-900">
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                Real save
-              </Badge>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <TextInput
-                label="Integration ID"
-                onChange={(value) => setDraft((current) => ({ ...current, flowId: value }))}
-                value={draft.flowId}
-              />
-              <TextInput
-                label="Name"
-                onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
-                value={draft.name}
-              />
-              <TextInput
-                label="Target area"
-                onChange={(value) => setDraft((current) => ({ ...current, targetModule: value }))}
-                value={draft.targetModule}
-              />
-              <label className="text-sm font-medium text-slate-900">
-                Source connector
-                <select
-                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-                  value={draft.sourceConnector}
-                  onChange={async (event) => {
-                    const connectorId = event.target.value;
-                    const result = await getConnectorTools(connectorId);
-                    const firstTool = !result.isFallback && result.data[0] ? result.data[0].toolId : "orchestrator.query";
-                    if (!result.isFallback) setDraftConnectorTools(result.data);
-                    setDraft((current) => ({
-                      ...current,
-                      sourceConnector: connectorId,
-                      targetModule: connectorId.replace(/-/g, "_"),
-                      steps: [{
-                        approvedTool: firstTool as ApprovedFlowTool,
-                        description: `Run approved action ${firstTool}.`,
-                        id: firstTool.replaceAll(".", "-"),
-                        name: firstTool
-                      }]
-                    }));
-                  }}
-                >
-                  {connectors.length === 0 ? (
-                    <option value="netsuite">netsuite</option>
-                  ) : connectors.map((c) => (
-                    <option key={c.connectorId} value={c.connectorId}>
-                      {c.name} ({c.connectorId})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm font-medium text-slate-900">
-                Published mapping
-                <select
-                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      mappingDefinitionId: event.target.value || null
-                    }))
-                  }
-                  value={draft.mappingDefinitionId ?? ""}
-                >
-                  <option value="">No mapping attached</option>
-                  {publishedMappings.map((mapping) => (
-                    <option key={mapping.mappingId} value={mapping.mappingId}>
-                      {mapping.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm font-medium text-slate-900 md:col-span-2">
-                Approved action
-                <select
-                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-                  disabled={loadingTools}
-                  onChange={(event) => {
-                    const tool = event.target.value as ApprovedFlowTool;
-                    setDraft((current) => ({
-                      ...current,
-                      steps: [
-                        {
-                          approvedTool: tool,
-                          description: `Run approved action ${tool}.`,
-                          id: tool.replaceAll(".", "-"),
-                          name: tool
-                        }
-                      ]
-                    }));
-                  }}
-                  value={draft.steps[0]?.approvedTool}
-                >
-                  {loadingTools ? (
-                    <option value="">Loading tools…</option>
-                  ) : draftConnectorTools.length === 0 ? (
-                    <option value="orchestrator.query">orchestrator.query</option>
-                  ) : draftConnectorTools.map((t) => (
-                    <option key={t.toolId} value={t.toolId}>
-                      {t.toolId} — {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm font-medium text-slate-900 md:col-span-2">
-                Description
-                <textarea
-                  className="mt-2 min-h-20 w-full rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, description: event.target.value }))
-                  }
-                  value={draft.description}
-                />
-              </label>
-              <label className="text-sm font-medium text-slate-900 md:col-span-2">
-                Trigger type
-                <select
-                  className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-                  onChange={(event) => {
-                    const t = event.target.value as FlowDefinitionUpsertRequest["triggerType"];
-                    setDraft((current) => ({
-                      ...current,
-                      triggerType: t,
-                      triggerCron: t === "schedule" ? (current.triggerCron ?? "0 9 * * 1") : null
-                    }));
-                  }}
-                  value={draft.triggerType}
-                >
-                  <option value="manual">Manual — run on demand</option>
-                  <option value="schedule">Schedule — cron</option>
-                  <option value="webhook">Webhook — inbound HTTP</option>
-                </select>
-              </label>
-              {draft.triggerType === "schedule" && (
-                <div className="md:col-span-2 space-y-2">
-                  <label className="text-sm font-medium text-slate-900">
-                    Cron expression
-                    <input
-                      className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 font-mono text-sm outline-none focus:border-primary"
-                      onChange={(event) =>
-                        setDraft((current) => ({ ...current, triggerCron: event.target.value || null }))
-                      }
-                      placeholder="0 9 * * 1"
-                      type="text"
-                      value={draft.triggerCron ?? ""}
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { label: "Every Monday 9am", cron: "0 9 * * 1" },
-                      { label: "Daily midnight", cron: "0 0 * * *" },
-                      { label: "1st of month", cron: "0 0 1 * *" },
-                      { label: "Hourly", cron: "0 * * * *" }
-                    ].map(({ label, cron }) => (
-                      <button
-                        className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                        key={cron}
-                        onClick={() => setDraft((current) => ({ ...current, triggerCron: cron }))}
-                        type="button"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Format: <code className="font-mono">minute hour day-of-month month day-of-week</code>
+              {userFlows.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted-foreground">
+                  <Workflow className="h-8 w-8 text-slate-300" />
+                  <p className="font-medium text-slate-700">No integrations yet</p>
+                  <p className="max-w-xs text-xs">
+                    Use the wizard to configure connectors, approved actions, and triggers for each
+                    integration you need.
                   </p>
+                  <Button onClick={() => router.push("/flows/new")} type="button">
+                    <Plus className="h-4 w-4" />
+                    Create your first integration
+                  </Button>
                 </div>
-              )}
-              {draft.triggerType === "webhook" && (
-                <p className="md:col-span-2 text-xs text-muted-foreground">
-                  A webhook URL and secret will be generated when this integration is published.
-                </p>
+              ) : (
+                userFlows.map((flow) => (
+                  <FlowRow
+                    flow={flow}
+                    isSelected={selectedFlow?.flowId === flow.flowId}
+                    isBuiltIn={false}
+                    busyKey={busyKey}
+                    key={flow.flowId}
+                    onSelect={setSelectedFlowId}
+                    onDelete={deleteFlow}
+                  />
+                ))
               )}
             </div>
 
-            <Button className="mt-4 w-full" disabled={busyKey === "save-draft"} onClick={saveDraft} type="button">
-              <FilePenLine className="h-4 w-4" />
-              {busyKey === "save-draft" ? "Saving draft" : "Save draft integration"}
-            </Button>
+            {/* Built-in demo integrations — collapsible */}
+            <details className="group mt-4" open={userFlows.length === 0}>
+              <summary className="flex cursor-pointer select-none items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-muted-foreground hover:bg-slate-100">
+                <span className="flex-1">
+                  Demo integrations
+                  <span className="ml-2 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs">
+                    {demoFlows.length}
+                  </span>
+                </span>
+                <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+              </summary>
+              <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200">
+                <div className="grid min-w-[920px] grid-cols-[1.3fr_110px_110px_120px_150px] bg-slate-50 px-4 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <span>Demo Integration</span>
+                  <span>Status</span>
+                  <span>Run</span>
+                  <span>Mapping</span>
+                  <span>Actions</span>
+                </div>
+                {demoFlows.map((flow) => (
+                  <FlowRow
+                    flow={flow}
+                    isSelected={selectedFlow?.flowId === flow.flowId}
+                    isBuiltIn
+                    busyKey={busyKey}
+                    key={flow.flowId}
+                    onSelect={setSelectedFlowId}
+                    onDelete={deleteFlow}
+                  />
+                ))}
+              </div>
+            </details>
           </Card>
         </div>
 
@@ -689,6 +448,78 @@ export function IntegrationManagementConsole({
         />
       </div>
     </section>
+  );
+}
+
+function FlowRow({
+  flow,
+  isSelected,
+  isBuiltIn,
+  busyKey,
+  onSelect,
+  onDelete
+}: {
+  flow: FlowDefinition;
+  isSelected: boolean;
+  isBuiltIn: boolean;
+  busyKey?: string;
+  onSelect: (id: string) => void;
+  onDelete: (flow: FlowDefinition) => void;
+}) {
+  return (
+    <div
+      className={`grid min-w-[920px] w-full grid-cols-[1.3fr_110px_110px_120px_150px] items-center gap-3 border-t border-slate-200 px-4 py-4 text-left transition hover:bg-slate-50 cursor-pointer ${
+        isSelected ? "bg-sky-50/60" : "bg-white"
+      }`}
+      key={flow.flowId}
+      onClick={() => onSelect(flow.flowId)}
+      onKeyDown={(e) => e.key === "Enter" && onSelect(flow.flowId)}
+      role="button"
+      tabIndex={0}
+    >
+      <span>
+        <span className="flex items-center gap-2">
+          <span className="block text-sm font-semibold text-slate-950">{flow.name}</span>
+          <TriggerBadge triggerType={flow.triggerType} cronValue={flow.triggerCron} />
+          {isBuiltIn && (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+              demo
+            </span>
+          )}
+        </span>
+        <span className="mt-1 flex items-center gap-1 text-xs leading-5 text-muted-foreground">
+          <span className="capitalize">{flow.sourceConnector}</span>
+          {flow.targetModule && flow.targetModule !== flow.sourceConnector && (
+            <>
+              <ArrowRightLeft className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+              <span className="capitalize">{flow.targetModule.replace(/_/g, " ")}</span>
+            </>
+          )}
+        </span>
+      </span>
+      <Badge className={statusBadgeClass(flow.status)}>{statusLabel(flow.status)}</Badge>
+      <span className="text-xs text-muted-foreground">
+        {flow.lastRunStatus === "never_run" ? "Never run" : statusLabel(flow.lastRunStatus)}
+      </span>
+      <span className="truncate text-xs text-muted-foreground">
+        {flow.mappingDefinitionId ?? "None"}
+      </span>
+      <span className="flex justify-end gap-1">
+        <Button
+          disabled={isBuiltIn || busyKey === `${flow.flowId}:delete`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(flow);
+          }}
+          title={isBuiltIn ? "Built-in demo integrations are protected" : "Delete integration"}
+          type="button"
+          variant="secondary"
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete
+        </Button>
+      </span>
+    </div>
   );
 }
 
@@ -879,8 +710,17 @@ function IntegrationReviewPane({
             </Button>
           </div>
         ) : (
-          <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-muted-foreground">
-            Attach a published mapping when creating or editing an integration draft.
+          <div className="mt-4 space-y-3">
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-muted-foreground">
+              No data mapping is linked to this integration.
+            </div>
+            <Link
+              className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+              href="/mapping"
+            >
+              <Map className="h-4 w-4 shrink-0" />
+              Create a data mapping →
+            </Link>
           </div>
         )}
       </Card>
@@ -990,23 +830,3 @@ function DarkMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TextInput({
-  label,
-  onChange,
-  value
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-}) {
-  return (
-    <label className="text-sm font-medium text-slate-900">
-      {label}
-      <input
-        className="mt-2 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-        onChange={(event) => onChange(event.target.value)}
-        value={value}
-      />
-    </label>
-  );
-}

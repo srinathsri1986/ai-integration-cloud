@@ -161,9 +161,10 @@ export function DataMappingStudio() {
   );
   const usesSessionDiscoveredObject =
     sourceObjectId.startsWith("rest-discovered-") || targetObjectId.startsWith("rest-discovered-");
-  // canReview: canvas path trusts the canvas's own required-field tracking;
-  // classic tray path uses the static catalog required-fields check.
-  const canReview = mappings.length > 0 && (canvasAllRequiredMapped || missingRequiredTargets.length === 0);
+  // canReview: allow navigation to Review if there are any mappings.
+  // Required-field validation is surfaced as a warning in the Review step itself
+  // (on Save) so the user is never silently blocked with no explanation.
+  const canReview = mappings.length > 0;
   const canSimulateCurrentMapping =
     lastSavedMappingId === mappingId || savedMappings.some((mapping) => mapping.mappingId === mappingId);
 
@@ -358,13 +359,6 @@ export function DataMappingStudio() {
         "Discovered REST schemas are session-scoped. Map them visually now; promote them to a governed catalog object before saving a persistent mapping."
       );
       setActiveStep("discover");
-      return;
-    }
-
-    // When the drag-and-drop canvas is in use, trust its own required-field tracking.
-    // Fall back to the static catalog check only for the legacy click-to-map UI.
-    if (!canvasAllRequiredMapped && missingRequiredTargets.length > 0) {
-      setMessage(`Map required fields first: ${missingRequiredTargets.map((field) => field.name).join(", ")}.`);
       return;
     }
 
@@ -572,7 +566,29 @@ export function DataMappingStudio() {
         </div>
       </Card>
 
-      <WizardProgress activeStep={activeStep} onStepChange={setActiveStep} />
+      <WizardProgress
+        activeStep={activeStep}
+        onStepChange={(step) => {
+          setMessage(undefined);
+          setActiveStep(step);
+        }}
+      />
+
+      {/* Global status banner — visible on every step */}
+      {message ? (
+        <div className={`rounded-md border px-4 py-3 text-sm ${
+          message.toLowerCase().includes("error") ||
+          message.toLowerCase().includes("required") ||
+          message.toLowerCase().includes("could not") ||
+          message.toLowerCase().includes("cannot") ||
+          message.toLowerCase().includes("failed") ||
+          message.toLowerCase().includes("missing")
+            ? "border-rose-200 bg-rose-50 text-rose-900"
+            : "border-emerald-200 bg-emerald-50 text-emerald-900"
+        }`}>
+          {message}
+        </div>
+      ) : null}
 
       {activeStep === "describe" ? (
       <Card className="overflow-hidden border-slate-200 bg-white/95 p-0 shadow-sm">
@@ -848,10 +864,27 @@ export function DataMappingStudio() {
                 onChange={(event) => setMappingName(event.target.value)}
                 value={mappingName}
               />
+              {/* Required-field validation — shown as warning before Save */}
+              {missingRequiredTargets.length > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>
+                    <span className="font-semibold">Missing required fields: </span>
+                    {missingRequiredTargets.map((f) => f.name).join(", ")}.
+                    {" "}Go back to Map and connect them before saving.
+                  </span>
+                </div>
+              )}
               <Button disabled={isSaving || mappings.length === 0} onClick={saveDraft} type="button">
                 <ListChecks className="h-4 w-4" />
                 {isSaving ? "Saving..." : "Save mapping draft"}
               </Button>
+              {/* Simulate is enabled only after the mapping has been saved */}
+              {!canSimulateCurrentMapping && (
+                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+                  Save the mapping draft above — then simulate it.
+                </p>
+              )}
               <Button
                 disabled={isSimulating || !canSimulateCurrentMapping}
                 onClick={simulateCurrentMapping}
@@ -990,11 +1023,18 @@ export function DataMappingStudio() {
           onMappingsChange={handleCanvasChange}
         />
 
-        {message ? (
-          <p className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-            {message}
-          </p>
-        ) : null}
+        {/* Required-field hint — shown whenever required targets are not yet covered */}
+        {missingRequiredTargets.length > 0 && (
+          <div className="mt-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <ListChecks className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              <span className="font-semibold">Required target fields not yet mapped: </span>
+              {missingRequiredTargets.map((f) => f.name).join(", ")}.
+              {" "}Map these before saving the definition.
+            </span>
+          </div>
+        )}
+
       </Card>
       ) : null}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -140,30 +140,35 @@ export function FlowCreationWizard() {
   const [triggerType, setTriggerType] = useState<FlowTriggerType>("manual");
   const [cronExpression, setCronExpression] = useState("0 9 * * 1-5");
   const [webhookSecret, setWebhookSecret] = useState("");
-  const [targetModule, setTargetModule] = useState("");
   const [sourceConnector, setSourceConnector] = useState<string>("");
+  const [targetConnector, setTargetConnector] = useState<string>("");
   const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
   const [loadingConnectors, setLoadingConnectors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch connectors the first time step 2 is entered
+  // Fetch connectors exactly once when step 2 is first entered.
+  // Always consume result.data (real or fallback) so the list is never empty
+  // and the component doesn't loop on isFallback responses.
+  const hasFetchedConnectors = useRef(false);
   useEffect(() => {
-    if (step === 2 && connectors.length === 0 && !loadingConnectors) {
+    if (step === 2 && !hasFetchedConnectors.current) {
+      hasFetchedConnectors.current = true;
       setLoadingConnectors(true);
       getConnectors().then((result) => {
-        if (!result.isFallback) setConnectors(result.data);
+        setConnectors(result.data);   // use data even when fallback
         setLoadingConnectors(false);
       });
     }
-  }, [step, connectors.length, loadingConnectors]);
+  }, [step]);
 
   const canProceedStep1 = name.trim().length >= 3 && (
     triggerType !== "schedule" || cronExpression.trim().split(/\s+/).length === 5
   );
-  const canProceedStep2 = sourceConnector.length > 0;
+  const canProceedStep2 = sourceConnector.length > 0 && targetConnector.length > 0;
 
   const selectedConnector = connectors.find((c) => c.connectorId === sourceConnector);
+  const selectedTargetConnector = connectors.find((c) => c.connectorId === targetConnector);
 
   async function handleSubmit() {
     if (!canProceedStep2) return;
@@ -184,7 +189,7 @@ export function FlowCreationWizard() {
       name: name.trim(),
       description: descriptionValue,
       sourceConnector,
-      targetModule: targetModule.trim() || sourceConnector.replace(/-/g, "_"),
+      targetModule: targetConnector || sourceConnector.replace(/-/g, "_"),
       status: "draft",
       triggerType,
       steps: [
@@ -343,17 +348,27 @@ export function FlowCreationWizard() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Target module{" "}
-              <span className="text-xs text-slate-400 font-normal ml-1">(optional — defaults to connector name)</span>
+            <label className="block text-sm font-medium text-slate-700 mb-3">
+              Target connector <span className="text-rose-500">*</span>
             </label>
-            <input
-              type="text"
-              value={targetModule}
-              onChange={(e) => setTargetModule(e.target.value)}
-              placeholder={sourceConnector ? sourceConnector.replace(/-/g, "_") : "e.g. salesforce_opportunity"}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-400 bg-white"
-            />
+
+            {loadingConnectors ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500 py-4">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading connectors…
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {connectors.map((connector) => (
+                  <ConnectorCard
+                    key={connector.connectorId}
+                    connector={connector}
+                    selected={targetConnector === connector.connectorId}
+                    onSelect={() => setTargetConnector(connector.connectorId)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between pt-2">
@@ -399,7 +414,7 @@ export function FlowCreationWizard() {
 
               <dt className="text-slate-500">Source</dt>
               <dd className="flex items-center gap-2">
-                <span className="font-mono text-xs text-slate-700">{sourceConnector}</span>
+                <span className="font-medium text-slate-800">{selectedConnector?.name ?? sourceConnector}</span>
                 {selectedConnector && (
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${AUTH_SCHEME_COLORS[selectedConnector.authScheme] ?? AUTH_SCHEME_COLORS.none}`}>
                     {selectedConnector.authScheme}
@@ -407,12 +422,15 @@ export function FlowCreationWizard() {
                 )}
               </dd>
 
-              {targetModule && (
-                <>
-                  <dt className="text-slate-500">Target</dt>
-                  <dd className="font-mono text-xs text-slate-700">{targetModule}</dd>
-                </>
-              )}
+              <dt className="text-slate-500">Target</dt>
+              <dd className="flex items-center gap-2">
+                <span className="font-medium text-slate-800">{selectedTargetConnector?.name ?? targetConnector}</span>
+                {selectedTargetConnector && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${AUTH_SCHEME_COLORS[selectedTargetConnector.authScheme] ?? AUTH_SCHEME_COLORS.none}`}>
+                    {selectedTargetConnector.authScheme}
+                  </span>
+                )}
+              </dd>
             </dl>
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-2">
               This integration will be created as a <strong>draft</strong>. Submit it for approval before it can run.

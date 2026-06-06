@@ -285,15 +285,16 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
     setHoveredTarget(null);
     if (!sourceFieldName || sourceFieldName === targetFieldName) return;
 
-    // Determine sensible default transform
+    // Determine sensible default transform.
+    // format_date is only valid when the SOURCE field is also a date/datetime type —
+    // the backend rejects format_date on non-date source fields.
     const srcFields  = schemaFields(srcSchema, srcObjId);
     const tgtFields  = schemaFields(tgtSchema, tgtObjId);
     const srcF = srcFields.find((f) => f.name === sourceFieldName);
     const tgtF = tgtFields.find((f) => f.name === targetFieldName);
-    const transform: MappingTransform =
-      tgtF?.type === "date" || tgtF?.type === "datetime" ? "format_date" : "direct";
-
-    void srcF; // used for future inference in R18
+    const isDateSrc = srcF?.type === "date" || srcF?.type === "datetime";
+    const isDateTgt = tgtF?.type === "date" || tgtF?.type === "datetime";
+    const transform: MappingTransform = isDateSrc && isDateTgt ? "format_date" : "direct";
 
     setMappings((prev) => {
       // Skip exact duplicate (same source → same target already mapped)

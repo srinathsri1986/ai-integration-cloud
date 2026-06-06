@@ -1,31 +1,19 @@
-import { ConnectorStudio } from "@/components/connector-studio";
 import { ConnectorCatalog } from "@/components/connector-catalog";
 import { PlatformShell } from "@/components/platform-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  getConnectors,
-  getNetSuiteConnectorConfig,
-  getRestApiConnectorConfig,
-  getRestApiObjects
-} from "@/lib/api";
+import { getConnectors } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function ConnectorsPage() {
-  const [connectorsResult, connectorResult, restApiConnectorResult, restApiObjectsResult] =
-    await Promise.all([
-      getConnectors(),
-      getNetSuiteConnectorConfig(),
-      getRestApiConnectorConfig(),
-      getRestApiObjects(),
-    ]);
+  const connectorsResult = await getConnectors();
 
   return (
     <PlatformShell
       active="/connectors"
       subtitle="Manage approved systems, APIs, auth posture, and connector readiness without exposing credentials or raw system access."
-      title="Systems and Connector Studio"
+      title="Connector Registry"
     >
       <div className="space-y-8">
         <section className="grid gap-4 lg:grid-cols-3">
@@ -52,17 +40,8 @@ export default async function ConnectorsPage() {
           </Card>
         </section>
 
-        {/* Generic connector catalogue — all 8 registered connectors */}
+        {/* All 8 registered connectors — configure, test, browse tools and fields */}
         <ConnectorCatalog initialConnectors={connectorsResult} />
-
-        {/* Legacy deep-config panels for NetSuite + REST API */}
-        <div className="-mx-5 lg:-mx-8">
-          <ConnectorStudio
-            initialConfig={connectorResult}
-            initialRestApiConfig={restApiConnectorResult}
-            initialRestApiObjects={restApiObjectsResult}
-          />
-        </div>
       </div>
     </PlatformShell>
   );
