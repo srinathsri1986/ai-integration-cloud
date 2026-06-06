@@ -34,3 +34,24 @@ class AuditLogSummary(BaseModel):
     fallback_count: int = Field(alias="fallbackCount")
     average_latency_ms: float = Field(alias="averageLatencyMs")
     by_intent: dict[str, int] = Field(alias="byIntent")
+
+
+class DailyEventCount(BaseModel):
+    date: str          # ISO date string, e.g. "2026-06-01"
+    total: int
+    successes: int
+    failures: int
+
+
+class AuditMetrics(BaseModel):
+    """Aggregate metrics for the observability dashboard."""
+
+    total_events: int = Field(alias="totalEvents")
+    success_rate: float = Field(alias="successRate")        # 0–1
+    average_latency_ms: float = Field(alias="averageLatencyMs")
+    p50_latency_ms: int = Field(alias="p50LatencyMs")
+    p95_latency_ms: int = Field(alias="p95LatencyMs")
+    by_intent: dict[str, int] = Field(alias="byIntent")
+    by_connector: dict[str, int] = Field(alias="byConnector")
+    events_per_day: list[DailyEventCount] = Field(alias="eventsPerDay")
+    distinct_intents: list[str] = Field(alias="distinctIntents")

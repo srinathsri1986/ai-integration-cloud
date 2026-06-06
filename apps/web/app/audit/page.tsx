@@ -1,13 +1,14 @@
 import { GovernanceConsole } from "@/components/governance-console";
 import { PlatformShell } from "@/components/platform-shell";
-import { getAuditLogs, getFlows } from "@/lib/api";
+import { getAuditLogs, getAuditMetrics, getFlows } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function AuditPage() {
-  const [flowsResult, auditResult] = await Promise.all([
+  const [flowsResult, auditResult, metricsResult] = await Promise.all([
     getFlows(),
-    getAuditLogs()
+    getAuditLogs({ limit: 200 }),
+    getAuditMetrics(30),
   ]);
 
   return (
@@ -20,6 +21,7 @@ export default async function AuditPage() {
         <GovernanceConsole
           initialFlows={flowsResult.data.items}
           initialAuditLogs={auditResult.data}
+          initialMetrics={metricsResult.data}
         />
       </div>
     </PlatformShell>

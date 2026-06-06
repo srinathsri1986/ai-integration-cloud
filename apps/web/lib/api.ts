@@ -799,12 +799,63 @@ export async function getOverdueProjects(): Promise<ApiResult<OverdueProjectsByM
   );
 }
 
-export async function getAuditLogs(): Promise<ApiResult<AuditLogEntry[]>> {
-  return getApiResult("/api/v1/audit/logs", fallbackAuditLogs, (body) => body);
+export interface AuditLogsFilter {
+  intent?: string;
+  success?: boolean;
+  since?: string;   // ISO date "YYYY-MM-DD"
+  until?: string;   // ISO date "YYYY-MM-DD"
+  limit?: number;
+  offset?: number;
+}
+
+export async function getAuditLogs(filter?: AuditLogsFilter): Promise<ApiResult<AuditLogEntry[]>> {
+  const params = new URLSearchParams();
+  if (filter?.intent)              params.set("intent", filter.intent);
+  if (filter?.success !== undefined) params.set("success", String(filter.success));
+  if (filter?.since)               params.set("since", filter.since);
+  if (filter?.until)               params.set("until", filter.until);
+  if (filter?.limit !== undefined) params.set("limit", String(filter.limit));
+  if (filter?.offset !== undefined) params.set("offset", String(filter.offset));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return getApiResult(`/api/v1/audit/logs${qs}`, fallbackAuditLogs, (body) => body);
 }
 
 export async function getAuditSummary(): Promise<ApiResult<AuditLogSummary>> {
   return getApiResult("/api/v1/audit/summary", fallbackAuditSummary, (body) => body);
+}
+
+export interface AuditMetrics {
+  totalEvents: number;
+  successRate: number;
+  averageLatencyMs: number;
+  p50LatencyMs: number;
+  p95LatencyMs: number;
+  byIntent: Record<string, number>;
+  byConnector: Record<string, number>;
+  eventsPerDay: Array<{ date: string; total: number; successes: number; failures: number }>;
+  distinctIntents: string[];
+}
+
+const fallbackAuditMetrics: AuditMetrics = {
+  totalEvents: 0, successRate: 0, averageLatencyMs: 0,
+  p50LatencyMs: 0, p95LatencyMs: 0,
+  byIntent: {}, byConnector: {}, eventsPerDay: [], distinctIntents: [],
+};
+
+export async function getAuditMetrics(days = 30): Promise<ApiResult<AuditMetrics>> {
+  return getApiResult(`/api/v1/audit/metrics?days=${days}`, fallbackAuditMetrics, (body) => body);
+}
+
+/** Build a direct download URL for the audit CSV export. */
+export function auditExportUrl(filter?: AuditLogsFilter): string {
+  const base = apiBaseUrl();
+  const params = new URLSearchParams();
+  if (filter?.intent)              params.set("intent", filter.intent);
+  if (filter?.success !== undefined) params.set("success", String(filter.success));
+  if (filter?.since)               params.set("since", filter.since);
+  if (filter?.until)               params.set("until", filter.until);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return `${base}/api/v1/audit/export.csv${qs}`;
 }
 
 /** Returns all registered connectors (generic, connector-agnostic format). */

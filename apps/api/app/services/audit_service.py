@@ -4,7 +4,7 @@ from threading import Lock
 
 from app.core.database import SessionLocal
 from app.core.security import redact_mapping
-from app.models.audit import AuditLogEntry, AuditLogSummary
+from app.models.audit import AuditLogEntry, AuditLogSummary, AuditMetrics
 from app.repositories.audit_repository import AuditRepository
 
 
@@ -226,6 +226,8 @@ class AuditService:
         intent: str | None = None,
         provider: str | None = None,
         success: bool | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AuditLogEntry]:
@@ -235,6 +237,8 @@ class AuditService:
                 intent=intent,
                 provider=provider,
                 success=success,
+                since=since,
+                until=until,
                 limit=limit,
                 offset=offset,
             )
@@ -242,6 +246,10 @@ class AuditService:
     def summary(self, tenant_id: int | None = None) -> AuditLogSummary:
         with SessionLocal() as session:
             return AuditRepository(session, tenant_id).summary()
+
+    def metrics(self, tenant_id: int | None = None, days: int = 30) -> AuditMetrics:
+        with SessionLocal() as session:
+            return AuditRepository(session, tenant_id).metrics(days=days)
 
     def clear_for_tests(self, tenant_id: int | None = None) -> None:
         with SessionLocal() as session:

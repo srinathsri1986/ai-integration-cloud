@@ -1,10 +1,12 @@
-from collections import Counter
+from collections import Counter, defaultdict
+from datetime import UTC, datetime, timedelta
+from statistics import median
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AuditLogRecord
-from app.models.audit import AuditLogEntry, AuditLogSummary
+from app.models.audit import AuditLogEntry, AuditLogSummary, AuditMetrics, DailyEventCount
 
 
 class AuditRepository:
@@ -50,6 +52,8 @@ class AuditRepository:
         intent: str | None = None,
         provider: str | None = None,
         success: bool | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[AuditLogEntry]:
@@ -64,10 +68,93 @@ class AuditRepository:
             statement = statement.where(AuditLogRecord.ai_provider == provider)
         if success is not None:
             statement = statement.where(AuditLogRecord.success.is_(success))
+        if since:
+            # since is an ISO date string like "2026-06-01"; compare against timestamp column
+            statement = statement.where(AuditLogRecord.timestamp >= since)
+        if until:
+            # until is inclusive — append end-of-day to the date string
+            until_end = until if "T" in until else until + "T23:59:59"
+            statement = statement.where(AuditLogRecord.timestamp <= until_end)
 
         statement = statement.limit(limit).offset(offset)
         records = self.session.scalars(statement).all()
         return [self._to_entry(record) for record in records]
+
+    def metrics(self, days: int = 30) -> AuditMetrics:
+        """Compute aggregate observability metrics for the last *days* calendar days."""
+        since_dt = datetime.now(UTC) - timedelta(days=days)
+        since_str = since_dt.isoformat()
+
+        statement = self._scope(
+            select(AuditLogRecord).where(AuditLogRecord.timestamp >= since_str)
+        )
+        records = self.session.scalars(statement).all()
+
+        if not records:
+            return AuditMetrics(
+                totalEvents=0,
+                successRate=0.0,
+                averageLatencyMs=0.0,
+                p50LatencyMs=0,
+                p95LatencyMs=0,
+                byIntent={},
+                byConnector={},
+                eventsPerDay=[],
+                distinctIntents=[],
+            )
+
+        total = len(records)
+        successes = sum(1 for r in records if r.success)
+        latencies = sorted(r.latency_ms for r in records)
+
+        # Percentiles
+        p50 = latencies[int(len(latencies) * 0.50)] if latencies else 0
+        p95 = latencies[int(len(latencies) * 0.95)] if latencies else 0
+
+        # By intent
+        by_intent: dict[str, int] = Counter(r.detected_intent for r in records)
+
+        # By connector — inferred from tools_used entries starting with "connector."
+        by_connector: dict[str, int] = Counter()
+        for r in records:
+            for tool in (r.tools_used or []):
+                if tool.startswith("connector."):
+                    parts = tool.split(".")
+                    if len(parts) >= 2:
+                        by_connector[parts[1]] += 1
+
+        # Events per day — last `days` calendar days
+        day_counts: dict[str, dict] = defaultdict(lambda: {"total": 0, "successes": 0, "failures": 0})
+        for r in records:
+            day = (r.timestamp or "")[:10]  # "2026-06-01"
+            if day:
+                day_counts[day]["total"] += 1
+                if r.success:
+                    day_counts[day]["successes"] += 1
+                else:
+                    day_counts[day]["failures"] += 1
+
+        events_per_day = [
+            DailyEventCount(
+                date=day,
+                total=v["total"],
+                successes=v["successes"],
+                failures=v["failures"],
+            )
+            for day, v in sorted(day_counts.items())
+        ]
+
+        return AuditMetrics(
+            totalEvents=total,
+            successRate=round(successes / total, 4) if total else 0.0,
+            averageLatencyMs=round(sum(latencies) / total, 2) if total else 0.0,
+            p50LatencyMs=p50,
+            p95LatencyMs=p95,
+            byIntent=dict(by_intent),
+            byConnector=dict(by_connector),
+            eventsPerDay=events_per_day,
+            distinctIntents=sorted(by_intent.keys()),
+        )
 
     def summary(self) -> AuditLogSummary:
         statement = self._scope(select(AuditLogRecord))
