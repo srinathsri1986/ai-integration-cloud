@@ -45,6 +45,8 @@ import {
   samplePayload
 } from "@/lib/mapping-catalog";
 import type { MappingField, MappingObject, MappingTransform } from "@/lib/mapping-catalog";
+import { MappingCanvas } from "@/components/mapping-canvas";
+import type { CanvasMappingRow } from "@/components/mapping-canvas";
 
 type MappingRow = {
   id: string;
@@ -161,6 +163,37 @@ export function DataMappingStudio() {
   const canSimulateCurrentMapping =
     lastSavedMappingId === mappingId || savedMappings.some((mapping) => mapping.mappingId === mappingId);
 
+  // --- R14: canvas-driven mappings (drag-and-drop) ---
+  // Accepted AI suggestions seeded into the canvas as initialMappings
+  const [canvasInitialMappings, setCanvasInitialMappings] = useState<CanvasMappingRow[]>([]);
+
+  function handleCanvasChange(
+    newMappings: CanvasMappingRow[],
+    srcConnId: string,
+    srcObjId: string,
+    tgtConnId: string,
+    tgtObjId: string,
+  ) {
+    // Mirror canvas state back into studio state so save/review steps still work
+    setMappings(
+      newMappings.map((m) => ({
+        id: m.id,
+        sourceField: m.sourceField,
+        targetField: m.targetField,
+        transform: m.transform,
+      })),
+    );
+    // Auto-generate mapping ID + name from connector/object names
+    const newId   = `${srcConnId}-${srcObjId}--${tgtConnId}-${tgtObjId}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const newName = `${srcConnId} ${srcObjId} → ${tgtConnId} ${tgtObjId}`;
+    setMappingId(newId);
+    setMappingName(newName);
+    setSourceObjectId(`${srcConnId}.${srcObjId}`);
+    setTargetObjectId(`${tgtConnId}.${tgtObjId}`);
+    setSimulation(undefined);
+    setLastSavedMappingId(undefined);
+  }
+
   useEffect(() => {
     loadSavedMappings();
   }, []);
@@ -263,6 +296,19 @@ export function DataMappingStudio() {
           confidence: suggestion.confidence,
           rationale: suggestion.rationale
         }
+      ];
+    });
+    // Seed accepted suggestions into the drag-and-drop canvas
+    setCanvasInitialMappings((current) => {
+      const withoutTarget = current.filter((m) => m.targetField !== suggestion.targetField);
+      return [
+        ...withoutTarget,
+        {
+          id: `ai-${suggestion.sourceField}-to-${suggestion.targetField}`,
+          sourceField: suggestion.sourceField,
+          targetField: suggestion.targetField,
+          transform: suggestion.transform,
+        },
       ];
     });
     setSuggestions((current) =>
@@ -890,149 +936,41 @@ export function DataMappingStudio() {
       ) : null}
 
       {activeStep === "map" ? (
-      <section className="grid gap-4 xl:grid-cols-[1fr_1.1fr_1fr]">
-        <FieldTray
-          fields={sourceObject.fields}
-          objectId={sourceObjectId}
-          objects={sourceObjects}
-          onFieldSelect={setSelectedSourceField}
-          onObjectChange={(objectId) => {
-            setSourceObjectId(objectId);
-            setSelectedSourceField(allMappingObjects.find((object) => object.id === objectId)?.fields[0]?.name);
-            setMappings([]);
-          }}
-          onSystemChange={onSourceSystemChange}
-          selectedField={selectedSourceField}
-          systemId={sourceSystemId}
-          title="Source"
-        />
-
-        <Card className="bg-white/90">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Mapping grid</p>
-              <h2 className="mt-1 text-xl font-semibold text-slate-950">Approved field matches</h2>
-            </div>
-            <Badge className={missingRequiredTargets.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}>
-              {missingRequiredTargets.length ? `${missingRequiredTargets.length} required missing` : "Valid"}
+      <Card className="border-slate-200 bg-white/95 p-5 shadow-sm lg:p-6">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Badge className="border-teal-200 bg-teal-50 text-teal-900">
+              <ArrowRightLeft className="mr-1 h-3.5 w-3.5" />
+              Drag-and-drop field mapper
             </Badge>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {mappings.length > 0 ? (
-              mappings.map((mapping) => (
-                <div
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                  key={mapping.id}
-                >
-                  <div className="grid items-center gap-3 lg:grid-cols-[1fr_auto_1fr_auto]">
-                    <FieldPill label={mapping.sourceField} />
-                    <Link2 className="mx-auto h-4 w-4 text-primary" />
-                    <FieldPill label={mapping.targetField} />
-                    <button
-                      className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-white px-3 text-sm text-muted-foreground hover:bg-muted"
-                      onClick={() => removeMapping(mapping.id)}
-                      type="button"
-                    >
-                      <Unlink className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="mt-3">
-                    <label className="text-xs font-medium text-muted-foreground" htmlFor={`${mapping.id}-transform`}>
-                      Transformation
-                    </label>
-                    <select
-                      className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm outline-none focus:border-primary"
-                      id={`${mapping.id}-transform`}
-                      onChange={(event) =>
-                        updateTransform(mapping.id, event.target.value as MappingTransform)
-                      }
-                      value={mapping.transform}
-                    >
-                      {mappingTransforms.map((transform) => (
-                        <option key={transform.value} value={transform.value}>
-                          {transform.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {typeof mapping.confidence === "number" || mapping.rationale ? (
-                    <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950">
-                      {typeof mapping.confidence === "number" ? (
-                        <span className="font-semibold">{Math.round(mapping.confidence * 100)}% AI confidence. </span>
-                      ) : null}
-                      {mapping.rationale}
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                <MousePointerClick className="mx-auto h-6 w-6 text-primary" />
-                <p className="mt-3 text-sm font-medium text-slate-950">Select a source field, then click a target field.</p>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Mappings stay in draft until they pass validation.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-5 rounded-md border border-slate-200 bg-white p-4">
-            <p className="text-sm font-semibold text-slate-950">Required target fields</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {targetObject.fields
-                .filter((field) => field.required)
-                .map((field) => (
-                  <Badge
-                    className={
-                      mappedTargetFields.has(field.name)
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                        : "border-amber-200 bg-amber-50 text-amber-900"
-                    }
-                    key={field.name}
-                  >
-                    {field.name}
-                  </Badge>
-                ))}
-            </div>
-          </div>
-
-          {message ? (
-            <p className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-              {message}
+            <h2 className="mt-3 text-xl font-semibold text-slate-950">Map fields between systems</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Drag a source field onto a target field. SVG lines show live connections.
+              Accepted AI suggestions from the previous step are pre-loaded.
             </p>
-          ) : null}
-
+          </div>
           <Button
-            className="mt-5 w-full bg-slate-950 text-white hover:bg-slate-800"
+            className="shrink-0 bg-slate-950 text-white hover:bg-slate-800"
             disabled={!canReview}
             onClick={() => setActiveStep("review")}
             type="button"
           >
-            Review integration
+            Review integration →
           </Button>
-        </Card>
+        </div>
 
-        <FieldTray
-          fields={targetObject.fields}
-          objectId={targetObjectId}
-          objects={targetObjects}
-          onFieldSelect={(fieldName) => {
-            const field = targetObject.fields.find((candidate) => candidate.name === fieldName);
-            if (field) {
-              mapToTarget(field);
-            }
-          }}
-          onObjectChange={(objectId) => {
-            setTargetObjectId(objectId);
-            setMappings([]);
-          }}
-          onSystemChange={onTargetSystemChange}
-          selectedField={undefined}
-          systemId={targetSystemId}
-          title="Target"
+        <MappingCanvas
+          key={canvasInitialMappings.map((m) => m.id).join(",")}
+          initialMappings={canvasInitialMappings}
+          onMappingsChange={handleCanvasChange}
         />
-      </section>
+
+        {message ? (
+          <p className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+            {message}
+          </p>
+        ) : null}
+      </Card>
       ) : null}
 
       {activeStep === "review" ? (
