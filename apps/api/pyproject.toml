@@ -22,7 +22,9 @@ dependencies = [
   "pydantic[email]>=2.0.0",
   "celery[redis]>=5.4.0",
   "croniter>=2.0.0",
-  "alembic>=1.14.0"
+  "alembic>=1.14.0",
+  "slack_sdk>=3.27.0",
+  "httpx>=0.28.1"
 ]
 
 [project.optional-dependencies]

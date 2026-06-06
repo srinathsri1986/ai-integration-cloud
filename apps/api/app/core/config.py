@@ -33,6 +33,20 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen2.5-coder:7b"
     ollama_timeout_seconds: int = 30
 
+    # ── Slack OAuth2 connector ────────────────────────────────────────────────
+    # Register a Slack app at https://api.slack.com/apps to get these values.
+    # Leave blank in mock mode — the Slack connector will use mock responses.
+    slack_client_id: str = ""
+    slack_client_secret: str = ""
+    slack_redirect_uri: str = "http://localhost:8000/api/v1/connectors/slack/oauth/callback"
+    slack_scopes: str = "chat:write,channels:read,channels:join"
+
+    # ── Connector credential encryption ──────────────────────────────────────
+    # Fernet symmetric key for encrypting OAuth tokens at rest in the DB.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # In production, use AWS Secrets Manager or KMS — never store the key in the DB.
+    connector_encryption_key: str = ""
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

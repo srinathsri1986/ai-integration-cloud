@@ -218,3 +218,32 @@ class MappingDefinitionRecord(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class ConnectorConfigRecord(Base):
+    """Per-tenant connector config. Encrypted OAuth tokens stored in config_json.
+
+    Production path: store the Fernet key in AWS KMS and move token references
+    to AWS Secrets Manager. The service interface is identical.
+    """
+
+    __tablename__ = "connector_config_records"
+    __table_args__ = (
+        Index("uq_connector_config_connector_tenant", "connector_id", "tenant_id", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    connector_id: Mapped[str] = mapped_column(Text, nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    config_json: Mapped[dict[str, Any]] = mapped_column(_json_type(), nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="not_configured")
+    mode: Mapped[str] = mapped_column(Text, nullable=False, default="mock")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )

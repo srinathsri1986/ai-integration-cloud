@@ -10,7 +10,7 @@ export const connectorStatusSchema = z.enum([
 ]);
 export type ConnectorStatus = z.infer<typeof connectorStatusSchema>;
 
-export const connectorModeSchema = z.enum(["mock", "sandbox", "production"]);
+export const connectorModeSchema = z.enum(["mock", "sandbox", "production", "live"]);
 export type ConnectorMode = z.infer<typeof connectorModeSchema>;
 
 export const connectorAuthSchemeSchema = z.enum([
