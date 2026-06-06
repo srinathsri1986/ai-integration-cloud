@@ -331,6 +331,65 @@ def test_connector(
     return plugin.test_connection()
 
 
+@router.get("/{connector_id}/schema", response_model=dict)
+def get_connector_schema(
+    connector_id: str,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Return the schema (objects + fields) exposed by this connector.
+
+    Live connectors fetch real schema from the connected system.
+    Mock connectors return a curated static catalog.
+    Schema is used to populate the Data Mapping Studio source/target trays.
+    """
+    from datetime import UTC, datetime
+    from app.models.connectors import ConnectorSchema, ConnectorSchemaField, ConnectorSchemaObject
+
+    try:
+        plugin = connector_registry.get(connector_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
+
+    try:
+        raw_objects = plugin.fetch_schema()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Schema fetch failed for connector '{connector_id}': {exc}",
+        )
+
+    # Determine mode from test_connection (cheap — already cached by plugin)
+    test_result = plugin.test_connection()
+    mode = test_result.get("mode", "mock")
+
+    schema_objects = [
+        ConnectorSchemaObject(
+            objectId=obj.object_id,
+            label=obj.label,
+            fields=[
+                ConnectorSchemaField(
+                    name=f.name,
+                    label=f.label,
+                    type=f.type,
+                    required=f.required,
+                    updateable=f.updateable,
+                    sample=f.sample,
+                )
+                for f in obj.fields
+            ],
+        )
+        for obj in raw_objects
+    ]
+
+    schema = ConnectorSchema(
+        connectorId=connector_id,
+        mode=mode,
+        objects=schema_objects,
+        fetchedAt=datetime.now(UTC).isoformat(),
+    )
+    return schema.model_dump()
+
+
 @router.get("/{connector_id}", response_model=dict)
 def get_connector(
     connector_id: str,

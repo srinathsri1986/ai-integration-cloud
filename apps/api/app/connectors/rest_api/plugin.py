@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 logger = logging.getLogger(__name__)
 
@@ -256,3 +256,26 @@ class RESTAPIPlugin:
             "mode": "mock",
             "message": "REST API connector ready in mock mode. Click Configure to set a base URL and API key.",
         }
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        """Return promoted REST API schema objects from the approved catalog."""
+        from app.services.connector_config_service import connector_config_service
+        approved = connector_config_service.approved_rest_api_objects()
+        objects: list[SchemaObject] = []
+        for obj in approved:
+            fields = [
+                SchemaField(
+                    name=f.name,
+                    label=f.label,
+                    type=f.type,
+                    required=f.required,
+                    sample=None,
+                )
+                for f in obj.fields
+            ]
+            objects.append(SchemaObject(
+                object_id=obj.object_id,
+                label=obj.label,
+                fields=fields,
+            ))
+        return objects

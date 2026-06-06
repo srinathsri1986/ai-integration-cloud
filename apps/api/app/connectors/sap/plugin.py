@@ -1,6 +1,6 @@
 """SAP ERP connector plugin (mock mode)."""
 from __future__ import annotations
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 _TOOLS = [
     ConnectorTool("post_journal_entry", "Post Journal Entry", "Post a double-entry journal to the general ledger.", "sap",
@@ -42,4 +42,27 @@ class SAPPlugin:
     def execute_tool(self, tool_id: str, params: dict) -> dict:
         if tool_id not in _TOOL_MAP: raise KeyError(f"Unknown SAP tool: {tool_id!r}")
         return {"connector": "sap", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
-    def test_connection(self): return {"ok": True, "message": "SAP mock connector is ready (mock mode)."}
+    def test_connection(self): return {"ok": True, "mode": "mock", "message": "SAP mock connector is ready (mock mode)."}
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        return [
+            SchemaObject("cost_center", "Cost Center", [
+                SchemaField("cost_center_id", "Cost Center ID", "string", required=True, sample="CC-1200"),
+                SchemaField("description", "Description", "string", required=True, sample="Finance Operations"),
+                SchemaField("controlling_area", "Controlling Area", "string", required=True, sample="0001"),
+                SchemaField("valid_from", "Valid From", "date", sample="2026-01-01"),
+                SchemaField("budget_amount", "Budget Amount", "number", sample="850000"),
+            ]),
+            SchemaObject("journal_entry", "Journal Entry", [
+                SchemaField("company_code", "Company Code", "string", required=True, sample="1000"),
+                SchemaField("gl_account", "G/L Account", "string", required=True, sample="400000"),
+                SchemaField("amount", "Amount", "number", required=True, sample="12500"),
+                SchemaField("posting_date", "Posting Date", "date", required=True, sample="2026-06-01"),
+                SchemaField("reference", "Reference", "string", sample="INV-2026-0042"),
+                SchemaField("currency", "Currency", "string", sample="USD"),
+            ]),
+            SchemaObject("vendor", "Vendor", [
+                SchemaField("vendor_id", "Vendor ID", "string", required=True, sample="V-001"),
+                SchemaField("name", "Name", "string", required=True, sample="Tech Supplies Ltd"),
+                SchemaField("payment_terms", "Payment Terms", "string", sample="Net 30"),
+            ]),
+        ]

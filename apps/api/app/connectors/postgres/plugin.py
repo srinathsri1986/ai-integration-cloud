@@ -16,7 +16,7 @@ import json
 import logging
 from typing import Any
 
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 logger = logging.getLogger(__name__)
 
@@ -240,3 +240,74 @@ class PostgreSQLPlugin:
             "mode": "mock",
             "message": "PostgreSQL connector ready in mock mode. Click Configure to add a connection string.",
         }
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        creds = _get_live_creds(tenant_id)
+        if creds:
+            try:
+                return _fetch_live_pg_schema(creds.get("connection_string", ""))
+            except Exception as exc:
+                logger.warning("PostgreSQL live schema fetch failed, using mock: %s", exc)
+        return _PG_MOCK_SCHEMA
+
+
+def _PG_TYPE(pg_type: str) -> str:
+    _map = {
+        "integer": "number", "bigint": "number", "smallint": "number",
+        "numeric": "number", "decimal": "number", "real": "number",
+        "double precision": "number", "serial": "number",
+        "character varying": "string", "varchar": "string",
+        "text": "string", "char": "string", "uuid": "string",
+        "boolean": "boolean", "bool": "boolean",
+        "date": "date", "timestamp": "date",
+        "timestamp without time zone": "date", "timestamp with time zone": "date",
+    }
+    return _map.get(pg_type.lower(), "string")
+
+
+def _fetch_live_pg_schema(conn_str: str) -> list[SchemaObject]:
+    import psycopg
+    tables: dict[str, list[SchemaField]] = {}
+    with psycopg.connect(conn_str, connect_timeout=5) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT table_name, column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = ANY(%(tables)s)
+                ORDER BY table_name, ordinal_position
+                LIMIT 200
+            """, {"tables": list(_ALLOWED_TABLES)})
+            for table_name, col_name, data_type, nullable, default in cur.fetchall():
+                tables.setdefault(table_name, []).append(SchemaField(
+                    name=col_name,
+                    label=col_name.replace("_", " ").title(),
+                    type=_PG_TYPE(data_type),
+                    required=(nullable == "NO" and default is None),
+                    updateable=True,
+                    sample=None,
+                ))
+    return [SchemaObject(t, t.replace("_", " ").title(), fields) for t, fields in tables.items()]
+
+
+_PG_MOCK_SCHEMA: list[SchemaObject] = [
+    SchemaObject("orders", "Orders", [
+        SchemaField("id", "ID", "number", required=True, updateable=False, sample="1042"),
+        SchemaField("customer_id", "Customer ID", "number", required=True, sample="201"),
+        SchemaField("amount", "Amount", "number", required=True, sample="12850.00"),
+        SchemaField("created_at", "Created At", "date", sample="2026-06-01"),
+        SchemaField("status", "Status", "string", sample="completed"),
+    ]),
+    SchemaObject("customers", "Customers", [
+        SchemaField("id", "ID", "number", required=True, updateable=False, sample="201"),
+        SchemaField("name", "Name", "string", required=True, sample="Acme Manufacturing"),
+        SchemaField("email", "Email", "string", sample="billing@acme.com"),
+        SchemaField("last_order_at", "Last Order At", "date", sample="2026-05-20"),
+    ]),
+    SchemaObject("products", "Products", [
+        SchemaField("id", "ID", "number", required=True, updateable=False, sample="55"),
+        SchemaField("product_name", "Product Name", "string", required=True, sample="Integration Suite Pro"),
+        SchemaField("price", "Price", "number", required=True, sample="499.00"),
+        SchemaField("category", "Category", "string", sample="SaaS"),
+    ]),
+]

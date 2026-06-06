@@ -21,7 +21,7 @@ from app.models.connectors import (
     RestApiSchemaPromotionResponse,
 )
 from app.models.mapping import MappingObject
-from app.connectors.netsuite.sandbox_connector import (
+from app.connectors.netsuite.live_connector_stub import (
     NetSuiteSandboxConnectionConfig,
     NetSuiteSandboxConnector,
 )

@@ -1946,3 +1946,46 @@ export async function retryWebhookDelivery(deliveryId: string): Promise<ClientAp
     return { data: fallback, error: err instanceof Error ? err.message : "API unavailable", isFallback: true, ok: false };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Connector schema — Release 13.0
+// ---------------------------------------------------------------------------
+
+export interface ConnectorSchemaField {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  updateable: boolean;
+  sample: string | null;
+}
+
+export interface ConnectorSchemaObject {
+  objectId: string;
+  label: string;
+  fields: ConnectorSchemaField[];
+}
+
+export interface ConnectorSchema {
+  connectorId: string;
+  mode: string;   // "live" | "mock"
+  objects: ConnectorSchemaObject[];
+  fetchedAt: string;
+}
+
+const _fallbackSchema: ConnectorSchema = {
+  connectorId: "",
+  mode: "mock",
+  objects: [],
+  fetchedAt: new Date(0).toISOString(),
+};
+
+export async function getConnectorSchema(
+  connectorId: string,
+): Promise<ApiResult<ConnectorSchema>> {
+  return getApiResult(
+    `/api/v1/connectors/${encodeURIComponent(connectorId)}/schema`,
+    _fallbackSchema,
+    (b) => b,
+  );
+}

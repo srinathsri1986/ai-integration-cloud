@@ -173,3 +173,32 @@ class RestApiSchemaPromotionResponse(BaseModel):
     mapping_object: MappingObject = Field(alias="mappingObject")
     message: str
     warnings: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Live schema discovery models — Release 13.0
+# ---------------------------------------------------------------------------
+
+class ConnectorSchemaField(BaseModel):
+    """A single field within a connector schema object."""
+    name: str
+    label: str
+    type: str          # string | number | date | boolean | id | reference
+    required: bool = False
+    updateable: bool = True
+    sample: str | None = None
+
+
+class ConnectorSchemaObject(BaseModel):
+    """A table / sObject / resource with its field list."""
+    objectId: str
+    label: str
+    fields: list[ConnectorSchemaField]
+
+
+class ConnectorSchema(BaseModel):
+    """Full schema response for a connector — returned by GET /connectors/{id}/schema."""
+    connectorId: str
+    mode: str          # live | mock
+    objects: list[ConnectorSchemaObject]
+    fetchedAt: str

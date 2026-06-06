@@ -22,6 +22,25 @@ class ConnectorTool:
     params: list[ConnectorToolParam] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class SchemaField:
+    """A single field in a connector schema object."""
+    name: str
+    label: str
+    type: str           # string | number | date | boolean | id | reference
+    required: bool = False
+    updateable: bool = True
+    sample: str | None = None
+
+
+@dataclass
+class SchemaObject:
+    """A table / sObject / resource with its fields."""
+    object_id: str
+    label: str
+    fields: list[SchemaField]
+
+
 @runtime_checkable
 class ConnectorPlugin(Protocol):
     """Interface that every connector plugin must satisfy."""
@@ -45,4 +64,12 @@ class ConnectorPlugin(Protocol):
 
     def test_connection(self) -> dict:
         """Test connectivity.  Returns ``{"ok": bool, "message": str}``."""
+        ...
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        """Return the schema (objects + fields) exposed by this connector.
+
+        Live connectors call the remote system; mock connectors return a
+        curated static catalog.  Returns an empty list if not applicable.
+        """
         ...

@@ -1,7 +1,7 @@
 """NetSuite connector plugin — wraps existing mock implementation."""
 from __future__ import annotations
 
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 from .mock_connector import MockNetSuiteConnector
 
 _mock = MockNetSuiteConnector()
@@ -110,4 +110,31 @@ class NetSuitePlugin:
         raise KeyError(f"Unhandled NetSuite tool: {tool_id!r}")
 
     def test_connection(self) -> dict:
-        return {"ok": True, "message": "NetSuite mock connector is ready (mock mode)."}
+        return {"ok": True, "mode": "mock", "message": "NetSuite mock connector is ready (mock mode)."}
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        return [
+            SchemaObject("project", "Project", [
+                SchemaField("project_id", "Project ID", "string", required=True, sample="PRJ-1042"),
+                SchemaField("customer_name", "Customer Name", "string", required=True, sample="Acme Manufacturing"),
+                SchemaField("account_manager", "Account Manager", "string", sample="Maya Rao"),
+                SchemaField("budget_amount", "Budget Amount", "number", sample="420000"),
+                SchemaField("due_date", "Due Date", "date", sample="2026-03-31"),
+                SchemaField("status", "Status", "string", sample="In Progress"),
+                SchemaField("subsidiary_id", "Subsidiary ID", "string", sample="EMEA"),
+            ]),
+            SchemaObject("invoice", "Invoice", [
+                SchemaField("invoice_id", "Invoice ID", "string", required=True, sample="INV-2026-0042"),
+                SchemaField("customer_id", "Customer ID", "string", required=True, sample="CUST-001"),
+                SchemaField("amount", "Amount", "number", required=True, sample="12850"),
+                SchemaField("due_date", "Due Date", "date", required=True, sample="2026-07-01"),
+                SchemaField("currency", "Currency", "string", sample="USD"),
+                SchemaField("status", "Status", "string", sample="Open"),
+            ]),
+            SchemaObject("subsidiary", "Subsidiary", [
+                SchemaField("subsidiary_id", "Subsidiary ID", "string", required=True, sample="EMEA"),
+                SchemaField("name", "Name", "string", required=True, sample="Acme EMEA Ltd"),
+                SchemaField("currency", "Currency", "string", sample="EUR"),
+                SchemaField("country", "Country", "string", sample="GB"),
+            ]),
+        ]

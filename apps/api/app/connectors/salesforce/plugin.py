@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 logger = logging.getLogger(__name__)
 
@@ -272,3 +272,85 @@ class SalesforcePlugin:
             "mode": "mock",
             "message": "Salesforce connector ready in mock mode. Click Connect to link a Salesforce org.",
         }
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        creds = _get_live_creds(tenant_id)
+        if creds:
+            try:
+                return _fetch_live_schema(creds)
+            except Exception as exc:
+                logger.warning("Salesforce live schema fetch failed, using mock: %s", exc)
+        return _MOCK_SCHEMA
+
+
+def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
+    """Describe standard Salesforce objects via simple-salesforce."""
+    from simple_salesforce import Salesforce  # type: ignore[import]
+
+    instance = (
+        creds.get("instance_url", "")
+        .replace("https://", "").replace("http://", "").rstrip("/")
+    )
+    sf = Salesforce(instance=instance, session_id=creds.get("access_token", ""))
+
+    _SF_TYPE_MAP = {
+        "string": "string", "textarea": "string", "email": "string",
+        "phone": "string", "url": "string", "picklist": "string",
+        "multipicklist": "string", "combobox": "string", "id": "id",
+        "reference": "reference", "double": "number", "currency": "number",
+        "percent": "number", "int": "number", "boolean": "boolean",
+        "date": "date", "datetime": "date",
+    }
+
+    objects: list[SchemaObject] = []
+    for obj_name in ("Opportunity", "Account", "Contact", "Lead", "Case"):
+        try:
+            desc = sf.restful(f"sobjects/{obj_name}/describe")
+            fields: list[SchemaField] = []
+            for f in desc.get("fields", []):
+                sf_type = f.get("type", "string")
+                mapped = _SF_TYPE_MAP.get(sf_type, "string")
+                if sf_type in ("address", "location", "anyType", "base64", "encryptedstring"):
+                    continue
+                fields.append(SchemaField(
+                    name=f["name"],
+                    label=f.get("label", f["name"]),
+                    type=mapped,
+                    required=not f.get("nillable", True) and not f.get("defaultedOnCreate", False),
+                    updateable=f.get("updateable", True),
+                    sample=None,
+                ))
+            objects.append(SchemaObject(object_id=obj_name, label=obj_name, fields=fields[:40]))
+        except Exception as exc:
+            logger.warning("Could not describe Salesforce object %s: %s", obj_name, exc)
+    return objects
+
+
+_MOCK_SCHEMA: list[SchemaObject] = [
+    SchemaObject("Opportunity", "Opportunity", [
+        SchemaField("Id", "Opportunity ID", "id", required=True, updateable=False, sample="0060x000001AbCd"),
+        SchemaField("Name", "Opportunity Name", "string", required=True, sample="Acme Q4 Renewal"),
+        SchemaField("AccountId", "Account ID", "reference", sample="0010x000002XyZa"),
+        SchemaField("Amount", "Amount", "number", sample="420000"),
+        SchemaField("CloseDate", "Close Date", "date", required=True, sample="2026-12-31"),
+        SchemaField("StageName", "Stage", "string", required=True, sample="Prospecting"),
+        SchemaField("Probability", "Probability (%)", "number", sample="30"),
+        SchemaField("OwnerId", "Owner ID", "reference", sample="0050x000003WxYz"),
+    ]),
+    SchemaObject("Account", "Account", [
+        SchemaField("Id", "Account ID", "id", required=True, updateable=False, sample="0010x000002XyZa"),
+        SchemaField("Name", "Account Name", "string", required=True, sample="Acme Manufacturing"),
+        SchemaField("Industry", "Industry", "string", sample="Technology"),
+        SchemaField("AnnualRevenue", "Annual Revenue", "number", sample="5000000"),
+        SchemaField("BillingCity", "Billing City", "string", sample="San Francisco"),
+        SchemaField("Phone", "Phone", "string", sample="+1 415 555 0100"),
+    ]),
+    SchemaObject("Contact", "Contact", [
+        SchemaField("Id", "Contact ID", "id", required=True, updateable=False, sample="0030x000004AbCd"),
+        SchemaField("FirstName", "First Name", "string", sample="Maya"),
+        SchemaField("LastName", "Last Name", "string", required=True, sample="Rao"),
+        SchemaField("Email", "Email", "string", sample="maya.rao@acme.com"),
+        SchemaField("Title", "Title", "string", sample="CFO"),
+        SchemaField("AccountId", "Account ID", "reference", sample="0010x000002XyZa"),
+    ]),
+]

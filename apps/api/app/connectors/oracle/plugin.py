@@ -1,6 +1,6 @@
 """Oracle Fusion / E-Business Suite connector plugin (mock mode)."""
 from __future__ import annotations
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 _TOOLS = [
     ConnectorTool("get_gl_balance", "Get G/L Balance", "Query general ledger balance for an account segment combination.", "oracle",
@@ -36,4 +36,21 @@ class OraclePlugin:
     def execute_tool(self, tool_id: str, params: dict) -> dict:
         if tool_id not in _TOOL_MAP: raise KeyError(f"Unknown Oracle tool: {tool_id!r}")
         return {"connector": "oracle", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
-    def test_connection(self): return {"ok": True, "message": "Oracle mock connector is ready (mock mode)."}
+    def test_connection(self): return {"ok": True, "mode": "mock", "message": "Oracle mock connector is ready (mock mode)."}
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        return [
+            SchemaObject("gl_balance", "GL Balance", [
+                SchemaField("ledger_id", "Ledger ID", "string", required=True, sample="1"),
+                SchemaField("account_segment", "Account Segment", "string", required=True, sample="01-000-1110-0000-000"),
+                SchemaField("period_name", "Period Name", "string", required=True, sample="JUN-26"),
+                SchemaField("entered_dr", "Entered DR", "number", sample="45000"),
+                SchemaField("entered_cr", "Entered CR", "number", sample="0"),
+                SchemaField("accounted_dr", "Accounted DR", "number", sample="45000"),
+                SchemaField("currency_code", "Currency", "string", sample="USD"),
+            ]),
+            SchemaObject("legal_entity", "Legal Entity", [
+                SchemaField("legal_entity_code", "Legal Entity Code", "string", required=True, sample="US01"),
+                SchemaField("legal_entity_name", "Legal Entity Name", "string", required=True, sample="Acme US Operations"),
+                SchemaField("currency_code", "Reporting Currency", "string", sample="USD"),
+            ]),
+        ]

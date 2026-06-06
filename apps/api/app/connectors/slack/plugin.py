@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 logger = logging.getLogger(__name__)
 
@@ -187,3 +187,14 @@ class SlackPlugin:
             "mode": "mock",
             "message": "Slack connector ready in mock mode. Click Connect to link a real Slack workspace.",
         }
+
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        return [
+            SchemaObject("channel_message", "Channel Message", [
+                SchemaField("channel", "Channel", "string", required=True, sample="#finance-alerts"),
+                SchemaField("text", "Message Text", "string", required=True, sample="Budget alert: variance detected."),
+                SchemaField("username", "Bot Username", "string", sample="AI Integration Cloud"),
+                SchemaField("icon_emoji", "Icon Emoji", "string", sample=":robot_face:"),
+                SchemaField("thread_ts", "Thread Timestamp", "string", sample="1717500000.123456"),
+            ]),
+        ]

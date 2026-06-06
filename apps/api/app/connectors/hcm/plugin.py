@@ -1,6 +1,6 @@
 """HCM (Workday / SAP SuccessFactors) connector plugin (mock mode)."""
 from __future__ import annotations
-from ..base import ConnectorTool, ConnectorToolParam
+from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 
 _TOOLS = [
     ConnectorTool("get_headcount", "Get Headcount", "Active headcount by department and location.", "hcm",
@@ -34,4 +34,24 @@ class HCMPlugin:
     def execute_tool(self, tool_id: str, params: dict) -> dict:
         if tool_id not in _TOOL_MAP: raise KeyError(f"Unknown HCM tool: {tool_id!r}")
         return {"connector": "hcm", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
-    def test_connection(self): return {"ok": True, "message": "HCM mock connector is ready (mock mode)."}
+    def test_connection(self): return {"ok": True, "mode": "mock", "message": "HCM mock connector is ready (mock mode)."}
+    def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
+        return [
+            SchemaObject("employee", "Employee Record", [
+                SchemaField("employee_id", "Employee ID", "string", required=True, sample="EMP-4421"),
+                SchemaField("full_name", "Full Name", "string", required=True, sample="Maya Rao"),
+                SchemaField("department", "Department", "string", required=True, sample="Finance"),
+                SchemaField("start_date", "Start Date", "date", sample="2023-03-15"),
+                SchemaField("salary", "Annual Salary", "number", sample="110000"),
+                SchemaField("manager_id", "Manager ID", "string", sample="EMP-1001"),
+                SchemaField("job_grade", "Job Grade", "string", sample="L5"),
+                SchemaField("location", "Location", "string", sample="US-CA"),
+            ]),
+            SchemaObject("open_role", "Open Requisition", [
+                SchemaField("requisition_id", "Requisition ID", "string", required=True, sample="REQ-0088"),
+                SchemaField("title", "Job Title", "string", required=True, sample="Senior SWE"),
+                SchemaField("department_id", "Department ID", "string", required=True, sample="ENG-001"),
+                SchemaField("target_date", "Target Start Date", "date", sample="2026-06-01"),
+                SchemaField("hiring_manager", "Hiring Manager", "string", sample="Ada Lovelace"),
+            ]),
+        ]

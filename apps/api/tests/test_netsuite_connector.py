@@ -2,7 +2,7 @@ import pytest
 
 from app.connectors.netsuite.mock_connector import MockNetSuiteConnector
 from app.connectors.netsuite.query_templates import run_approved_mock_template
-from app.connectors.netsuite.sandbox_connector import (
+from app.connectors.netsuite.live_connector_stub import (
     NetSuiteSandboxConnectionConfig,
     NetSuiteSandboxConnector,
     NetSuiteSandboxConnectorError,
