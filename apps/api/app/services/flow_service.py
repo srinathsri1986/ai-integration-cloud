@@ -404,8 +404,14 @@ class FlowService:
 
         *delivery_id* is the webhook delivery tracking ID — present only for
         webhook-triggered runs, None for manual / scheduled triggers.
+
+        Raises KeyError if *flow_id* is unknown or inaccessible for the tenant.
         """
         from app.worker.tasks import execute_flow_task
+
+        # Guard: verify flow exists and is accessible before enqueuing.
+        # Raises KeyError if not found — callers (API layer) translate this to 404.
+        self.get_flow(flow_id, tenant_id=tenant_id)
 
         request_id = str(uuid4())
         started = datetime.now(UTC).isoformat()

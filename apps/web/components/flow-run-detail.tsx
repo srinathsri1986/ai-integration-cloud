@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -9,6 +10,7 @@ import {
   Database,
   FileJson,
   Loader2,
+  RotateCcw,
   ShieldCheck,
   TriangleAlert,
   Workflow,
@@ -19,7 +21,7 @@ import type { FlowRunResponse } from "@ai-integration-cloud/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { ApiResult } from "@/lib/api";
+import { replayFlowRun, type ApiResult } from "@/lib/api";
 
 function statusLabel(status: string) {
   return status.replaceAll("_", " ");
@@ -47,6 +49,20 @@ function mappingSimulation(run: FlowRunResponse) {
 export function FlowRunDetail({ runResult }: { runResult: ApiResult<FlowRunResponse> }) {
   const router = useRouter();
   const run = runResult.data;
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [replayError, setReplayError] = useState<string | null>(null);
+
+  async function handleReplay() {
+    setIsReplaying(true);
+    setReplayError(null);
+    const result = await replayFlowRun(run.requestId);
+    setIsReplaying(false);
+    if (result.ok) {
+      router.push(`/flows/runs/${result.data.requestId}`);
+    } else {
+      setReplayError(result.error ?? "Replay failed.");
+    }
+  }
   const inspection = run.inspection;
   const simulation = mappingSimulation(run) as
     | {
@@ -80,16 +96,38 @@ export function FlowRunDetail({ runResult }: { runResult: ApiResult<FlowRunRespo
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{run.message}</p>
             <p className="mt-2 text-xs text-muted-foreground">Request {run.requestId}</p>
           </div>
-          <Button onClick={() => router.push("/flows")} type="button" variant="secondary">
-            <ArrowLeft className="h-4 w-4" />
-            Back to integrations
-          </Button>
+          <div className="flex gap-2">
+            {!isRunning && (
+              <Button
+                onClick={handleReplay}
+                type="button"
+                variant="secondary"
+                disabled={isReplaying}
+                className="gap-1.5"
+              >
+                {isReplaying
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <RotateCcw className="h-4 w-4" />
+                }
+                Replay
+              </Button>
+            )}
+            <Button onClick={() => router.push("/flows")} type="button" variant="secondary">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </div>
         </div>
       </div>
 
       {runResult.isFallback ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           {runResult.error ?? "The run detail API was unavailable."}
+        </div>
+      ) : null}
+      {replayError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          <strong>Replay failed:</strong> {replayError}
         </div>
       ) : null}
 

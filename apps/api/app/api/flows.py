@@ -179,3 +179,26 @@ def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> 
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Unknown mock integration flow.",
         ) from exc
+
+
+@router.post("/runs/{request_id}/replay", response_model=FlowRunResponse, status_code=status.HTTP_202_ACCEPTED)
+def replay_flow_run(
+    request_id: str,
+    user=Depends(require_permissions("flow:run")),
+) -> FlowRunResponse:
+    """Re-trigger the flow that produced the given run. Useful for retrying failed runs
+    or re-executing a flow with the same configuration without navigating to the flow page."""
+    try:
+        original = flow_service.get_run(request_id, tenant_id=user.tenant_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original run not found.",
+        ) from exc
+    try:
+        return flow_service.enqueue_flow_run(original.flow_id, tenant_id=user.tenant_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Flow definition not found — it may have been deleted.",
+        ) from exc

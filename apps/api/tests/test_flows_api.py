@@ -873,3 +873,97 @@ def test_51_pause_lifecycle_response_contains_flow_with_flowid() -> None:
     # The frontend uses response.data.flow.flowId — must be camelCase
     assert "flowId" in body["flow"], "Expected camelCase 'flowId' in lifecycle response body"
     assert "flow_id" not in body["flow"], "Unexpected snake_case 'flow_id' in lifecycle response"
+
+
+# ─── R16 — Flow Run History & Replay ─────────────────────────────────────────
+
+def test_r16_replay_returns_202_with_new_request_id() -> None:
+    """POST /flows/runs/{request_id}/replay → 202 with a fresh requestId distinct from original."""
+    flow_id = _create_published_custom_flow("replay-test-flow")
+    # Trigger an initial run
+    run_resp = client.post(f"/api/v1/flows/{flow_id}/run")
+    assert run_resp.status_code == 202, run_resp.text
+    original_request_id = run_resp.json()["requestId"]
+
+    # Replay it
+    replay_resp = client.post(f"/api/v1/flows/runs/{original_request_id}/replay")
+    assert replay_resp.status_code == 202, replay_resp.text
+    body = replay_resp.json()
+    assert "requestId" in body
+    assert body["requestId"] != original_request_id, "Replay must produce a new requestId"
+    assert body["flowId"] == flow_id
+
+
+def test_r16_replay_of_unknown_run_returns_404() -> None:
+    """POST /flows/runs/{unknown_id}/replay → 404 with meaningful detail."""
+    resp = client.post("/api/v1/flows/runs/does-not-exist-run/replay")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert "detail" in body
+    assert "not found" in body["detail"].lower()
+
+
+def test_r16_replay_deleted_flow_returns_404() -> None:
+    """If the source flow was deleted after the run, replay returns 404 for the flow."""
+    flow_id = _create_published_custom_flow("replay-deleted-flow")
+    run_resp = client.post(f"/api/v1/flows/{flow_id}/run")
+    assert run_resp.status_code == 202, run_resp.text
+    original_request_id = run_resp.json()["requestId"]
+
+    # Pause then delete the flow
+    client.post(f"/api/v1/flows/{flow_id}/lifecycle", json={"action": "pause"})
+    del_resp = client.delete(f"/api/v1/flows/{flow_id}")
+    assert del_resp.status_code == 200, del_resp.text
+
+    # Replay should now 404 on the flow
+    replay_resp = client.post(f"/api/v1/flows/runs/{original_request_id}/replay")
+    assert replay_resp.status_code == 404
+
+
+def test_r16_replay_creates_new_audit_entry() -> None:
+    """Replaying a run should produce a new audit log entry."""
+    flow_id = _create_published_custom_flow("replay-audit-flow")
+    run_resp = client.post(f"/api/v1/flows/{flow_id}/run")
+    original_request_id = run_resp.json()["requestId"]
+
+    # Count audit entries before replay
+    audit_before = client.get("/api/v1/audit/logs")
+    count_before = len(audit_before.json())
+
+    client.post(f"/api/v1/flows/runs/{original_request_id}/replay")
+
+    audit_after = client.get("/api/v1/audit/logs")
+    count_after = len(audit_after.json())
+    assert count_after > count_before, "Replay must produce at least one new audit entry"
+
+
+def test_r16_replay_response_shape_has_required_fields() -> None:
+    """Replay response body conforms to FlowRunResponse shape expected by the frontend."""
+    flow_id = _create_published_custom_flow("replay-shape-flow")
+    run_resp = client.post(f"/api/v1/flows/{flow_id}/run")
+    original_request_id = run_resp.json()["requestId"]
+
+    replay_resp = client.post(f"/api/v1/flows/runs/{original_request_id}/replay")
+    assert replay_resp.status_code == 202, replay_resp.text
+    body = replay_resp.json()
+
+    required_fields = {"requestId", "flowId", "status", "startedAt", "message"}
+    for field in required_fields:
+        assert field in body, f"Missing field '{field}' in replay response"
+
+    # Status must be a valid run status
+    assert body["status"] in {"running", "queued", "succeeded", "failed"}
+
+
+def test_r16_multiple_replays_produce_distinct_run_ids() -> None:
+    """Replaying the same original run twice must yield two distinct new run IDs."""
+    flow_id = _create_published_custom_flow("replay-multi-flow")
+    run_resp = client.post(f"/api/v1/flows/{flow_id}/run")
+    original_request_id = run_resp.json()["requestId"]
+
+    r1 = client.post(f"/api/v1/flows/runs/{original_request_id}/replay").json()
+    r2 = client.post(f"/api/v1/flows/runs/{original_request_id}/replay").json()
+
+    assert r1["requestId"] != r2["requestId"], "Each replay must produce a unique requestId"
+    assert r1["requestId"] != original_request_id
+    assert r2["requestId"] != original_request_id

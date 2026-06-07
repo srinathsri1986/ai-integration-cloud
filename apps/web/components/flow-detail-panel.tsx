@@ -13,6 +13,7 @@ import {
   Pause,
   Play,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   Webhook,
   XCircle,
@@ -23,7 +24,7 @@ import type { FlowDefinition, FlowLifecycleAction, FlowRunResponse } from "@ai-i
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SkeletonTile, SkeletonRow } from "@/components/ui/skeleton";
-import { runFlow, transitionFlowLifecycle } from "@/lib/api";
+import { replayFlowRun, runFlow, transitionFlowLifecycle } from "@/lib/api";
 
 // ── Lifecycle pipeline ──────────────────────────────────────────────────────
 
@@ -129,6 +130,7 @@ export function FlowDetailPanel({ initialFlow, initialRuns, isFallback }: FlowDe
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [runLoading, setRunLoading] = useState(false);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
 
   async function handleLifecycle(action: FlowLifecycleAction) {
     setActionLoading(action);
@@ -146,6 +148,15 @@ export function FlowDetailPanel({ initialFlow, initialRuns, isFallback }: FlowDe
     setRunLoading(true);
     const result = await runFlow(flow.flowId);
     setRunLoading(false);
+    if (result.ok) {
+      setRuns((prev) => [result.data, ...prev]);
+    }
+  }
+
+  async function handleReplay(requestId: string) {
+    setReplayingId(requestId);
+    const result = await replayFlowRun(requestId);
+    setReplayingId(null);
     if (result.ok) {
       setRuns((prev) => [result.data, ...prev]);
     }
@@ -321,6 +332,17 @@ export function FlowDetailPanel({ initialFlow, initialRuns, isFallback }: FlowDe
                       {run.status.replace("_", " ")}
                     </span>
                     <span className="text-xs text-slate-400 tabular-nums shrink-0">{durationMs(run)}</span>
+                    <button
+                      title="Replay this run"
+                      onClick={() => handleReplay(run.requestId)}
+                      disabled={replayingId === run.requestId}
+                      className="shrink-0 text-slate-400 hover:text-sky-500 transition-colors disabled:opacity-50"
+                    >
+                      {replayingId === run.requestId
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <RotateCcw className="h-3.5 w-3.5" />
+                      }
+                    </button>
                     <Link
                       href={`/flows/runs/${run.requestId}`}
                       className="shrink-0 text-slate-400 hover:text-sky-500 transition-colors"

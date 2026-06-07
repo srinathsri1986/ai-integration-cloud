@@ -1215,6 +1215,36 @@ export async function runFlow(flowId: FlowId): Promise<ClientApiResult<FlowRunRe
   }
 }
 
+export async function replayFlowRun(requestId: string): Promise<ClientApiResult<FlowRunResponse>> {
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/runs/${requestId}/replay`, {
+      cache: "no-store",
+      headers: authHeaders(),
+      method: "POST"
+    });
+
+    if (response.status !== 202 && !response.ok) {
+      const body = await response.json().catch(() => undefined);
+      return {
+        data: { ...fallbackFlowRunResponse, requestId },
+        error: body?.detail ?? `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ...fallbackFlowRunResponse, requestId },
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
 export async function getFlowRun(requestId: string): Promise<ClientApiResult<FlowRunResponse>> {
   try {
     const response = await fetch(`${apiBaseUrl()}/api/v1/flows/runs/${requestId}`, {
