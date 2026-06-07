@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { replayFlowRun, type ApiResult } from "@/lib/api";
+import { fmtDate } from "@/lib/utils";
 
 function statusLabel(status: string) {
   return status.replaceAll("_", " ");
@@ -189,8 +190,8 @@ export function FlowRunDetail({ runResult }: { runResult: ApiResult<FlowRunRespo
               <h3 className="text-xl font-semibold text-slate-950">Run metadata</h3>
             </div>
             <div className="mt-5 space-y-3 text-sm">
-              <Fact label="Started" value={new Date(run.startedAt).toLocaleString()} />
-              <Fact label="Completed" value={run.completedAt ? new Date(run.completedAt).toLocaleString() : "In progress…"} />
+              <Fact label="Started" value={fmtDate(run.startedAt)} suppressHydration />
+              <Fact label="Completed" value={run.completedAt ? fmtDate(run.completedAt) : "In progress…"} suppressHydration />
               <Fact label="Tools" value={run.toolsUsed.join(", ") || "None"} />
               <Fact label="Mapping" value={inspection?.mappingDefinitionId ?? "None"} />
               <Fact
@@ -230,11 +231,11 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, suppressHydration }: { label: string; value: string; suppressHydration?: boolean }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 break-words font-semibold text-slate-950" suppressHydrationWarning={suppressHydration}>{value}</p>
     </div>
   );
 }

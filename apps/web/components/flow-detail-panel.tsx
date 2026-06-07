@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SkeletonTile, SkeletonRow } from "@/components/ui/skeleton";
 import { replayFlowRun, runFlow, transitionFlowLifecycle } from "@/lib/api";
+import { fmtDate } from "@/lib/utils";
 
 // ── Lifecycle pipeline ──────────────────────────────────────────────────────
 
@@ -243,8 +244,8 @@ export function FlowDetailPanel({ initialFlow, initialRuns, isFallback }: FlowDe
               )}
 
               <dt className="text-slate-400">Last run</dt>
-              <dd className="text-xs text-slate-600">
-                {flow.lastRunAt ? new Date(flow.lastRunAt).toLocaleString() : "Never"}
+              <dd className="text-xs text-slate-600" suppressHydrationWarning>
+                {flow.lastRunAt ? fmtDate(flow.lastRunAt) : "Never"}
               </dd>
             </dl>
           </Card>
@@ -324,8 +325,8 @@ export function FlowDetailPanel({ initialFlow, initialRuns, isFallback }: FlowDe
                       <p className="text-xs font-mono text-slate-600 truncate">
                         {run.requestId.slice(0, 12)}…
                       </p>
-                      <p className="text-xs text-slate-400">
-                        {run.startedAt ? new Date(run.startedAt).toLocaleString() : "—"}
+                      <p className="text-xs text-slate-400" suppressHydrationWarning>
+                        {fmtDate(run.startedAt)}
                       </p>
                     </div>
                     <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${runStatusClass(run.status)}`}>
