@@ -503,11 +503,32 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
                   className={inputCls} autoComplete="new-password" />
               </Field>
               {isSalesforce && (
-                <Field label="Login URL" hint="Use https://test.salesforce.com for sandbox orgs.">
-                  <select value={loginUrl} onChange={e => setLoginUrl(e.target.value)} className={inputCls}>
+                <Field
+                  label="Login URL"
+                  hint="If your org blocks login.salesforce.com (Setup → My Domain → Login Policy), choose Custom and enter your My Domain URL, e.g. https://yourcompany-dev-ed.develop.my.salesforce.com"
+                >
+                  <select
+                    value={["https://login.salesforce.com", "https://test.salesforce.com"].includes(loginUrl) ? loginUrl : "custom"}
+                    onChange={e => {
+                      if (e.target.value === "custom") setLoginUrl("");
+                      else setLoginUrl(e.target.value);
+                    }}
+                    className={inputCls}
+                  >
                     <option value="https://login.salesforce.com">Production (login.salesforce.com)</option>
                     <option value="https://test.salesforce.com">Sandbox (test.salesforce.com)</option>
+                    <option value="custom">Custom — My Domain URL…</option>
                   </select>
+                  {!["https://login.salesforce.com", "https://test.salesforce.com"].includes(loginUrl) && (
+                    <input
+                      type="text"
+                      value={loginUrl}
+                      onChange={e => setLoginUrl(e.target.value)}
+                      placeholder="https://yourcompany-dev-ed.develop.my.salesforce.com"
+                      className={`${inputCls} mt-2`}
+                      autoComplete="off"
+                    />
+                  )}
                 </Field>
               )}
             </>

@@ -282,8 +282,22 @@ class SalesforcePlugin:
         return _MOCK_SCHEMA
 
 
+_STANDARD_OBJECTS = ("Opportunity", "Account", "Contact", "Lead", "Case")
+
+# Safety cap on total objects described per discovery run — keeps the UI
+# manageable and avoids excessive describe-call volume against the org.
+_MAX_CUSTOM_OBJECTS = 25
+
+
 def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
-    """Describe standard Salesforce objects via simple-salesforce."""
+    """Describe Salesforce objects via simple-salesforce.
+
+    Always includes the curated standard objects (Opportunity, Account,
+    Contact, Lead, Case) and additionally auto-discovers any *custom*
+    objects (API names ending in "__c") defined in the connected org —
+    so user-created objects show up in schema discovery / field mapping
+    without any code changes on our side.
+    """
     from simple_salesforce import Salesforce  # type: ignore[import]
 
     instance = (
@@ -301,8 +315,24 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
         "date": "date", "datetime": "date",
     }
 
+    # ── Discover custom objects (API names ending in "__c") ──────────────────
+    custom_object_names: list[str] = []
+    try:
+        global_desc = sf.describe()
+        custom_object_names = sorted(
+            sobj["name"]
+            for sobj in global_desc.get("sobjects", [])
+            if sobj.get("name", "").endswith("__c")
+            and sobj.get("queryable", True)
+            and not sobj.get("deprecatedAndHidden", False)
+        )[:_MAX_CUSTOM_OBJECTS]
+    except Exception as exc:
+        logger.warning("Could not list Salesforce custom objects: %s", exc)
+
+    object_names = list(_STANDARD_OBJECTS) + custom_object_names
+
     objects: list[SchemaObject] = []
-    for obj_name in ("Opportunity", "Account", "Contact", "Lead", "Case"):
+    for obj_name in object_names:
         try:
             desc = sf.restful(f"sobjects/{obj_name}/describe")
             fields: list[SchemaField] = []
@@ -319,7 +349,8 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
                     updateable=f.get("updateable", True),
                     sample=None,
                 ))
-            objects.append(SchemaObject(object_id=obj_name, label=obj_name, fields=fields[:40]))
+            label = desc.get("label", obj_name)
+            objects.append(SchemaObject(object_id=obj_name, label=label, fields=fields[:40]))
         except Exception as exc:
             logger.warning("Could not describe Salesforce object %s: %s", obj_name, exc)
     return objects
