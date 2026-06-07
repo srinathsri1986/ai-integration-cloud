@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from hashlib import sha1
 from threading import Lock
+from uuid import uuid4
 
 from app.core.database import SessionLocal
 from app.core.security import redact_mapping
@@ -9,7 +10,18 @@ from app.repositories.audit_repository import AuditRepository
 
 
 def _bounded_request_id(prefix: str, identifier: str, action: str | None = None) -> str:
-    raw = f"{prefix}-{identifier}" if action is None else f"{prefix}-{identifier}-{action}"
+    """Generate a unique, human-readable audit request ID.
+
+    Each call appends an 8-character UUID nonce so that repeated actions on
+    the same entity (e.g. multiple submit_for_approval events on the same flow)
+    each receive a distinct ID — preventing duplicate React keys in the UI.
+    """
+    nonce = uuid4().hex[:8]
+    raw = (
+        f"{prefix}-{identifier}-{nonce}"
+        if action is None
+        else f"{prefix}-{identifier}-{action}-{nonce}"
+    )
     if len(raw) <= 64:
         return raw
 

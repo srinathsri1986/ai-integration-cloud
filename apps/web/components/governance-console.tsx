@@ -536,7 +536,7 @@ function AuditTab({
             </thead>
             <tbody>
               {logs.slice(0, 200).map((log, i) => (
-                <AuditRow key={log.requestId ?? i} log={log} />
+                <AuditRow key={`${log.requestId ?? "entry"}-${i}`} log={log} />
               ))}
             </tbody>
           </table>
