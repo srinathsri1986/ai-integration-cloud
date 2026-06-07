@@ -64,6 +64,9 @@ class FlowDefinitionRepository:
                 record.webhook_secret = flow.webhook_secret
             record.mapping_definition_id = flow.mapping_definition_id
             record.steps = [step.model_dump(by_alias=True) for step in flow.steps]
+            # R18a
+            record.target_connector = flow.target_connector
+            record.field_mappings = [m.model_dump(by_alias=True) for m in flow.field_mappings]
 
         self.session.commit()
         return self.get_flow(flow.flow_id)
@@ -155,16 +158,33 @@ class FlowDefinitionRepository:
             last_run_at=flow.last_run_at,
             last_run_status=flow.last_run_status,
             steps=[step.model_dump(by_alias=True) for step in flow.steps],
+            # R18a
+            target_connector=flow.target_connector,
+            field_mappings=[m.model_dump(by_alias=True) for m in flow.field_mappings],
         )
 
     def _to_model(self, record: FlowDefinitionRecord) -> FlowDefinition:
+        import json
+        from app.models.custom_endpoint import InlineFieldMapping
         status = "published" if record.status == "active" else record.status
+        # Deserialise field_mappings from JSON column (list of dicts → Pydantic models)
+        raw_mappings = getattr(record, "field_mappings", None) or []
+        if isinstance(raw_mappings, str):
+            raw_mappings = json.loads(raw_mappings)
+        field_mappings = []
+        for m in raw_mappings:
+            try:
+                field_mappings.append(InlineFieldMapping.model_validate(m))
+            except Exception:
+                pass
         return FlowDefinition(
             flowId=record.flow_id,
             name=record.name,
             description=record.description,
             sourceConnector=record.source_connector,
             targetModule=record.target_module,
+            targetConnector=getattr(record, "target_connector", None),
+            fieldMappings=field_mappings,
             status=status,
             triggerType=record.trigger_type,
             triggerCron=getattr(record, "trigger_cron", None),

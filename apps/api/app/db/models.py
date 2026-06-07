@@ -178,6 +178,11 @@ class FlowDefinitionRecord(Base):
     last_run_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_run_status: Mapped[str] = mapped_column(String(32), nullable=False)
     steps: Mapped[list[dict[str, Any]]] = mapped_column(_json_type(), nullable=False)
+    # R18a: explicit target connector ID and inline user-defined field mappings
+    target_connector: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    field_mappings: Mapped[list[dict[str, Any]]] = mapped_column(
+        _json_type(), nullable=False, default=list
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -189,6 +194,30 @@ class FlowDefinitionRecord(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class CustomEndpointRecord(Base):
+    """User-defined REST API endpoint used as source or target in a flow — R18a."""
+
+    __tablename__ = "custom_endpoints"
+    __table_args__ = (
+        Index("ix_custom_endpoints_tenant", "tenant_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    auth_scheme: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    auth_header_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    default_path: Mapped[str] = mapped_column(String(256), nullable=False, default="/")
+    http_method: Mapped[str] = mapped_column(String(8), nullable=False, default="GET")
+    # Stored as JSON text — list[FieldInfo]
+    field_schema: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    sample_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class WebhookDeliveryRecord(Base):

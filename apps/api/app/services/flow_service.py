@@ -272,6 +272,8 @@ class FlowService:
             description=request.description,
             sourceConnector=request.source_connector,
             targetModule=request.target_module,
+            targetConnector=request.target_connector,
+            fieldMappings=request.field_mappings,
             status=request.status,
             triggerType=request.trigger_type,
             triggerCron=request.trigger_cron,
@@ -536,6 +538,48 @@ class FlowService:
                         )
                     )
                     break  # stop on first step failure
+
+            # R18a: apply inline field mappings (source → target transformation)
+            if not step_failed and flow.field_mappings:
+                from app.services.mapping_engine import apply_mappings
+                map_start = datetime.now(UTC).isoformat()
+                # Aggregate all step outputs as the source payload
+                source_payload = data.copy()
+                try:
+                    mapped_payload, map_warnings = apply_mappings(source_payload, flow.field_mappings)
+                    data["mappedPayload"] = mapped_payload
+                    # Write to target connector if defined and distinct from source
+                    target_connector_id = flow.target_connector
+                    if target_connector_id and target_connector_id != flow.source_connector:
+                        try:
+                            write_result = connector_registry.execute_tool(
+                                target_connector_id, "write", params=mapped_payload, tenant_id=tenant_id
+                            )
+                            data["targetWriteResult"] = write_result
+                        except Exception as write_exc:
+                            map_warnings.append(f"Target write skipped (mock mode): {write_exc}")
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id="field-mapping",
+                            name=f"Apply {len(flow.field_mappings)} field mapping(s)",
+                            status="succeeded",
+                            started_at=map_start,
+                            approved_tool=None,
+                            warnings=map_warnings,
+                        )
+                    )
+                except Exception as map_exc:
+                    step_failed = True
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id="field-mapping",
+                            name="Apply field mappings",
+                            status="failed",
+                            started_at=map_start,
+                            approved_tool=None,
+                            warnings=[f"Field mapping failed: {map_exc}"],
+                        )
+                    )
 
             # If flow has a mapping definition, simulate it as an additional step
             if not step_failed and mapping_definition_id:

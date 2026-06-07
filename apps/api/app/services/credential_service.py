@@ -64,6 +64,18 @@ class ConnectorCredentialService:
     # DB helpers (manual upsert — works correctly with NULL tenant_id)
     # ------------------------------------------------------------------
 
+    def _is_postgres(self, session) -> bool:
+        """Return True if the active DB is PostgreSQL (not SQLite)."""
+        return session.bind is not None and "postgresql" in str(
+            session.bind.dialect.name
+        )
+
+    def _config_cast(self, session, param: str) -> str:
+        """SQL fragment for storing config_json — CAST only on PostgreSQL."""
+        if self._is_postgres(session):
+            return f"CAST(:{param} AS jsonb)"
+        return f":{param}"
+
     def _upsert_config(
         self,
         connector_id: str,
@@ -72,6 +84,7 @@ class ConnectorCredentialService:
         status: str,
         mode: str,
     ) -> None:
+        from datetime import UTC, datetime as _dt
         with SessionLocal() as session:
             row = session.execute(
                 text(
@@ -80,14 +93,14 @@ class ConnectorCredentialService:
                 ),
                 {"cid": connector_id, "tid": tenant_id},
             ).fetchone()
+            config_cast = self._config_cast(session, "config")
             if row:
-                from datetime import UTC, datetime as _dt
                 session.execute(
                     text(
-                        "UPDATE connector_config_records "
-                        "SET config_json = CAST(:config AS jsonb), status = :status, "
-                        "mode = :mode, updated_at = :now "
-                        "WHERE id = :id"
+                        f"UPDATE connector_config_records "
+                        f"SET config_json = {config_cast}, status = :status, "
+                        f"mode = :mode, updated_at = :now "
+                        f"WHERE id = :id"
                     ),
                     {
                         "config": json.dumps(config_json),
@@ -98,13 +111,12 @@ class ConnectorCredentialService:
                     },
                 )
             else:
-                from datetime import UTC, datetime as _dt
                 now_iso = _dt.now(UTC).isoformat()
                 session.execute(
                     text(
-                        "INSERT INTO connector_config_records "
-                        "(connector_id, tenant_id, config_json, status, mode, created_at, updated_at) "
-                        "VALUES (:cid, :tid, CAST(:config AS jsonb), :status, :mode, :now, :now)"
+                        f"INSERT INTO connector_config_records "
+                        f"(connector_id, tenant_id, config_json, status, mode, created_at, updated_at) "
+                        f"VALUES (:cid, :tid, {config_cast}, :status, :mode, :now, :now)"
                     ),
                     {
                         "cid": connector_id,
@@ -130,7 +142,15 @@ class ConnectorCredentialService:
             ).fetchone()
         if not row:
             return None
-        config = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        raw = row[0]
+        if isinstance(raw, dict):
+            config = raw
+        elif isinstance(raw, (str, bytes, bytearray)):
+            config = json.loads(raw)
+        else:
+            # SQLite NUMERIC affinity can coerce small JSON values (e.g. "0", "{}") to numbers.
+            # Stringify and re-parse so callers always get a dict.
+            config = json.loads(str(raw)) if raw is not None else {}
         return {"config": config, "status": row[1], "mode": row[2]}
 
     # ------------------------------------------------------------------

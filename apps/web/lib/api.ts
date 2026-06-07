@@ -2013,3 +2013,129 @@ export async function getConnectorSchema(
     (b) => b,
   );
 }
+
+// ─── R18a: Custom endpoint API ────────────────────────────────────────────────
+
+import type {
+  CustomEndpoint,
+  FieldInfo,
+  InlineFieldMapping,
+  SchemaDiscoveryResponse,
+} from "@ai-integration-cloud/shared";
+
+export type { CustomEndpoint, FieldInfo, InlineFieldMapping, SchemaDiscoveryResponse };
+
+export interface CustomEndpointCreatePayload {
+  name: string;
+  description?: string;
+  baseUrl: string;
+  authScheme: "none" | "api_key" | "bearer" | "basic";
+  defaultPath?: string;
+  httpMethod?: "GET" | "POST" | "PUT" | "PATCH";
+  // Credentials — optional, encrypted server-side
+  apiKey?: string;
+  bearerToken?: string;
+  username?: string;
+  password?: string;
+}
+
+const _fallbackEndpoint: CustomEndpoint = {
+  endpointId: "",
+  tenantId: null,
+  name: "Unknown",
+  description: "",
+  baseUrl: "",
+  authScheme: "none",
+  defaultPath: "/",
+  httpMethod: "GET",
+  fieldSchema: [],
+  fieldCount: 0,
+  hasCredentials: false,
+  createdAt: new Date(0).toISOString(),
+  updatedAt: new Date(0).toISOString(),
+};
+
+export async function createCustomEndpoint(
+  payload: CustomEndpointCreatePayload,
+): Promise<ClientApiResult<CustomEndpoint>> {
+  try {
+    const resp = await fetch(`${apiBaseUrl()}/api/v1/custom-endpoints`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+      return { data: _fallbackEndpoint, ok: false, isFallback: true, error: err.detail ?? `HTTP ${resp.status}` };
+    }
+    const data = await resp.json();
+    return { data, ok: true, isFallback: false };
+  } catch (e) {
+    return { data: _fallbackEndpoint, ok: false, isFallback: true, error: e instanceof Error ? e.message : "API unavailable" };
+  }
+}
+
+export async function listCustomEndpoints(): Promise<ApiResult<CustomEndpoint[]>> {
+  return getApiResult("/api/v1/custom-endpoints", [], (b) => b);
+}
+
+export async function getCustomEndpoint(endpointId: string): Promise<ApiResult<CustomEndpoint>> {
+  return getApiResult(`/api/v1/custom-endpoints/${encodeURIComponent(endpointId)}`, _fallbackEndpoint, (b) => b);
+}
+
+export async function discoverCustomEndpointSchema(
+  endpointId: string,
+  options: { path?: string; openapiUrl?: string; openapiSchemaName?: string } = {},
+): Promise<ClientApiResult<SchemaDiscoveryResponse>> {
+  const fallback: SchemaDiscoveryResponse = {
+    endpointId,
+    fields: [],
+    fieldCount: 0,
+    discoveryMethod: "probe",
+    warnings: ["Discovery unavailable — API unreachable."],
+  };
+  try {
+    const resp = await fetch(`${apiBaseUrl()}/api/v1/custom-endpoints/${encodeURIComponent(endpointId)}/discover-schema`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+      return { data: fallback, ok: false, isFallback: true, error: err.detail ?? `HTTP ${resp.status}` };
+    }
+    const data = await resp.json();
+    return { data, ok: true, isFallback: false };
+  } catch (e) {
+    return { data: fallback, ok: false, isFallback: true, error: e instanceof Error ? e.message : "API unavailable" };
+  }
+}
+
+export async function testCustomEndpointConnection(
+  endpointId: string,
+): Promise<ClientApiResult<{ ok: boolean; statusCode: number | null; message: string; latencyMs: number }>> {
+  const fallback = { ok: false, statusCode: null, message: "Test unavailable.", latencyMs: 0 };
+  try {
+    const resp = await fetch(`${apiBaseUrl()}/api/v1/custom-endpoints/${encodeURIComponent(endpointId)}/test`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!resp.ok) {
+      return { data: fallback, ok: false, isFallback: true, error: `HTTP ${resp.status}` };
+    }
+    const data = await resp.json();
+    return { data, ok: true, isFallback: false };
+  } catch (e) {
+    return { data: fallback, ok: false, isFallback: true, error: e instanceof Error ? e.message : "API unavailable" };
+  }
+}
+
+export async function getCustomEndpointSchema(
+  endpointId: string,
+): Promise<ApiResult<{ endpointId: string; fields: FieldInfo[]; fieldCount: number }>> {
+  return getApiResult(
+    `/api/v1/custom-endpoints/${encodeURIComponent(endpointId)}/schema`,
+    { endpointId, fields: [], fieldCount: 0 },
+    (b) => b,
+  );
+}

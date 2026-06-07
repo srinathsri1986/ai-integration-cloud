@@ -3,6 +3,8 @@ from typing import Any, Literal
 from croniter import croniter
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.models.custom_endpoint import InlineFieldMapping
+
 
 FlowId = str
 FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
@@ -27,6 +29,10 @@ class FlowDefinition(BaseModel):
     description: str
     source_connector: str = Field(alias="sourceConnector", min_length=2, max_length=48)
     target_module: str = Field(alias="targetModule")
+    # R18a: explicit target connector (replaces the ambiguous target_module for connector IDs)
+    target_connector: str | None = Field(default=None, alias="targetConnector")
+    # R18a: inline field mappings — user-defined source→target field transformations
+    field_mappings: list[InlineFieldMapping] = Field(default_factory=list, alias="fieldMappings")
     status: FlowStatus
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
     trigger_cron: str | None = Field(default=None, alias="triggerCron")
@@ -43,6 +49,11 @@ class FlowDefinitionUpsertRequest(BaseModel):
     description: str = Field(min_length=10, max_length=500)
     source_connector: str = Field(alias="sourceConnector", min_length=2, max_length=48)
     target_module: str = Field(alias="targetModule", min_length=3, max_length=80)
+    # R18a additions
+    target_connector: str | None = Field(default=None, alias="targetConnector", max_length=96)
+    field_mappings: list[InlineFieldMapping] = Field(
+        default_factory=list, alias="fieldMappings", max_length=200
+    )
     status: FlowStatus = "draft"
     trigger_type: FlowTriggerType = Field(default="manual", alias="triggerType")
     trigger_cron: str | None = Field(default=None, alias="triggerCron", max_length=100)
