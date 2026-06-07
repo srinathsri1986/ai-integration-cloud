@@ -48,20 +48,23 @@ def upgrade() -> None:
         "ix_flow_runs_tenant_started_at",
         "flow_runs",
         ["tenant_id", "started_at"],
+        if_not_exists=True,
     )
     # Per-flow history: SELECT * FROM flow_runs WHERE tenant_id = ? AND flow_id = ? ORDER BY started_at DESC
     op.create_index(
         "ix_flow_runs_tenant_flow_started",
         "flow_runs",
         ["tenant_id", "flow_id", "started_at"],
+        if_not_exists=True,
     )
 
-    # ── audit_log_entries ─────────────────────────────────────────────────────
-    # Governance console: SELECT * FROM audit_log_entries WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT 100
+    # ── audit_logs ────────────────────────────────────────────────────────────
+    # Governance console: SELECT * FROM audit_logs WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT 100
     op.create_index(
-        "ix_audit_log_entries_tenant_timestamp",
-        "audit_log_entries",
+        "ix_audit_logs_tenant_timestamp",
+        "audit_logs",
         ["tenant_id", "timestamp"],
+        if_not_exists=True,
     )
 
     # ── flow_definitions ──────────────────────────────────────────────────────
@@ -70,6 +73,7 @@ def upgrade() -> None:
         "ix_flow_definitions_tenant_status",
         "flow_definitions",
         ["tenant_id", "status"],
+        if_not_exists=True,
     )
 
     # ── connector_config_records ──────────────────────────────────────────────
@@ -78,12 +82,13 @@ def upgrade() -> None:
         "ix_connector_config_tenant",
         "connector_config_records",
         ["tenant_id"],
+        if_not_exists=True,
     )
 
 
 def downgrade() -> None:
     op.drop_index("ix_connector_config_tenant",       table_name="connector_config_records")
     op.drop_index("ix_flow_definitions_tenant_status", table_name="flow_definitions")
-    op.drop_index("ix_audit_log_entries_tenant_timestamp", table_name="audit_log_entries")
+    op.drop_index("ix_audit_logs_tenant_timestamp", table_name="audit_logs")
     op.drop_index("ix_flow_runs_tenant_flow_started",  table_name="flow_runs")
     op.drop_index("ix_flow_runs_tenant_started_at",    table_name="flow_runs")

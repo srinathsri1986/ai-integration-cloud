@@ -231,8 +231,8 @@ export function FieldMapper({
           {sourceFields.length === 0 && targetFields.length === 0
             ? "Discover fields for both source and target to enable mapping."
             : sourceFields.length === 0
-            ? "Source fields not yet discovered — click "Discover fields" above."
-            : "Target fields not yet discovered — click "Discover fields" above."}
+            ? 'Source fields not yet discovered — click "Discover fields" above.'
+            : 'Target fields not yet discovered — click "Discover fields" above.'}
         </p>
       </div>
     );
