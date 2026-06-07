@@ -40,27 +40,302 @@ def list_connectors(user=Depends(require_permissions("connector:admin"))) -> lis
 
 
 # ---------------------------------------------------------------------------
+# OAuth App Config — store Client ID + Secret from UI (no env vars needed)
+# Applies to: salesforce, slack (any oauth2 connector)
+# ---------------------------------------------------------------------------
+
+
+class OAuthAppConfig(BaseModel):
+    client_id: str
+    client_secret: str
+    # Optional overrides
+    login_url: str = ""          # Salesforce: production vs sandbox URL
+    redirect_uri: str = ""       # Override default callback URL
+
+
+@router.put("/{connector_id}/oauth-app-config")
+def save_oauth_app_config(
+    connector_id: str,
+    config: OAuthAppConfig,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Store the OAuth2 Connected App credentials entered from the UI.
+
+    These replace the need for SALESFORCE_CLIENT_ID / SLACK_CLIENT_ID env vars.
+    Credentials are Fernet-encrypted at rest under key 'oauth_app:{connector_id}'.
+    """
+    allowed = {"salesforce", "slack"}
+    if connector_id not in allowed:
+        raise HTTPException(status_code=400, detail=f"oauth-app-config not applicable for '{connector_id}'.")
+    if not config.client_id or not config.client_secret:
+        raise HTTPException(status_code=422, detail="client_id and client_secret are required.")
+
+    meta: dict = {}
+    if config.login_url:
+        meta["login_url_override"] = config.login_url.rstrip("/")
+    if config.redirect_uri:
+        meta["redirect_uri_override"] = config.redirect_uri
+
+    credential_service.store_credentials(
+        f"oauth_app:{connector_id}",
+        {"client_id": config.client_id, "client_secret": config.client_secret},
+        tenant_id=user.tenant_id,
+        extra_meta=meta,
+    )
+    return {"ok": True, "message": f"{connector_id} OAuth app credentials saved. You can now click Connect."}
+
+
+@router.get("/{connector_id}/oauth-app-config")
+def get_oauth_app_config_status(
+    connector_id: str,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Return whether OAuth app credentials have been configured (never returns secrets)."""
+    record = credential_service._fetch_config(f"oauth_app:{connector_id}", user.tenant_id)
+    configured = record is not None and record["mode"] == "live"
+    return {"connectorId": connector_id, "configured": configured}
+
+
+@router.delete("/{connector_id}/oauth-app-config")
+def delete_oauth_app_config(
+    connector_id: str,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Remove stored OAuth app credentials."""
+    credential_service.revoke_token(f"oauth_app:{connector_id}", tenant_id=user.tenant_id)
+    return {"ok": True, "message": f"{connector_id} OAuth app credentials removed."}
+
+
+# ---------------------------------------------------------------------------
+# Live-config for direct-credential connectors (NetSuite, SAP, Oracle, HCM)
+# ---------------------------------------------------------------------------
+
+
+class NetSuiteLiveConfig(BaseModel):
+    account_id: str
+    consumer_key: str
+    consumer_secret: str
+    token_id: str
+    token_secret: str
+
+    @field_validator("account_id", "consumer_key", "consumer_secret", "token_id", "token_secret")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("This field is required.")
+        return v.strip()
+
+
+@router.put("/netsuite/live-config")
+def configure_netsuite(
+    config: NetSuiteLiveConfig,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Store encrypted NetSuite token-based OAuth credentials entered from the UI."""
+    from app.services.schema_cache import schema_cache
+    credential_service.store_credentials(
+        "netsuite",
+        {
+            "account_id":       config.account_id,
+            "consumer_key":     config.consumer_key,
+            "consumer_secret":  config.consumer_secret,
+            "token_id":         config.token_id,
+            "token_secret":     config.token_secret,
+        },
+        tenant_id=user.tenant_id,
+        extra_meta={"account_id_display": config.account_id},
+    )
+    schema_cache.invalidate("netsuite", tenant_id=user.tenant_id)
+    return {"ok": True, "message": f"NetSuite credentials saved for account {config.account_id}."}
+
+
+@router.delete("/netsuite/live-config/disconnect")
+def disconnect_netsuite(user=Depends(require_permissions("connector:admin"))) -> dict:
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("netsuite", tenant_id=user.tenant_id)
+    schema_cache.invalidate("netsuite", tenant_id=user.tenant_id)
+    return {"ok": True, "message": "NetSuite connector disconnected."}
+
+
+class SAPLiveConfig(BaseModel):
+    host: str
+    client: str = "100"
+    username: str
+    password: str
+    system_number: str = "00"
+
+    @field_validator("host", "username", "password")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("This field is required.")
+        return v.strip()
+
+
+@router.put("/sap/live-config")
+def configure_sap(
+    config: SAPLiveConfig,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Store encrypted SAP credentials entered from the UI."""
+    from app.services.schema_cache import schema_cache
+    credential_service.store_credentials(
+        "sap",
+        {
+            "host":          config.host,
+            "client":        config.client,
+            "username":      config.username,
+            "password":      config.password,
+            "system_number": config.system_number,
+        },
+        tenant_id=user.tenant_id,
+        extra_meta={"host_display": config.host, "client_display": config.client},
+    )
+    schema_cache.invalidate("sap", tenant_id=user.tenant_id)
+    return {"ok": True, "message": f"SAP credentials saved for host {config.host} / client {config.client}."}
+
+
+@router.delete("/sap/live-config/disconnect")
+def disconnect_sap(user=Depends(require_permissions("connector:admin"))) -> dict:
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("sap", tenant_id=user.tenant_id)
+    schema_cache.invalidate("sap", tenant_id=user.tenant_id)
+    return {"ok": True, "message": "SAP connector disconnected."}
+
+
+class OracleLiveConfig(BaseModel):
+    host: str
+    port: str = "1521"
+    service_name: str
+    username: str
+    password: str
+
+    @field_validator("host", "service_name", "username", "password")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("This field is required.")
+        return v.strip()
+
+
+@router.put("/oracle/live-config")
+def configure_oracle(
+    config: OracleLiveConfig,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Store encrypted Oracle DB credentials entered from the UI."""
+    from app.services.schema_cache import schema_cache
+    credential_service.store_credentials(
+        "oracle",
+        {
+            "host":         config.host,
+            "port":         config.port,
+            "service_name": config.service_name,
+            "username":     config.username,
+            "password":     config.password,
+        },
+        tenant_id=user.tenant_id,
+        extra_meta={"host_display": config.host, "service_name_display": config.service_name},
+    )
+    schema_cache.invalidate("oracle", tenant_id=user.tenant_id)
+    return {"ok": True, "message": f"Oracle credentials saved for {config.host}/{config.service_name}."}
+
+
+@router.delete("/oracle/live-config/disconnect")
+def disconnect_oracle(user=Depends(require_permissions("connector:admin"))) -> dict:
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("oracle", tenant_id=user.tenant_id)
+    schema_cache.invalidate("oracle", tenant_id=user.tenant_id)
+    return {"ok": True, "message": "Oracle connector disconnected."}
+
+
+class HCMLiveConfig(BaseModel):
+    tenant_url: str
+    client_id: str
+    client_secret: str
+    # Some HCM deployments use basic auth instead of OAuth client credentials
+    username: str = ""
+    password: str = ""
+
+    @field_validator("tenant_url", "client_id", "client_secret")
+    @classmethod
+    def not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("This field is required.")
+        return v.strip()
+
+    @field_validator("tenant_url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("tenant_url must start with https://")
+        return v
+
+
+@router.put("/hcm/live-config")
+def configure_hcm(
+    config: HCMLiveConfig,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Store encrypted HCM (Workday) credentials entered from the UI."""
+    from app.services.schema_cache import schema_cache
+    credential_service.store_credentials(
+        "hcm",
+        {
+            "tenant_url":    config.tenant_url,
+            "client_id":     config.client_id,
+            "client_secret": config.client_secret,
+            "username":      config.username,
+            "password":      config.password,
+        },
+        tenant_id=user.tenant_id,
+        extra_meta={"tenant_url_display": config.tenant_url},
+    )
+    schema_cache.invalidate("hcm", tenant_id=user.tenant_id)
+    return {"ok": True, "message": f"HCM credentials saved for tenant {config.tenant_url}."}
+
+
+@router.delete("/hcm/live-config/disconnect")
+def disconnect_hcm(user=Depends(require_permissions("connector:admin"))) -> dict:
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("hcm", tenant_id=user.tenant_id)
+    schema_cache.invalidate("hcm", tenant_id=user.tenant_id)
+    return {"ok": True, "message": "HCM connector disconnected."}
+
+
+# ---------------------------------------------------------------------------
 # Slack OAuth2 routes — must appear BEFORE /{connector_id} catch-all
 # ---------------------------------------------------------------------------
 
 
+def _get_oauth_app_creds(connector_id: str, tenant_id: int | None) -> dict | None:
+    """Return decrypted OAuth app credentials stored via the UI, or None if not set."""
+    return credential_service.get_credentials(f"oauth_app:{connector_id}", tenant_id=tenant_id)
+
+
 @router.get("/slack/oauth/authorize")
-def slack_oauth_authorize() -> RedirectResponse:
+def slack_oauth_authorize(user=Depends(require_permissions("connector:admin"))) -> RedirectResponse:
     """Redirect the user to Slack's OAuth2 authorisation page.
 
-    Register your Slack app redirect URI as:
-        http://localhost:8000/api/v1/connectors/slack/oauth/callback
+    Client ID / Secret are pulled from credentials stored via the UI first;
+    falls back to SLACK_CLIENT_ID env var for backwards compatibility.
     """
     settings = get_settings()
-    if not settings.slack_client_id:
+    # DB-first: credentials saved through the UI
+    db_creds = _get_oauth_app_creds("slack", tenant_id=user.tenant_id)
+    client_id = (db_creds or {}).get("client_id") or settings.slack_client_id
+    redirect_uri = settings.slack_redirect_uri
+
+    if not client_id:
         raise HTTPException(
             status_code=501,
-            detail="Slack OAuth is not configured. Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET.",
+            detail="Slack OAuth is not configured. Enter your Slack App Client ID and Secret in the Connector Registry.",
         )
     params = {
-        "client_id": settings.slack_client_id,
+        "client_id": client_id,
         "scope": settings.slack_scopes,
-        "redirect_uri": settings.slack_redirect_uri,
+        "redirect_uri": redirect_uri,
     }
     url = "https://slack.com/oauth/v2/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url)
@@ -78,15 +353,20 @@ def slack_oauth_callback(code: str = "", error: str = "") -> RedirectResponse:
     if not code:
         return RedirectResponse(f"{frontend_base}/connectors?slack_error=missing_code")
 
+    # DB-first credential resolution
+    db_creds = _get_oauth_app_creds("slack", tenant_id=None)
+    client_id     = (db_creds or {}).get("client_id")     or settings.slack_client_id
+    client_secret = (db_creds or {}).get("client_secret") or settings.slack_client_secret
+
     # Exchange code for access token
     try:
         resp = httpx.post(
             "https://slack.com/api/oauth.v2.access",
             data={
-                "client_id": settings.slack_client_id,
-                "client_secret": settings.slack_client_secret,
-                "code": code,
-                "redirect_uri": settings.slack_redirect_uri,
+                "client_id":     client_id,
+                "client_secret": client_secret,
+                "code":          code,
+                "redirect_uri":  settings.slack_redirect_uri,
             },
             timeout=10,
         )
@@ -130,26 +410,31 @@ def slack_oauth_disconnect(user=Depends(require_permissions("connector:admin")))
 
 
 @router.get("/salesforce/oauth/authorize")
-def salesforce_oauth_authorize() -> RedirectResponse:
+def salesforce_oauth_authorize(user=Depends(require_permissions("connector:admin"))) -> RedirectResponse:
     """Redirect the user to Salesforce's OAuth2 authorisation page.
 
-    Create a Connected App in Salesforce Setup → App Manager and set the
-    callback URL to:
-        http://localhost:8000/api/v1/connectors/salesforce/oauth/callback
+    Client ID / Secret + optional login URL are pulled from credentials stored
+    via the UI first; falls back to SALESFORCE_CLIENT_ID env var.
     """
     settings = get_settings()
-    if not settings.salesforce_client_id:
+    db_creds  = _get_oauth_app_creds("salesforce", tenant_id=user.tenant_id)
+    client_id = (db_creds or {}).get("client_id")  or settings.salesforce_client_id
+    login_url = (db_creds or {}).get("client_id") and (
+        credential_service._fetch_config(f"oauth_app:salesforce", user.tenant_id) or {}
+    ).get("config", {}).get("login_url_override") or settings.salesforce_login_url
+
+    if not client_id:
         raise HTTPException(
             status_code=501,
-            detail="Salesforce OAuth is not configured. Set SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET.",
+            detail="Salesforce OAuth is not configured. Enter your Connected App Client ID and Secret in the Connector Registry.",
         )
     params = {
         "response_type": "code",
-        "client_id": settings.salesforce_client_id,
-        "redirect_uri": settings.salesforce_redirect_uri,
-        "scope": "api refresh_token",
+        "client_id":     client_id,
+        "redirect_uri":  settings.salesforce_redirect_uri,
+        "scope":         "api refresh_token offline_access",
     }
-    url = f"{settings.salesforce_login_url}/services/oauth2/authorize?" + urllib.parse.urlencode(params)
+    url = f"{login_url}/services/oauth2/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url)
 
 
@@ -168,15 +453,23 @@ def salesforce_oauth_callback(code: str = "", error: str = "", error_description
     if not code:
         return RedirectResponse(f"{frontend_base}/connectors?salesforce_error=missing_code")
 
+    # DB-first credential resolution
+    db_creds      = _get_oauth_app_creds("salesforce", tenant_id=None)
+    client_id     = (db_creds or {}).get("client_id")     or settings.salesforce_client_id
+    client_secret = (db_creds or {}).get("client_secret") or settings.salesforce_client_secret
+    # Resolve login URL — check stored override, fall back to settings
+    raw_record = credential_service._fetch_config("oauth_app:salesforce", None)
+    login_url  = ((raw_record or {}).get("config") or {}).get("login_url_override") or settings.salesforce_login_url
+
     try:
         resp = httpx.post(
-            f"{settings.salesforce_login_url}/services/oauth2/token",
+            f"{login_url}/services/oauth2/token",
             data={
-                "grant_type": "authorization_code",
-                "client_id": settings.salesforce_client_id,
-                "client_secret": settings.salesforce_client_secret,
-                "redirect_uri": settings.salesforce_redirect_uri,
-                "code": code,
+                "grant_type":    "authorization_code",
+                "client_id":     client_id,
+                "client_secret": client_secret,
+                "redirect_uri":  settings.salesforce_redirect_uri,
+                "code":          code,
             },
             timeout=15,
         )

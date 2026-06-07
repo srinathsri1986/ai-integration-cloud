@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ConnectorDefinition, ConnectorTool } from "@ai-integration-cloud/shared";
 import type { ApiResult, ConnectorSchema } from "@/lib/api";
@@ -211,7 +211,33 @@ function SchemaViewer({ schema }: { schema: ConnectorSchema }) {
 }
 
 // ---------------------------------------------------------------------------
-// Credential modal — unified for all auth types, with inline Test Connection
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function _getToken(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem("auth_token") ?? "";
+}
+
+function Field({
+  label, hint, required = false, children,
+}: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+        {label} {required && <span className="text-rose-500">*</span>}
+      </label>
+      {children}
+      {hint && <p className="mt-1 text-[11px] text-slate-400">{hint}</p>}
+    </div>
+  );
+}
+
+const inputCls =
+  "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100";
+
+// ---------------------------------------------------------------------------
+// Credential modal — full forms for every connector type
 // ---------------------------------------------------------------------------
 
 interface ConfigModalProps {
@@ -223,38 +249,95 @@ interface ConfigModalProps {
 }
 
 function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSuccess }: ConfigModalProps) {
-  // REST API fields
+  // ── OAuth2 App setup (Salesforce, Slack) ──────────────────────────────────
+  const [oauthClientId,     setOauthClientId]     = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [loginUrl,          setLoginUrl]          = useState("https://login.salesforce.com");
+  // Whether the OAuth app creds have been saved (step 1 done → show Authorize button)
+  const [oauthAppSaved,     setOauthAppSaved]     = useState(false);
+
+  // ── NetSuite ──────────────────────────────────────────────────────────────
+  const [nsAccountId,      setNsAccountId]      = useState("");
+  const [nsConsumerKey,    setNsConsumerKey]     = useState("");
+  const [nsConsumerSecret, setNsConsumerSecret] = useState("");
+  const [nsTokenId,        setNsTokenId]        = useState("");
+  const [nsTokenSecret,    setNsTokenSecret]    = useState("");
+
+  // ── SAP ───────────────────────────────────────────────────────────────────
+  const [sapHost,         setSapHost]         = useState("");
+  const [sapClient,       setSapClient]       = useState("100");
+  const [sapUsername,     setSapUsername]     = useState("");
+  const [sapPassword,     setSapPassword]     = useState("");
+  const [sapSystemNumber, setSapSystemNumber] = useState("00");
+
+  // ── Oracle ────────────────────────────────────────────────────────────────
+  const [oraHost,        setOraHost]        = useState("");
+  const [oraPort,        setOraPort]        = useState("1521");
+  const [oraService,     setOraService]     = useState("");
+  const [oraUsername,    setOraUsername]    = useState("");
+  const [oraPassword,    setOraPassword]    = useState("");
+
+  // ── HCM (Workday) ─────────────────────────────────────────────────────────
+  const [hcmTenantUrl,    setHcmTenantUrl]    = useState("");
+  const [hcmClientId,     setHcmClientId]     = useState("");
+  const [hcmClientSecret, setHcmClientSecret] = useState("");
+  const [hcmUsername,     setHcmUsername]     = useState("");
+  const [hcmPassword,     setHcmPassword]     = useState("");
+
+  // ── REST API ──────────────────────────────────────────────────────────────
   const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey]   = useState("");
-  // PostgreSQL fields
+  const [apiKey,  setApiKey]  = useState("");
+
+  // ── PostgreSQL ────────────────────────────────────────────────────────────
   const [connStr, setConnStr] = useState("");
 
-  const [saving,   setSaving]   = useState(false);
-  const [testing,  setTesting]  = useState(false);
+  // ── Shared state ─────────────────────────────────────────────────────────
+  const [saving,     setSaving]     = useState(false);
+  const [testing,    setTesting]    = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [error,    setError]    = useState<string | null>(null);
-
+  const [error,      setError]      = useState<string | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  const isRestApi  = connectorId === "rest-api";
-  const isPostgres = connectorId === "postgres";
-  const isFormType = isRestApi || isPostgres;
+  const isSalesforce = connectorId === "salesforce";
+  const isSlack      = connectorId === "slack";
+  const isOAuth2App  = isSalesforce || isSlack;   // two-step: save app creds → then OAuth
+  const isNetSuite   = connectorId === "netsuite";
+  const isSAP        = connectorId === "sap";
+  const isOracle     = connectorId === "oracle";
+  const isHCM        = connectorId === "hcm";
+  const isRestApi    = connectorId === "rest-api";
+  const isPostgres   = connectorId === "postgres";
+  const hasForm      = isOAuth2App || isNetSuite || isSAP || isOracle || isHCM || isRestApi || isPostgres;
 
-  // For mock-only connectors (sap, oracle, hcm, netsuite in R13): no credentials to enter
-  const isMockOnly = !isFormType && authScheme !== "oauth2";
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function require(val: string, label: string): boolean {
+    if (!val.trim()) { setError(`${label} is required.`); return false; }
+    return true;
+  }
+
+  async function apiCall(method: string, path: string, body?: Record<string, string>): Promise<void> {
+    const resp = await fetch(`${API_BASE}/api/v1/connectors/${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${_getToken()}` },
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: "include",
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data?.detail ?? `HTTP ${resp.status}`);
+    }
+  }
 
   async function handleTestInline() {
     setTesting(true);
     setTestResult(null);
     try {
-      const resp = await fetch(
-        `${API_BASE}/api/v1/connectors/${encodeURIComponent(connectorId)}/test`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { Authorization: `Bearer ${_getToken()}` },
-        },
-      );
+      const resp = await fetch(`${API_BASE}/api/v1/connectors/${connectorId}/test`, {
+        method: "POST",
+        credentials: "include",
+        headers: { Authorization: `Bearer ${_getToken()}` },
+      });
       const data = await resp.json().catch(() => ({}));
       setTestResult({ ok: data?.ok ?? resp.ok, message: data?.message ?? `HTTP ${resp.status}` });
     } catch (e: unknown) {
@@ -268,30 +351,74 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
     setSaving(true);
     setError(null);
     try {
-      let endpoint = "";
-      let body: Record<string, string> = {};
-
-      if (isRestApi) {
-        if (!baseUrl) { setError("Base URL is required."); setSaving(false); return; }
-        if (!apiKey)  { setError("API Key is required.");  setSaving(false); return; }
-        endpoint = `${API_BASE}/api/v1/connectors/rest-api/live-config`;
-        body = { base_url: baseUrl, api_key: apiKey };
-      } else if (isPostgres) {
-        if (!connStr) { setError("Connection string is required."); setSaving(false); return; }
-        endpoint = `${API_BASE}/api/v1/connectors/postgres/live-config`;
-        body = { connection_string: connStr };
+      if (isOAuth2App) {
+        if (!require(oauthClientId,     "Client ID"))     return;
+        if (!require(oauthClientSecret, "Client Secret")) return;
+        const extra: Record<string, string> = {
+          client_id:     oauthClientId,
+          client_secret: oauthClientSecret,
+        };
+        if (isSalesforce && loginUrl) extra.login_url = loginUrl;
+        await apiCall("PUT", `${connectorId}/oauth-app-config`, extra);
+        setOauthAppSaved(true);
+        // Don't close — show the "Authorize" button now
+        return;
       }
 
-      const resp = await fetch(endpoint, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${_getToken()}` },
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
-
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data?.detail ?? `HTTP ${resp.status}`);
+      if (isNetSuite) {
+        if (!require(nsAccountId,      "Account ID"))      return;
+        if (!require(nsConsumerKey,    "Consumer Key"))    return;
+        if (!require(nsConsumerSecret, "Consumer Secret")) return;
+        if (!require(nsTokenId,        "Token ID"))        return;
+        if (!require(nsTokenSecret,    "Token Secret"))    return;
+        await apiCall("PUT", "netsuite/live-config", {
+          account_id:      nsAccountId,
+          consumer_key:    nsConsumerKey,
+          consumer_secret: nsConsumerSecret,
+          token_id:        nsTokenId,
+          token_secret:    nsTokenSecret,
+        });
+      } else if (isSAP) {
+        if (!require(sapHost,     "Host"))     return;
+        if (!require(sapUsername, "Username")) return;
+        if (!require(sapPassword, "Password")) return;
+        await apiCall("PUT", "sap/live-config", {
+          host:          sapHost,
+          client:        sapClient,
+          username:      sapUsername,
+          password:      sapPassword,
+          system_number: sapSystemNumber,
+        });
+      } else if (isOracle) {
+        if (!require(oraHost,     "Host"))         return;
+        if (!require(oraService,  "Service Name")) return;
+        if (!require(oraUsername, "Username"))     return;
+        if (!require(oraPassword, "Password"))     return;
+        await apiCall("PUT", "oracle/live-config", {
+          host:         oraHost,
+          port:         oraPort,
+          service_name: oraService,
+          username:     oraUsername,
+          password:     oraPassword,
+        });
+      } else if (isHCM) {
+        if (!require(hcmTenantUrl,    "Tenant URL"))    return;
+        if (!require(hcmClientId,     "Client ID"))     return;
+        if (!require(hcmClientSecret, "Client Secret")) return;
+        await apiCall("PUT", "hcm/live-config", {
+          tenant_url:    hcmTenantUrl,
+          client_id:     hcmClientId,
+          client_secret: hcmClientSecret,
+          username:      hcmUsername,
+          password:      hcmPassword,
+        });
+      } else if (isRestApi) {
+        if (!require(baseUrl, "Base URL")) return;
+        if (!require(apiKey,  "API Key"))  return;
+        await apiCall("PUT", "rest-api/live-config", { base_url: baseUrl, api_key: apiKey });
+      } else if (isPostgres) {
+        if (!require(connStr, "Connection String")) return;
+        await apiCall("PUT", "postgres/live-config", { connection_string: connStr });
       }
 
       onSuccess(connectorId);
@@ -303,118 +430,271 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
     }
   }
 
+  function handleOAuthRedirect() {
+    window.location.href = `${API_BASE}/api/v1/connectors/${connectorId}/oauth/authorize`;
+  }
+
+  // ── Subtitle text ─────────────────────────────────────────────────────────
+  const subtitle = isOAuth2App
+    ? `Step 1 — enter your ${connectorName} Connected App credentials. Step 2 — click Authorize to complete OAuth.`
+    : isNetSuite
+    ? "Token-based OAuth credentials from your NetSuite integration record."
+    : isSAP
+    ? "SAP system credentials — host, client, and basic auth."
+    : isOracle
+    ? "Oracle DB connection details — host, service name, and credentials."
+    : isHCM
+    ? "Workday HCM tenant URL and OAuth client credentials."
+    : isRestApi
+    ? "Base URL and API key — encrypted at rest."
+    : isPostgres
+    ? "PostgreSQL connection string — encrypted at rest."
+    : "Configure this connector.";
+
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-        {/* Modal header */}
-        <div className="mb-5 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h2 className="text-base font-bold text-slate-900">Configure {connectorName}</h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">
-              {isRestApi  && "Enter your API base URL and key — encrypted at rest."}
-              {isPostgres && "Enter your PostgreSQL connection string — encrypted at rest."}
-              {isMockOnly && "This connector runs in mock mode in R13. Live credentials in a future release."}
-            </p>
+            <p className="mt-0.5 text-[11px] text-slate-400">{subtitle}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-          >
+          <button type="button" onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
             <XCircle className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-4">
-          {/* REST API fields */}
-          {isRestApi && (
+        {/* Body */}
+        <div className="max-h-[65vh] overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* ── OAuth2 App (Salesforce / Slack) ── */}
+          {isOAuth2App && !oauthAppSaved && (
             <>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  Base URL <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="url"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.yourservice.com"
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Root URL for all approved request templates. Must start with https://.
-                </p>
+              {isSalesforce && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
+                  <p className="font-semibold">Create a Connected App first</p>
+                  <p className="mt-0.5">In Salesforce: Setup → App Manager → New Connected App.<br />
+                  Set callback URL to: <code className="font-mono">http://localhost:8000/api/v1/connectors/salesforce/oauth/callback</code><br />
+                  Scopes: <code className="font-mono">api, refresh_token, offline_access</code></p>
+                </div>
+              )}
+              {isSlack && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
+                  <p className="font-semibold">Create a Slack App first</p>
+                  <p className="mt-0.5">Go to <strong>api.slack.com/apps</strong> → Create New App → From scratch.<br />
+                  Add redirect URI: <code className="font-mono">http://localhost:8000/api/v1/connectors/slack/oauth/callback</code><br />
+                  Bot token scopes: <code className="font-mono">chat:write, channels:read, channels:join</code></p>
+                </div>
+              )}
+              <Field label="Client ID" required>
+                <input type="text" value={oauthClientId} onChange={e => setOauthClientId(e.target.value)}
+                  placeholder={isSalesforce ? "3MVG9..." : "1234567890.apps.abc123"}
+                  className={inputCls} autoComplete="off" />
+              </Field>
+              <Field label="Client Secret" required>
+                <input type="password" value={oauthClientSecret} onChange={e => setOauthClientSecret(e.target.value)}
+                  placeholder="••••••••••••••••••••"
+                  className={inputCls} autoComplete="new-password" />
+              </Field>
+              {isSalesforce && (
+                <Field label="Login URL" hint="Use https://test.salesforce.com for sandbox orgs.">
+                  <select value={loginUrl} onChange={e => setLoginUrl(e.target.value)} className={inputCls}>
+                    <option value="https://login.salesforce.com">Production (login.salesforce.com)</option>
+                    <option value="https://test.salesforce.com">Sandbox (test.salesforce.com)</option>
+                  </select>
+                </Field>
+              )}
+            </>
+          )}
+
+          {/* After OAuth app creds saved — show Authorize CTA */}
+          {isOAuth2App && oauthAppSaved && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center">
+              <CheckCircle2 className="mx-auto mb-2 h-6 w-6 text-emerald-500" />
+              <p className="text-sm font-semibold text-emerald-800">App credentials saved</p>
+              <p className="mt-1 text-xs text-emerald-700">
+                Click below to open {connectorName}&apos;s login page and grant access.
+                You&apos;ll be redirected back automatically.
+              </p>
+              <button type="button" onClick={handleOAuthRedirect}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">
+                <Zap className="h-4 w-4" />
+                Authorize with {connectorName}
+                <ExternalLink className="h-3.5 w-3.5 opacity-70" />
+              </button>
+            </div>
+          )}
+
+          {/* ── NetSuite ── */}
+          {isNetSuite && (
+            <>
+              <Field label="Account ID" required hint="e.g. TSTDRV1234567 or 1234567_SB1 for sandbox">
+                <input type="text" value={nsAccountId} onChange={e => setNsAccountId(e.target.value)}
+                  placeholder="TSTDRV1234567" className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Consumer Key" required>
+                  <input type="password" value={nsConsumerKey} onChange={e => setNsConsumerKey(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+                <Field label="Consumer Secret" required>
+                  <input type="password" value={nsConsumerSecret} onChange={e => setNsConsumerSecret(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
               </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  API Key <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-••••••••••••••••"
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Sent as{" "}<code className="font-mono">Authorization: Bearer …</code>
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Token ID" required>
+                  <input type="password" value={nsTokenId} onChange={e => setNsTokenId(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+                <Field label="Token Secret" required>
+                  <input type="password" value={nsTokenSecret} onChange={e => setNsTokenSecret(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-400">
+                Find these in NetSuite: Setup → Integration → Manage Integrations → Token-Based Authentication.
               </div>
             </>
           )}
 
-          {/* PostgreSQL field */}
+          {/* ── SAP ── */}
+          {isSAP && (
+            <>
+              <Field label="Application Server Host" required hint="IP or hostname of your SAP application server">
+                <input type="text" value={sapHost} onChange={e => setSapHost(e.target.value)}
+                  placeholder="192.168.1.100 or sapserver.company.com" className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="System Number" hint="Usually 00">
+                  <input type="text" value={sapSystemNumber} onChange={e => setSapSystemNumber(e.target.value)}
+                    placeholder="00" className={inputCls} />
+                </Field>
+                <Field label="Client" hint="Usually 100">
+                  <input type="text" value={sapClient} onChange={e => setSapClient(e.target.value)}
+                    placeholder="100" className={inputCls} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Username" required>
+                  <input type="text" value={sapUsername} onChange={e => setSapUsername(e.target.value)}
+                    placeholder="SAPUSER" className={inputCls} autoComplete="username" />
+                </Field>
+                <Field label="Password" required>
+                  <input type="password" value={sapPassword} onChange={e => setSapPassword(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+              </div>
+            </>
+          )}
+
+          {/* ── Oracle ── */}
+          {isOracle && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <Field label="Host" required>
+                    <input type="text" value={oraHost} onChange={e => setOraHost(e.target.value)}
+                      placeholder="oracle.company.com" className={inputCls} />
+                  </Field>
+                </div>
+                <Field label="Port" hint="Default 1521">
+                  <input type="text" value={oraPort} onChange={e => setOraPort(e.target.value)}
+                    placeholder="1521" className={inputCls} />
+                </Field>
+              </div>
+              <Field label="Service Name" required hint="e.g. ORCL or XEPDB1">
+                <input type="text" value={oraService} onChange={e => setOraService(e.target.value)}
+                  placeholder="ORCL" className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Username" required>
+                  <input type="text" value={oraUsername} onChange={e => setOraUsername(e.target.value)}
+                    placeholder="system" className={inputCls} autoComplete="username" />
+                </Field>
+                <Field label="Password" required>
+                  <input type="password" value={oraPassword} onChange={e => setOraPassword(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+              </div>
+            </>
+          )}
+
+          {/* ── HCM (Workday) ── */}
+          {isHCM && (
+            <>
+              <Field label="Tenant URL" required hint="Your Workday tenant base URL">
+                <input type="url" value={hcmTenantUrl} onChange={e => setHcmTenantUrl(e.target.value)}
+                  placeholder="https://wd2.myworkday.com/yourcompany"
+                  className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Client ID" required hint="ISU / API client">
+                  <input type="text" value={hcmClientId} onChange={e => setHcmClientId(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="off" />
+                </Field>
+                <Field label="Client Secret" required>
+                  <input type="password" value={hcmClientSecret} onChange={e => setHcmClientSecret(e.target.value)}
+                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                </Field>
+              </div>
+              <details className="text-xs text-slate-400">
+                <summary className="cursor-pointer hover:text-slate-600">Basic auth fallback (optional)</summary>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <Field label="Username">
+                    <input type="text" value={hcmUsername} onChange={e => setHcmUsername(e.target.value)}
+                      placeholder="svc_account@tenant" className={inputCls} autoComplete="username" />
+                  </Field>
+                  <Field label="Password">
+                    <input type="password" value={hcmPassword} onChange={e => setHcmPassword(e.target.value)}
+                      placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                  </Field>
+                </div>
+              </details>
+            </>
+          )}
+
+          {/* ── REST API ── */}
+          {isRestApi && (
+            <>
+              <Field label="Base URL" required hint="Root URL — must start with https://.">
+                <input type="url" value={baseUrl} onChange={e => setBaseUrl(e.target.value)}
+                  placeholder="https://api.yourservice.com" className={inputCls} />
+              </Field>
+              <Field label="API Key" required hint="Sent as Authorization: Bearer …">
+                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+                  placeholder="sk-••••••••••••••••" className={inputCls} autoComplete="new-password" />
+              </Field>
+            </>
+          )}
+
+          {/* ── PostgreSQL ── */}
           {isPostgres && (
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                Connection String <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={connStr}
-                onChange={(e) => setConnStr(e.target.value)}
+            <Field label="Connection String" required
+              hint="Encrypted at rest. Only pre-approved query templates are executed — no raw SQL.">
+              <input type="password" value={connStr} onChange={e => setConnStr(e.target.value)}
                 placeholder="postgresql://user:password@host:5432/dbname"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100"
-              />
-              <p className="mt-1 text-[11px] text-slate-400">
-                Encrypted at rest. Only pre-approved parameterised query templates are executed — no raw SQL.
-              </p>
-            </div>
+                className={`${inputCls} font-mono`} autoComplete="new-password" />
+            </Field>
           )}
 
-          {/* Mock-only info box */}
-          {isMockOnly && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
-              <p className="font-semibold text-slate-700">Mock mode active</p>
-              <p className="mt-0.5">
-                {connectorId === "netsuite"
-                  ? "NetSuite live credentials ship in R15 (token-based OAuth)."
-                  : `${connectorName} live credentials are planned for a future release.`}
-                You can still test the connection and explore the mock schema below.
-              </p>
-            </div>
-          )}
-
-          {/* Inline test result */}
+          {/* Feedback */}
           {testResult && (
-            <div
-              className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
-                testResult.ok
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-rose-200 bg-rose-50 text-rose-800"
-              }`}
-            >
+            <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${
+              testResult.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-rose-200 bg-rose-50 text-rose-800"}`}>
               {testResult.ok
                 ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                 : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />}
               <span>{testResult.message}</span>
             </div>
           )}
-
-          {/* Save error */}
           {error && (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {error}
@@ -422,38 +702,25 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
           )}
         </div>
 
-        {/* Footer buttons */}
-        <div className="mt-6 flex items-center justify-between gap-2">
-          {/* Test connection */}
-          <button
-            type="button"
-            disabled={testing}
-            onClick={handleTestInline}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 disabled:opacity-50"
-          >
-            {testing
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <RefreshCw className="h-3.5 w-3.5" />}
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-4">
+          <button type="button" disabled={testing} onClick={handleTestInline}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 disabled:opacity-50">
+            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             Test Connection
           </button>
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
+            <button type="button" onClick={onClose}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
               Cancel
             </button>
-            {isFormType && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleSave}
-                className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Save &amp; Activate
+            {/* Show Save button for all non-OAuth2-app connectors, or step 1 of OAuth2 */}
+            {hasForm && !(isOAuth2App && oauthAppSaved) && (
+              <button type="button" disabled={saving} onClick={handleSave}
+                className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 disabled:opacity-50">
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {isOAuth2App ? "Save & Continue" : "Save & Activate"}
               </button>
             )}
           </div>
@@ -461,11 +728,6 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
       </div>
     </div>
   );
-}
-
-function _getToken(): string {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem("auth_token") ?? "";
 }
 
 // ---------------------------------------------------------------------------
@@ -744,78 +1006,35 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
 
               {/* Actions */}
               <div className="mt-auto space-y-2 p-4 pt-0">
-                {/* OAuth2 connectors (Slack, Salesforce) */}
-                {supportsOAuth && (
-                  isLive ? (
+                {/* Every connector: Configure / Edit Config + Disconnect when live */}
+                {isLive ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfigModal({ connectorId: c.connectorId, connectorName: c.name, authScheme: c.authScheme })}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100"
+                    >
+                      <Settings2 className="h-3.5 w-3.5" />
+                      Edit Credentials
+                    </button>
                     <button
                       type="button"
                       disabled={isDisconnecting}
                       onClick={() => handleDisconnect(c.connectorId, c.authScheme)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
                     >
-                      {isDisconnecting
-                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        : <Link2Off className="h-3.5 w-3.5" />}
+                      {isDisconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2Off className="h-3.5 w-3.5" />}
                       Disconnect
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleConnect(c.connectorId)}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/20 transition-colors hover:bg-teal-700"
-                    >
-                      <Zap className="h-3.5 w-3.5" />
-                      Connect
-                      <ExternalLink className="h-3 w-3 opacity-60" />
-                    </button>
-                  )
-                )}
-
-                {/* Form-based connectors (REST API, PostgreSQL) */}
-                {supportsForm && (
-                  isLive ? (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setConfigModal({ connectorId: c.connectorId, connectorName: c.name, authScheme: c.authScheme })}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-100"
-                      >
-                        <Settings2 className="h-3.5 w-3.5" />
-                        Edit Config
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isDisconnecting}
-                        onClick={() => handleDisconnect(c.connectorId, c.authScheme)}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
-                      >
-                        {isDisconnecting
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <Link2Off className="h-3.5 w-3.5" />}
-                        Disconnect
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConfigModal({ connectorId: c.connectorId, connectorName: c.name, authScheme: c.authScheme })}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/20 transition-colors hover:bg-teal-700"
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                      Configure
-                    </button>
-                  )
-                )}
-
-                {/* Mock-only connectors — Configure button that opens info modal */}
-                {!supportsOAuth && !supportsForm && (
+                  </div>
+                ) : (
                   <button
                     type="button"
                     onClick={() => setConfigModal({ connectorId: c.connectorId, connectorName: c.name, authScheme: c.authScheme })}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-teal-900/20 transition-colors hover:bg-teal-700"
                   >
                     <Settings2 className="h-3.5 w-3.5" />
-                    View Details
+                    {supportsOAuth ? "Set Up & Connect" : "Enter Credentials"}
                   </button>
                 )}
 

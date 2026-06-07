@@ -526,7 +526,8 @@ const fallbackFlowSuggestionResponse: FlowSuggestionResponse = {
       }
     ],
     targetModule: "cfo_dashboard",
-    triggerType: "manual"
+    triggerType: "manual",
+    fieldMappings: []
   },
   rationale: "Fallback draft uses only approved NetSuite CFO actions.",
   suggestionProvider: "template",

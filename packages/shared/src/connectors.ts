@@ -85,7 +85,8 @@ export const fieldInfoSchema = z.object({
 });
 export type FieldInfo = z.infer<typeof fieldInfoSchema>;
 
-export const mappingTransformSchema = z.enum([
+// NOTE: mappingTransformSchema / MappingTransform are also in netsuite.ts — re-use that definition.
+const mappingTransformSchema = z.enum([
   "direct",
   "uppercase",
   "lowercase",
@@ -93,7 +94,6 @@ export const mappingTransformSchema = z.enum([
   "to_number",
   "format_date",
 ]);
-export type MappingTransform = z.infer<typeof mappingTransformSchema>;
 
 export const inlineFieldMappingSchema = z.object({
   sourceField: z.string(),
@@ -130,28 +130,5 @@ export const schemaDiscoveryResponseSchema = z.object({
 });
 export type SchemaDiscoveryResponse = z.infer<typeof schemaDiscoveryResponseSchema>;
 
-// ─── R18a: FlowDefinition additions ──────────────────────────────────────────
-
-export const flowTriggerTypeSchema = z.enum(["manual", "schedule", "webhook"]);
-export type FlowTriggerType = z.infer<typeof flowTriggerTypeSchema>;
-
-export const flowDefinitionUpsertRequestSchema = z.object({
-  flowId: z.string(),
-  name: z.string(),
-  description: z.string(),
-  sourceConnector: z.string(),
-  targetModule: z.string(),
-  targetConnector: z.string().nullable().optional(),
-  fieldMappings: z.array(inlineFieldMappingSchema).optional().default([]),
-  status: z.string().optional(),
-  triggerType: flowTriggerTypeSchema.optional(),
-  triggerCron: z.string().nullable().optional(),
-  steps: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    connectorId: z.string().nullable().optional(),
-    approvedTool: z.string(),
-  })),
-});
-export type FlowDefinitionUpsertRequest = z.infer<typeof flowDefinitionUpsertRequestSchema>;
+// NOTE: flowTriggerTypeSchema / FlowTriggerType / FlowDefinitionUpsertRequest
+// are already exported by netsuite.ts — do not re-export here to avoid collision.

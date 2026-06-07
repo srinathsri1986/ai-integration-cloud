@@ -333,11 +333,11 @@ function CustomApiForm({ role, onCreated, onCancel }: CustomApiFormProps) {
       <div className="flex flex-wrap items-center gap-2">
         {!createdId ? (
           <>
-            <Button onClick={handleSave} disabled={!canSave || saving} size="sm" className="gap-1.5">
+            <Button onClick={handleSave} disabled={!canSave || saving} className="gap-1.5">
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               {saving ? "Registering…" : "Register endpoint"}
             </Button>
-            <Button variant="secondary" onClick={onCancel} size="sm">Cancel</Button>
+            <Button variant="secondary" onClick={onCancel}>Cancel</Button>
           </>
         ) : (
           <>
@@ -345,7 +345,7 @@ function CustomApiForm({ role, onCreated, onCancel }: CustomApiFormProps) {
               variant="secondary"
               onClick={handleTest}
               disabled={testing}
-              size="sm"
+             
               className="gap-1.5"
             >
               {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
@@ -360,7 +360,7 @@ function CustomApiForm({ role, onCreated, onCancel }: CustomApiFormProps) {
             <Button
               onClick={handleDiscover}
               disabled={discovering}
-              size="sm"
+             
               className="gap-1.5"
             >
               {discovering ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -377,7 +377,7 @@ function CustomApiForm({ role, onCreated, onCancel }: CustomApiFormProps) {
         {canUse && (
           <Button
             onClick={() => onCreated(createdId!, discoveredFields)}
-            size="sm"
+           
             className="gap-1.5 bg-emerald-500 hover:bg-emerald-600 ml-auto"
           >
             <Check className="h-3.5 w-3.5" />

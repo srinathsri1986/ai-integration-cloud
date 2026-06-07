@@ -335,6 +335,15 @@ export const flowDefinitionUpsertRequestSchema = z.object({
   description: z.string().min(10).max(500),
   sourceConnector: z.string().min(2).max(48),
   targetModule: z.string().min(3).max(80),
+  // R18a: explicit target connector + inline field mappings
+  targetConnector: z.string().max(96).nullable().optional(),
+  fieldMappings: z.array(z.object({
+    sourceField: z.string(),
+    targetField: z.string(),
+    transform: z.string().optional(),
+    sourceType: z.string().optional(),
+    targetType: z.string().optional(),
+  })).optional().default([]),
   status: flowStatusSchema,
   triggerType: flowTriggerTypeSchema,
   triggerCron: z.string().max(100).nullable().optional(),
