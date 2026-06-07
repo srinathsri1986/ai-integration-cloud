@@ -195,11 +195,10 @@ class PostgreSQLPlugin:
     def list_tools(self) -> list[ConnectorTool]:
         return list(_TOOLS)
 
-    def execute_tool(self, tool_id: str, params: dict) -> dict:
+    def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:
         if tool_id not in _TOOL_MAP:
             raise KeyError(f"Unknown PostgreSQL tool: {tool_id!r}")
 
-        tenant_id: int | None = params.get("tenant_id")
         creds = _get_live_creds(tenant_id)
         if creds:
             try:

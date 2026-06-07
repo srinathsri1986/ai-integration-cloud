@@ -35,15 +35,8 @@ router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 @router.get("", response_model=list[dict])
 def list_connectors(user=Depends(require_permissions("connector:admin"))) -> list[dict]:
-    """List all registered connectors with live status from DB where available."""
-    items = connector_registry.list_connectors()
-    db_modes = credential_service.all_connector_modes()
-    for item in items:
-        cid = item["connectorId"]
-        if cid in db_modes:
-            item["mode"] = db_modes[cid]
-            item["status"] = "configured" if db_modes[cid] == "live" else "not_configured"
-    return items
+    """List all registered connectors with per-tenant live status from DB."""
+    return connector_registry.list_connectors(tenant_id=user.tenant_id)
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +118,9 @@ def slack_oauth_callback(code: str = "", error: str = "") -> RedirectResponse:
 @router.delete("/slack/oauth/disconnect")
 def slack_oauth_disconnect(user=Depends(require_permissions("connector:admin"))) -> dict:
     """Revoke the stored Slack token and reset to mock mode."""
-    credential_service.revoke_token("slack", tenant_id=None)
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("slack", tenant_id=user.tenant_id)
+    schema_cache.invalidate("slack", tenant_id=user.tenant_id)
     return {"ok": True, "message": "Slack connector disconnected and reset to mock mode."}
 
 
@@ -208,7 +203,9 @@ def salesforce_oauth_callback(code: str = "", error: str = "", error_description
 @router.delete("/salesforce/oauth/disconnect")
 def salesforce_oauth_disconnect(user=Depends(require_permissions("connector:admin"))) -> dict:
     """Revoke the stored Salesforce token and reset to mock mode."""
-    credential_service.revoke_token("salesforce", tenant_id=None)
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("salesforce", tenant_id=user.tenant_id)
+    schema_cache.invalidate("salesforce", tenant_id=user.tenant_id)
     return {"ok": True, "message": "Salesforce connector disconnected and reset to mock mode."}
 
 
@@ -248,7 +245,9 @@ def configure_rest_api(
 @router.delete("/rest-api/live-config/disconnect")
 def disconnect_rest_api(user=Depends(require_permissions("connector:admin"))) -> dict:
     """Remove REST API credentials and reset to mock mode."""
-    credential_service.revoke_token("rest-api", tenant_id=None)
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("rest-api", tenant_id=user.tenant_id)
+    schema_cache.invalidate("rest-api", tenant_id=user.tenant_id)
     return {"ok": True, "message": "REST API connector disconnected and reset to mock mode."}
 
 
@@ -289,7 +288,9 @@ def configure_postgres(
 @router.delete("/postgres/live-config/disconnect")
 def disconnect_postgres(user=Depends(require_permissions("connector:admin"))) -> dict:
     """Remove PostgreSQL credentials and reset to mock mode."""
-    credential_service.revoke_token("postgres", tenant_id=None)
+    from app.services.schema_cache import schema_cache
+    credential_service.revoke_token("postgres", tenant_id=user.tenant_id)
+    schema_cache.invalidate("postgres", tenant_id=user.tenant_id)
     return {"ok": True, "message": "PostgreSQL connector disconnected and reset to mock mode."}
 
 
@@ -334,33 +335,47 @@ def test_connector(
 @router.get("/{connector_id}/schema", response_model=dict)
 def get_connector_schema(
     connector_id: str,
+    refresh: bool = False,
     user=Depends(require_permissions("connector:admin")),
 ) -> dict:
     """Return the schema (objects + fields) exposed by this connector.
 
-    Live connectors fetch real schema from the connected system.
-    Mock connectors return a curated static catalog.
+    Schemas are cached per (connector_id, tenant_id):
+    - Mock connectors: indefinitely (schema never changes).
+    - Live connectors: 5 minutes (SCHEMA_CACHE_TTL_SECONDS env var overrides).
+
+    Pass ?refresh=true to bypass the cache and force a fresh fetch.
     Schema is used to populate the Data Mapping Studio source/target trays.
     """
     from datetime import UTC, datetime
     from app.models.connectors import ConnectorSchema, ConnectorSchemaField, ConnectorSchemaObject
+    from app.services.schema_cache import schema_cache
 
     try:
         plugin = connector_registry.get(connector_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
 
+    tenant_id = user.tenant_id
+
+    # ── Cache lookup ──────────────────────────────────────────────────────────
+    if not refresh:
+        cached = schema_cache.get(connector_id, tenant_id)
+        if cached is not None:
+            return cached
+
+    # ── Fresh fetch ───────────────────────────────────────────────────────────
     try:
-        raw_objects = plugin.fetch_schema()
+        raw_objects = plugin.fetch_schema(tenant_id=tenant_id)
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail=f"Schema fetch failed for connector '{connector_id}': {exc}",
         )
 
-    # Determine mode from test_connection (cheap — already cached by plugin)
     test_result = plugin.test_connection()
     mode = test_result.get("mode", "mock")
+    is_mock = (mode == "mock")
 
     schema_objects = [
         ConnectorSchemaObject(
@@ -387,7 +402,12 @@ def get_connector_schema(
         objects=schema_objects,
         fetchedAt=datetime.now(UTC).isoformat(),
     )
-    return schema.model_dump()
+    result = schema.model_dump()
+
+    # ── Cache store ───────────────────────────────────────────────────────────
+    schema_cache.set(connector_id, result, tenant_id=tenant_id, is_mock=is_mock)
+
+    return result
 
 
 @router.get("/{connector_id}", response_model=dict)
@@ -491,3 +511,75 @@ def update_rest_api_config(
     user=Depends(require_permissions("connector:admin")),
 ) -> RestApiConnectorConfig:
     return connector_config_service.update_rest_api_config(update)
+
+
+# ---------------------------------------------------------------------------
+# Generic per-tenant connector config — must come AFTER all specific-path
+# legacy routes so FastAPI's route matching doesn't shadow them.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{connector_id}/config", response_model=dict)
+def get_connector_config(
+    connector_id: str,
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Return non-secret configuration metadata for a connector scoped to the calling tenant.
+
+    Credentials (API keys, tokens) are never returned — only metadata such as
+    base URLs, account IDs, and mode flags.  This is a tenant-scoped view:
+    tenant A's Salesforce config is completely isolated from tenant B's.
+    """
+    try:
+        connector_registry.get(connector_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
+
+    record = credential_service._fetch_config(connector_id, user.tenant_id)  # noqa: SLF001
+    if record is None:
+        return {
+            "connectorId": connector_id,
+            "tenantId": user.tenant_id,
+            "mode": "mock",
+            "status": "not_configured",
+            "meta": {},
+        }
+    config = record.get("config", {})
+    _SECRETS = {"api_key", "access_token", "refresh_token", "connection_string", "token_secret", "consumer_secret", "password"}
+    safe_meta = {k: v for k, v in config.items() if k not in _SECRETS}
+    return {
+        "connectorId": connector_id,
+        "tenantId": user.tenant_id,
+        "mode": record.get("mode", "mock"),
+        "status": record.get("status", "not_configured"),
+        "meta": safe_meta,
+    }
+
+
+@router.put("/{connector_id}/config", response_model=dict)
+def update_connector_config(
+    connector_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permissions("connector:admin")),
+) -> dict:
+    """Update non-secret configuration metadata for a connector (per-tenant).
+
+    Stores only metadata (account IDs, base URLs, feature flags).
+    Secrets (API keys, tokens, passwords) must go through the dedicated
+    auth endpoints — submitting them here returns 422.
+    """
+    try:
+        connector_registry.get(connector_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
+
+    _SECRETS = {"api_key", "access_token", "refresh_token", "connection_string", "password", "token_secret", "consumer_secret"}
+    if leaked := set(body.keys()) & _SECRETS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Secrets must not be stored via this endpoint. Use the dedicated auth route for: {sorted(leaked)}",
+        )
+
+    mode = body.pop("mode", "mock")
+    credential_service._upsert_config(connector_id, user.tenant_id, body, status="configured", mode=mode)  # noqa: SLF001
+    return {"ok": True, "connectorId": connector_id, "tenantId": user.tenant_id, "message": "Config updated."}

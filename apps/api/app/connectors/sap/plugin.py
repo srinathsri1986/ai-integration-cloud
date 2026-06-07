@@ -39,7 +39,7 @@ class SAPPlugin:
     auth_scheme = "basic"
 
     def list_tools(self): return list(_TOOLS)
-    def execute_tool(self, tool_id: str, params: dict) -> dict:
+    def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:
         if tool_id not in _TOOL_MAP: raise KeyError(f"Unknown SAP tool: {tool_id!r}")
         return {"connector": "sap", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
     def test_connection(self): return {"ok": True, "mode": "mock", "message": "SAP mock connector is ready (mock mode)."}

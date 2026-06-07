@@ -188,7 +188,7 @@ class NetSuitePlugin:
     def list_tools(self) -> list[ConnectorTool]:
         return list(_TOOLS)
 
-    def execute_tool(self, tool_id: str, params: dict) -> dict:  # noqa: C901
+    def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:  # noqa: C901
         if tool_id not in _TOOL_MAP:
             raise KeyError(f"Unknown NetSuite tool: {tool_id!r}")
 

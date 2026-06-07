@@ -149,11 +149,10 @@ class SlackPlugin:
     def list_tools(self) -> list[ConnectorTool]:
         return list(_TOOLS)
 
-    def execute_tool(self, tool_id: str, params: dict) -> dict:
+    def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:
         if tool_id not in _TOOL_MAP:
             raise KeyError(f"Unknown Slack tool: {tool_id!r}")
 
-        tenant_id: int | None = params.get("tenant_id")
         token = _get_live_token(tenant_id)
         if token:
             try:

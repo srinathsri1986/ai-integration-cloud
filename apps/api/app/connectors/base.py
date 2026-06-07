@@ -54,8 +54,12 @@ class ConnectorPlugin(Protocol):
         """Return all tools available on this connector."""
         ...
 
-    def execute_tool(self, tool_id: str, params: dict) -> dict:
+    def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:
         """Execute a tool and return a result dict.
+
+        *tenant_id* is passed so the plugin can look up the right credentials
+        for the calling tenant.  Never store tenant_id inside the plugin
+        instance — plugins must be stateless singletons.
 
         Raises:
             KeyError: if tool_id is not registered for this connector.

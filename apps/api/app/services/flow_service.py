@@ -508,7 +508,9 @@ class FlowService:
                 tool_id = step.approved_tool
                 step_start = datetime.now(UTC).isoformat()
                 try:
-                    result = connector_registry.execute_tool(connector_id, tool_id, params={})
+                    result = connector_registry.execute_tool(
+                        connector_id, tool_id, params={}, tenant_id=tenant_id
+                    )
                     data[step.id] = result
                     tools_used.append(tool_id)
                     execution_timeline.append(

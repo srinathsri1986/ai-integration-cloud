@@ -81,21 +81,30 @@ class ConnectorCredentialService:
                 {"cid": connector_id, "tid": tenant_id},
             ).fetchone()
             if row:
+                from datetime import UTC, datetime as _dt
                 session.execute(
                     text(
                         "UPDATE connector_config_records "
                         "SET config_json = CAST(:config AS jsonb), status = :status, "
-                        "mode = :mode, updated_at = now() "
+                        "mode = :mode, updated_at = :now "
                         "WHERE id = :id"
                     ),
-                    {"config": json.dumps(config_json), "status": status, "mode": mode, "id": row[0]},
+                    {
+                        "config": json.dumps(config_json),
+                        "status": status,
+                        "mode": mode,
+                        "id": row[0],
+                        "now": _dt.now(UTC).isoformat(),
+                    },
                 )
             else:
+                from datetime import UTC, datetime as _dt
+                now_iso = _dt.now(UTC).isoformat()
                 session.execute(
                     text(
                         "INSERT INTO connector_config_records "
-                        "(connector_id, tenant_id, config_json, status, mode) "
-                        "VALUES (:cid, :tid, CAST(:config AS jsonb), :status, :mode)"
+                        "(connector_id, tenant_id, config_json, status, mode, created_at, updated_at) "
+                        "VALUES (:cid, :tid, CAST(:config AS jsonb), :status, :mode, :now, :now)"
                     ),
                     {
                         "cid": connector_id,
@@ -103,6 +112,7 @@ class ConnectorCredentialService:
                         "config": json.dumps(config_json),
                         "status": status,
                         "mode": mode,
+                        "now": now_iso,
                     },
                 )
             session.commit()
@@ -228,16 +238,59 @@ class ConnectorCredentialService:
             )
             return None
 
-    def all_connector_modes(self) -> dict[str, str]:
-        """Return a mapping of connector_id → mode for all configured connectors."""
+    def all_connector_modes(self, tenant_id: int | None = None) -> dict[str, str]:
+        """Return connector_id → mode for all connectors visible to *tenant_id*.
+
+        Resolution order (tenant-first, global fallback):
+        1. Tenant-specific record  (tenant_id = <tenant_id>)
+        2. Global default record   (tenant_id IS NULL)
+
+        This lets platform admins set global defaults that any tenant can
+        override with their own credentials.
+        """
         with SessionLocal() as session:
-            rows = session.execute(
-                text(
-                    "SELECT connector_id, mode FROM connector_config_records "
-                    "WHERE tenant_id IS NULL"
-                )
-            ).fetchall()
-        return {row[0]: row[1] for row in rows}
+            # Fetch both global defaults and tenant-specific overrides in one query.
+            # COALESCE priority: tenant row wins over global row.
+            if tenant_id is not None:
+                rows = session.execute(
+                    text(
+                        "SELECT connector_id, mode FROM connector_config_records "
+                        "WHERE tenant_id = :tid OR tenant_id IS NULL"
+                    ),
+                    {"tid": tenant_id},
+                ).fetchall()
+                # Build result: process global rows first, then tenant rows override them.
+                result: dict[str, str] = {}
+                global_rows: dict[str, str] = {}
+                tenant_rows: dict[str, str] = {}
+                for row in rows:
+                    # We need to distinguish global vs tenant rows — re-query with flag
+                    pass
+                # Simpler: two queries (still O(n) on a tiny table of 8 connectors)
+                global_result = session.execute(
+                    text(
+                        "SELECT connector_id, mode FROM connector_config_records "
+                        "WHERE tenant_id IS NULL"
+                    )
+                ).fetchall()
+                tenant_result = session.execute(
+                    text(
+                        "SELECT connector_id, mode FROM connector_config_records "
+                        "WHERE tenant_id = :tid"
+                    ),
+                    {"tid": tenant_id},
+                ).fetchall()
+                result = {row[0]: row[1] for row in global_result}
+                result.update({row[0]: row[1] for row in tenant_result})  # tenant overrides global
+                return result
+            else:
+                rows = session.execute(
+                    text(
+                        "SELECT connector_id, mode FROM connector_config_records "
+                        "WHERE tenant_id IS NULL"
+                    )
+                ).fetchall()
+                return {row[0]: row[1] for row in rows}
 
 
 credential_service = ConnectorCredentialService()
