@@ -61,6 +61,40 @@ class TestSAPLiveToolMap:
             assert entity_set, f"{tool_id}: entity_set must not be empty"
             assert kind in ("read", "write"), f"{tool_id}: kind must be 'read' or 'write'"
 
+    def test_known_service_ids_are_real_sap_business_hub_services(self) -> None:
+        # Regression guard for a live-network bug: the original map shipped with
+        # "API_OPLACCTGDOCITEMCRUDQP_SRV" (a hallucinated/typo'd service ID that
+        # doesn't exist) for post_journal_entry — confirmed live against the real
+        # sandbox, which returned HTTP 400 "Invalid system query options value"
+        # (Apigee's generic error for an unroutable service path). Every service
+        # ID we wire live MUST be a real, verified SAP Business Accelerator Hub
+        # service — listed here so a future typo fails the suite immediately.
+        known_real_service_ids = {
+            "API_BUSINESS_PARTNER",
+            "API_COSTCENTER_SRV",
+            "API_GLACCOUNTLINEITEM_SRV",
+            "API_PURCHASEORDER_PROCESS_SRV",
+        }
+        for tool_id, (service_path, _entity_set, _kind) in _LIVE_TOOL_MAP.items():
+            service_id = service_path.split("/", 1)[0]
+            assert service_id in known_real_service_ids, (
+                f"{tool_id}: service ID '{service_id}' is not in the verified-real list — "
+                "confirm it exists on api.sap.com before wiring it live."
+            )
+
+    def test_post_journal_entry_is_intentionally_not_live_wired(self) -> None:
+        # SAP's actual journal-entry posting APIs (JOURNALENTRYCREATEREQUESTCONFI
+        # "Journal Entry - Post (Synchronous)" and JOURNALENTRYBULKLEDGERCREATION
+        # "Journal Entry by Ledger - Post (Asynchronous)") are message-based
+        # inbound integration services with a JournalEntryCreateRequest envelope —
+        # not OData entity-set CRUD. The only OData service in this domain
+        # (API_OPLACCTGDOCITEMCUBE_SRV, "Accounting Document - Read") is
+        # READ-ONLY. There is no honest way to wire a live POST for this tool
+        # via the generic create_entity() CSRF flow today, so it stays mock-only
+        # until a dedicated message-based posting client is built.
+        assert "post_journal_entry" in _TOOL_MAP
+        assert "post_journal_entry" not in _LIVE_TOOL_MAP
+
 
 class TestSAPLiveConnectorProductionMode:
     """Basic Auth + sap-client — how real S/4HANA Cloud / on-prem Gateway systems authenticate."""

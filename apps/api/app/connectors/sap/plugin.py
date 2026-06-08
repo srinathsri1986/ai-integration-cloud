@@ -79,7 +79,24 @@ _LIVE_TOOL_MAP: dict[str, tuple[str, str, str]] = {
     "get_cost_center": ("API_COSTCENTER_SRV/A_CostCenter", "A_CostCenter", "read"),
     "get_gl_balance": ("API_GLACCOUNTLINEITEM_SRV/A_GLAccountLineItem", "A_GLAccountLineItem", "read"),
     "create_purchase_order": ("API_PURCHASEORDER_PROCESS_SRV/A_PurchaseOrder", "A_PurchaseOrder", "write"),
-    "post_journal_entry": ("API_OPLACCTGDOCITEMCRUDQP_SRV/A_OperationalAcctgDocItemCube", "A_OperationalAcctgDocItemCube", "write"),
+    # NOTE: post_journal_entry is intentionally NOT live-wired.
+    #
+    # The original mapping pointed at "API_OPLACCTGDOCITEMCRUDQP_SRV" — a
+    # service ID that does not exist (confirmed against the live sandbox,
+    # which returned HTTP 400 "Invalid system query options value" — Apigee's
+    # generic error for an unroutable service path). The *real* service for
+    # operational accounting document items is API_OPLACCTGDOCITEMCUBE_SRV
+    # ("Accounting Document - Read") — but, critically, it is READ-ONLY: an
+    # analytical reporting cube, not a transactional posting endpoint. SAP's
+    # actual journal-entry posting APIs (JOURNALENTRYCREATEREQUESTCONFI —
+    # "Journal Entry - Post (Synchronous)", and JOURNALENTRYBULKLEDGERCREATION
+    # — "Journal Entry by Ledger - Post (Asynchronous)") are message-based
+    # inbound integration services with a JournalEntryCreateRequest envelope —
+    # a fundamentally different integration pattern than the OData entity-set
+    # CSRF create_entity() flow this connector implements. Wiring this up
+    # properly (a dedicated message-based posting client) is a follow-up
+    # release, not a one-line service-path fix — so post_journal_entry stays
+    # mock-only until then; the plugin's mock fallback handles it cleanly.
 }
 
 
