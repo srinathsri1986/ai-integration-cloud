@@ -3,7 +3,7 @@ import urllib.parse
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from app.connectors import connector_registry
 from app.core.auth import require_permissions
@@ -158,18 +158,42 @@ def disconnect_netsuite(user=Depends(require_permissions("connector:admin"))) ->
 
 
 class SAPLiveConfig(BaseModel):
+    """Two connection modes, mirroring the live connector's auth modes:
+
+    - **Production** (Basic Auth): host + client + username + password.
+      How real S/4HANA Cloud / on-prem Gateway systems authenticate.
+    - **Sandbox** (APIKey header): host + api_key (+ optional api_base_path).
+      For the free, public SAP Business Accelerator Hub Sandbox
+      (sandbox.api.sap.com) — obtained via self-service signup at
+      api.sap.com, no real SAP system required. When api_key is supplied,
+      username/password/client are not required.
+    """
+
     host: str
     client: str = "100"
-    username: str
-    password: str
+    username: str = ""
+    password: str = ""
     system_number: str = "00"
+    api_key: str = ""
+    api_base_path: str = ""
 
-    @field_validator("host", "username", "password")
+    @field_validator("host")
     @classmethod
     def not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("This field is required.")
         return v.strip()
+
+    @model_validator(mode="after")
+    def require_one_auth_mode(self) -> "SAPLiveConfig":
+        has_basic = bool(self.username.strip() and self.password.strip())
+        has_api_key = bool(self.api_key.strip())
+        if not has_basic and not has_api_key:
+            raise ValueError(
+                "Provide either username + password (production system) "
+                "or an API key (SAP Business Accelerator Hub Sandbox)."
+            )
+        return self
 
 
 @router.put("/sap/live-config")
@@ -179,6 +203,7 @@ def configure_sap(
 ) -> dict:
     """Store encrypted SAP credentials entered from the UI."""
     from app.services.schema_cache import schema_cache
+    sandbox_mode = bool(config.api_key.strip())
     credential_service.store_credentials(
         "sap",
         {
@@ -187,12 +212,18 @@ def configure_sap(
             "username":      config.username,
             "password":      config.password,
             "system_number": config.system_number,
+            "api_key":       config.api_key,
+            "api_base_path": config.api_base_path,
         },
         tenant_id=user.tenant_id,
-        extra_meta={"host_display": config.host, "client_display": config.client},
+        extra_meta={
+            "host_display": config.host,
+            "client_display": "sandbox (APIKey)" if sandbox_mode else config.client,
+        },
     )
     schema_cache.invalidate("sap", tenant_id=user.tenant_id)
-    return {"ok": True, "message": f"SAP credentials saved for host {config.host} / client {config.client}."}
+    mode_msg = "API key (sandbox mode)" if sandbox_mode else f"client {config.client}"
+    return {"ok": True, "message": f"SAP credentials saved for host {config.host} ({mode_msg})."}
 
 
 @router.delete("/sap/live-config/disconnect")

@@ -264,11 +264,18 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
   const [nsTokenSecret,    setNsTokenSecret]    = useState("");
 
   // ── SAP ───────────────────────────────────────────────────────────────────
+  // Two connection modes mirror the live connector's two auth schemes:
+  //   "production" → Basic Auth + sap-client (real S/4HANA Cloud / on-prem Gateway)
+  //   "sandbox"    → APIKey header (free SAP Business Accelerator Hub Sandbox —
+  //                  self-service key from api.sap.com, no real SAP system needed)
+  const [sapMode,         setSapMode]         = useState<"production" | "sandbox">("production");
   const [sapHost,         setSapHost]         = useState("");
   const [sapClient,       setSapClient]       = useState("100");
   const [sapUsername,     setSapUsername]     = useState("");
   const [sapPassword,     setSapPassword]     = useState("");
   const [sapSystemNumber, setSapSystemNumber] = useState("00");
+  const [sapApiKey,       setSapApiKey]       = useState("");
+  const [sapApiBasePath,  setSapApiBasePath]  = useState("s4hanacloud");
 
   // ── Oracle ────────────────────────────────────────────────────────────────
   const [oraHost,        setOraHost]        = useState("");
@@ -379,16 +386,25 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
           token_secret:    nsTokenSecret,
         });
       } else if (isSAP) {
-        if (!require(sapHost,     "Host"))     return;
-        if (!require(sapUsername, "Username")) return;
-        if (!require(sapPassword, "Password")) return;
-        await apiCall("PUT", "sap/live-config", {
-          host:          sapHost,
-          client:        sapClient,
-          username:      sapUsername,
-          password:      sapPassword,
-          system_number: sapSystemNumber,
-        });
+        if (!require(sapHost, "Host")) return;
+        if (sapMode === "sandbox") {
+          if (!require(sapApiKey, "API Key")) return;
+          await apiCall("PUT", "sap/live-config", {
+            host:           sapHost,
+            api_key:        sapApiKey,
+            api_base_path:  sapApiBasePath,
+          });
+        } else {
+          if (!require(sapUsername, "Username")) return;
+          if (!require(sapPassword, "Password")) return;
+          await apiCall("PUT", "sap/live-config", {
+            host:          sapHost,
+            client:        sapClient,
+            username:      sapUsername,
+            password:      sapPassword,
+            system_number: sapSystemNumber,
+          });
+        }
       } else if (isOracle) {
         if (!require(oraHost,     "Host"))         return;
         if (!require(oraService,  "Service Name")) return;
@@ -440,7 +456,7 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
     : isNetSuite
     ? "Token-based OAuth credentials from your NetSuite integration record."
     : isSAP
-    ? "SAP system credentials — host, client, and basic auth."
+    ? "Connect a production SAP system (Basic Auth) or the free SAP Sandbox (API key)."
     : isOracle
     ? "Oracle DB connection details — host, service name, and credentials."
     : isHCM
@@ -588,30 +604,66 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
           {/* ── SAP ── */}
           {isSAP && (
             <>
-              <Field label="Application Server Host" required hint="IP or hostname of your SAP application server">
-                <input type="text" value={sapHost} onChange={e => setSapHost(e.target.value)}
-                  placeholder="192.168.1.100 or sapserver.company.com" className={inputCls} />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="System Number" hint="Usually 00">
-                  <input type="text" value={sapSystemNumber} onChange={e => setSapSystemNumber(e.target.value)}
-                    placeholder="00" className={inputCls} />
-                </Field>
-                <Field label="Client" hint="Usually 100">
-                  <input type="text" value={sapClient} onChange={e => setSapClient(e.target.value)}
-                    placeholder="100" className={inputCls} />
-                </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setSapMode("production")}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition ${sapMode === "production" ? "border-teal-500 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                  <div className="font-medium">Production system</div>
+                  <div className="mt-0.5 text-[11px] opacity-80">Basic Auth — your S/4HANA Cloud or on-prem Gateway</div>
+                </button>
+                <button type="button" onClick={() => setSapMode("sandbox")}
+                  className={`rounded-lg border px-3 py-2 text-left text-xs transition ${sapMode === "sandbox" ? "border-teal-500 bg-teal-50 text-teal-800" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
+                  <div className="font-medium">SAP Sandbox</div>
+                  <div className="mt-0.5 text-[11px] opacity-80">API key — free Business Accelerator Hub Sandbox</div>
+                </button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Username" required>
-                  <input type="text" value={sapUsername} onChange={e => setSapUsername(e.target.value)}
-                    placeholder="SAPUSER" className={inputCls} autoComplete="username" />
-                </Field>
-                <Field label="Password" required>
-                  <input type="password" value={sapPassword} onChange={e => setSapPassword(e.target.value)}
-                    placeholder="••••••••" className={inputCls} autoComplete="new-password" />
-                </Field>
-              </div>
+
+              {sapMode === "production" ? (
+                <>
+                  <Field label="Application Server Host" required hint="IP or hostname of your SAP application server">
+                    <input type="text" value={sapHost} onChange={e => setSapHost(e.target.value)}
+                      placeholder="192.168.1.100 or sapserver.company.com" className={inputCls} />
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="System Number" hint="Usually 00">
+                      <input type="text" value={sapSystemNumber} onChange={e => setSapSystemNumber(e.target.value)}
+                        placeholder="00" className={inputCls} />
+                    </Field>
+                    <Field label="Client" hint="Usually 100">
+                      <input type="text" value={sapClient} onChange={e => setSapClient(e.target.value)}
+                        placeholder="100" className={inputCls} />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Username" required>
+                      <input type="text" value={sapUsername} onChange={e => setSapUsername(e.target.value)}
+                        placeholder="SAPUSER" className={inputCls} autoComplete="username" />
+                    </Field>
+                    <Field label="Password" required>
+                      <input type="password" value={sapPassword} onChange={e => setSapPassword(e.target.value)}
+                        placeholder="••••••••" className={inputCls} autoComplete="new-password" />
+                    </Field>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Field label="Sandbox Host" required hint="The Business Accelerator Hub sandbox gateway">
+                    <input type="text" value={sapHost} onChange={e => setSapHost(e.target.value)}
+                      placeholder="sandbox.api.sap.com" className={inputCls} />
+                  </Field>
+                  <Field label="API Key" required hint="From api.sap.com → open an API → 'Show API Key' (free SAP Community signup, no real SAP system needed)">
+                    <input type="password" value={sapApiKey} onChange={e => setSapApiKey(e.target.value)}
+                      placeholder="••••••••••••••••" className={inputCls} autoComplete="new-password" />
+                  </Field>
+                  <Field label="API Base Path" hint="The sandbox proxy prefix shown in the API's endpoint URL, e.g. 's4hanacloud'">
+                    <input type="text" value={sapApiBasePath} onChange={e => setSapApiBasePath(e.target.value)}
+                      placeholder="s4hanacloud" className={inputCls} />
+                  </Field>
+                  <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] text-slate-400">
+                    Get a free key: api.sap.com → sign in with an SAP Community account → open any API
+                    (e.g. API_BUSINESS_PARTNER) → "Show API Key". No real SAP system required.
+                  </div>
+                </>
+              )}
             </>
           )}
 
