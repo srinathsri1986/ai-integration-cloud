@@ -183,6 +183,41 @@ class TestSAPLiveConnectorSandboxMode:
         connector = SAPLiveConnector(self._make_config(username="u", password="p", api_key="thekey"))
         assert connector._auth_header() == {"APIKey": "thekey"}
 
+    def test_base_url_tolerates_full_endpoint_url_pasted_into_host(self) -> None:
+        # Regression guard for a live-network bug reproduced from the user's
+        # exact "Configure SAP ERP" form contents: the SAP Business Accelerator
+        # Hub prominently displays full service-endpoint URLs (e.g.
+        # "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/
+        # API_OPLACCTGDOCITEMCUBE_SRV") right next to the API key, and it's an
+        # easy slip to paste that whole string into the "Sandbox Host" field
+        # instead of the bare hostname. Before this fix, base_url returned the
+        # full pasted string verbatim, and service_url() then appended its own
+        # path on top — producing a garbled, duplicated, unroutable URL that
+        # the gateway rejected with the same generic HTTP 400 "Invalid system
+        # query options value" error (confirmed live). base_url must discard
+        # any path component and keep only the hostname.
+        from app.connectors.sap.live_connector import SAPLiveConfig
+
+        cfg = SAPLiveConfig(
+            host="https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/API_OPLACCTGDOCITEMCUBE_SRV",
+            api_key="test-sandbox-key",
+            api_base_path="s4hanacloud",
+        )
+        assert cfg.base_url == "https://sandbox.api.sap.com"
+
+        url = cfg.service_url("API_BUSINESS_PARTNER/A_BusinessPartner")
+        assert url == "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/API_BUSINESS_PARTNER/A_BusinessPartner"
+        # The garbled duplication must not appear anywhere in the built URL
+        assert "API_OPLACCTGDOCITEMCUBE_SRV" not in url
+        assert url.count("/sap/opu/odata/sap/") == 1
+
+    def test_base_url_tolerates_bare_host_with_path_and_no_scheme(self) -> None:
+        # Same defensive behaviour without a scheme — e.g. "sandbox.api.sap.com/some/path"
+        from app.connectors.sap.live_connector import SAPLiveConfig
+
+        cfg = SAPLiveConfig(host="sandbox.api.sap.com/extra/path/segments", api_key="k")
+        assert cfg.base_url == "https://sandbox.api.sap.com"
+
 
 class _FakeMetadataResponse:
     """Minimal stand-in for the context-managed response `_opener.open()` returns."""

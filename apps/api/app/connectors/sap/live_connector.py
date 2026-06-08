@@ -93,8 +93,22 @@ class SAPLiveConfig:
 
     @property
     def base_url(self) -> str:
-        """Root HTTPS URL for this SAP system's OData Gateway."""
+        """Root HTTPS URL for this SAP system's OData Gateway.
+
+        Tolerates a full endpoint URL pasted into `host` by mistake — a very
+        easy slip, since the SAP Business Accelerator Hub prominently displays
+        full service-endpoint URLs (e.g.
+        "https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/API_X_SRV")
+        right next to the "Show API Key" button, and copy-pasting that whole
+        string instead of just the hostname produces a garbled, duplicated,
+        unroutable URL once `service_url()` appends its own path — which the
+        gateway then rejects with a generic "Invalid system query options
+        value" 400 (confirmed live). Stripping everything after the first "/"
+        keeps only the hostname, so "host" behaves correctly whether the user
+        enters "sandbox.api.sap.com" or the full endpoint URL.
+        """
         host = self.host.strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+        host = host.split("/", 1)[0]
         return f"https://{host}"
 
     def service_url(self, service_path: str) -> str:
