@@ -150,6 +150,75 @@ class TestSAPLiveConnectorSandboxMode:
         assert connector._auth_header() == {"APIKey": "thekey"}
 
 
+class _FakeMetadataResponse:
+    """Minimal stand-in for the context-managed response `_opener.open()` returns."""
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+class TestSAPMetadataRequestsXML:
+    """Regression guard for a live-network bug:
+
+    SAP's gateway treats `Accept: application/json` on a `/$metadata` resource
+    as an attempt to set an unsupported `$format=json` system query option and
+    rejects it with HTTP 400 "Invalid system query options value" — discovered
+    against the real sandbox.api.sap.com gateway. `$metadata` is XML/CSDL by
+    spec and must always be requested with `Accept: application/xml`.
+    """
+
+    def _connector_with_captured_requests(self, captured: list):
+        from app.connectors.sap.live_connector import SAPLiveConfig, SAPLiveConnector
+
+        connector = SAPLiveConnector(
+            SAPLiveConfig(host="sandbox.api.sap.com", api_key="test-key", api_base_path="s4hanacloud")
+        )
+
+        def fake_open(req, timeout=None):
+            captured.append(req)
+            return _FakeMetadataResponse(b'<edmx:Edmx xmlns:edmx="x"><EntityType Name="A_BusinessPartner"/></edmx:Edmx>')
+
+        connector._opener = type("FakeOpener", (), {"open": staticmethod(fake_open)})()
+        return connector
+
+    def test_fetch_schema_objects_requests_xml_not_json(self) -> None:
+        captured: list = []
+        connector = self._connector_with_captured_requests(captured)
+
+        objects = connector.fetch_schema_objects("API_BUSINESS_PARTNER/A_BusinessPartner")
+
+        assert len(captured) == 1
+        assert captured[0].get_header("Accept") == "application/xml"
+        assert objects == ["A_BusinessPartner"]
+
+    def test_sandbox_test_connection_requests_xml_for_metadata_probe(self) -> None:
+        captured: list = []
+        connector = self._connector_with_captured_requests(captured)
+
+        result = connector.test_connection()
+
+        assert len(captured) == 1
+        assert captured[0].get_header("Accept") == "application/xml"
+        assert result["ok"] is True
+
+    def test_get_text_defaults_to_json_accept_for_non_metadata_calls(self) -> None:
+        captured: list = []
+        connector = self._connector_with_captured_requests(captured)
+
+        connector._get_text("https://sandbox.api.sap.com/s4hanacloud/sap/opu/odata/sap/X/Y")
+
+        assert captured[0].get_header("Accept") == "application/json"
+
+
 class TestSAPLiveConfigValidation:
     def test_requires_basic_auth_or_api_key(self) -> None:
         from app.api.connectors import SAPLiveConfig as SAPLiveConfigRequest

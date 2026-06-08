@@ -134,7 +134,9 @@ class SAPLiveConnector:
         try:
             if self._config.is_sandbox_mode:
                 url = f"{self._config.service_url('API_BUSINESS_PARTNER/A_BusinessPartner')}/$metadata"
-                self._get_text(url)
+                # $metadata is XML/CSDL by spec — requesting JSON here makes
+                # the gateway reject with "Invalid system query options value".
+                self._get_text(url, accept="application/xml")
                 detail = "SAP Business Accelerator Hub Sandbox"
             else:
                 url = f"{self._config.base_url}/sap/opu/odata/iwfnd/catalogservice;v=2/ServiceCollection"
@@ -152,7 +154,9 @@ class SAPLiveConnector:
         """Parse an OData service's $metadata document and return EntityType names."""
         try:
             url = f"{self._config.service_url(service_path)}/$metadata"
-            xml_text = self._get_text(url)
+            # See _get_text docstring — $metadata is XML-only; Accept: application/json
+            # gets rejected by SAP's gateway as an invalid $format system query option.
+            xml_text = self._get_text(url, accept="application/xml")
             return sorted(set(re.findall(r'<EntityType\s+Name="([^"]+)"', xml_text)))
         except SAPLiveConnectorError:
             logger.warning("Could not fetch live SAP $metadata for %s; using static catalog.", service_path)
@@ -271,7 +275,16 @@ class SAPLiveConnector:
         except ValueError as exc:
             raise SAPLiveConnectorError(f"SAP gateway returned a non-JSON response: {exc}") from exc
 
-    def _get_text(self, url: str, params: dict | None = None) -> str:
+    def _get_text(self, url: str, params: dict | None = None, accept: str = "application/json") -> str:
+        """GET and return the raw response body as text.
+
+        `accept` lets callers override the `Accept` header — critical for
+        `/$metadata` documents, which the OData spec defines as XML/CSDL only.
+        SAP's gateway treats `Accept: application/json` on a `$metadata`
+        resource as an attempt to set an unsupported `$format=json` system
+        query option and rejects it with HTTP 400 "Invalid system query
+        options value" — so metadata fetches must request `application/xml`.
+        """
         full_url = url
         query: dict[str, Any] = dict(params or {})
         for k, v in self._client_query_params().items():
@@ -281,7 +294,7 @@ class SAPLiveConnector:
 
         req = urllib.request.Request(full_url, headers={
             **self._auth_header(),
-            "Accept": "application/json",
+            "Accept": accept,
         })
         try:
             with self._opener.open(req, timeout=self._config.timeout_seconds) as resp:
