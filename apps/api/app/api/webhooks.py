@@ -21,6 +21,7 @@ POST /api/v1/webhooks/deliveries/{delivery_id}/retry
 
 import hashlib
 import hmac
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -30,8 +31,11 @@ from app.core.database import SessionLocal
 from app.db.models import FlowDefinitionRecord
 from app.models.flows import FlowRunResponse
 from app.models.webhooks import WebhookDelivery, WebhookDeliveryStats
+from app.services import cloud_events
 from app.services.flow_service import flow_service
 from app.services.webhook_delivery_service import webhook_delivery_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -100,6 +104,19 @@ async def receive_webhook(flow_id: str, request: Request) -> FlowRunResponse:
     delivery_id = uuid.uuid4().hex
     payload_hash = hashlib.sha256(body).hexdigest()
 
+    # Best-effort CloudEvents detection (binary or structured content mode) —
+    # e.g. events emitted by an SAP BTP Event Mesh broker. This is purely
+    # additive observability: a non-CloudEvent (or malformed envelope) simply
+    # yields None and the delivery is recorded exactly as it always has been.
+    # Never raises — see app.services.cloud_events module docstring.
+    try:
+        parsed_event = cloud_events.detect_and_parse(
+            request.headers, body, request.headers.get("content-type")
+        )
+    except Exception as exc:  # pragma: no cover - defense in depth; parser itself never raises
+        logger.debug("CloudEvents detection failed for flow_id=%s: %s", flow_id, exc)
+        parsed_event = None
+
     # Validate flow state, create run record, and enqueue task (with delivery_id)
     try:
         run_response = flow_service.trigger_webhook_verified(
@@ -114,10 +131,11 @@ async def receive_webhook(flow_id: str, request: Request) -> FlowRunResponse:
     webhook_delivery_service.record_received(
         flow_id=flow_id,
         payload_hash=payload_hash,
-        request_id=run_response.requestId,
+        request_id=run_response.request_id,
         tenant_id=record.tenant_id,
         max_attempts=_MAX_ATTEMPTS,
         delivery_id=delivery_id,
+        cloud_event=parsed_event,
     )
 
     return run_response
@@ -224,5 +242,5 @@ def retry_delivery(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    webhook_delivery_service.mark_retrying(delivery_id, run_response.requestId)
+    webhook_delivery_service.mark_retrying(delivery_id, run_response.request_id)
     return run_response

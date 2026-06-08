@@ -1923,6 +1923,13 @@ export interface WebhookDelivery {
   requestId: string | null;
   nextRetryAt: string | null;
   completedAt: string | null;
+  // CloudEvents envelope attributes — Release 20.0. Populated only when the
+  // inbound payload was detected as a CloudEvent (binary or structured content
+  // mode), e.g. events from an SAP BTP Event Mesh broker. Null otherwise.
+  eventId: string | null;
+  eventSource: string | null;
+  eventType: string | null;
+  eventSpecVersion: string | null;
 }
 
 export interface WebhookDeliveryStats {

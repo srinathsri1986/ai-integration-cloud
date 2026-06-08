@@ -27,6 +27,10 @@ class WebhookDeliveryRepository:
         request_id: str,
         tenant_id: int | None = None,
         max_attempts: int = 3,
+        event_id: str | None = None,
+        event_source: str | None = None,
+        event_type: str | None = None,
+        event_spec_version: str | None = None,
     ) -> WebhookDelivery:
         now = datetime.now(UTC).isoformat()
         record = WebhookDeliveryRecord(
@@ -39,6 +43,10 @@ class WebhookDeliveryRepository:
             max_attempts=max_attempts,
             request_id=request_id,
             received_at=now,
+            event_id=event_id,
+            event_source=event_source,
+            event_type=event_type,
+            event_spec_version=event_spec_version,
         )
         self.session.add(record)
         self.session.commit()
@@ -195,4 +203,8 @@ class WebhookDeliveryRepository:
             requestId=record.request_id,
             nextRetryAt=record.next_retry_at,
             completedAt=record.completed_at,
+            eventId=record.event_id,
+            eventSource=record.event_source,
+            eventType=record.event_type,
+            eventSpecVersion=record.event_spec_version,
         )

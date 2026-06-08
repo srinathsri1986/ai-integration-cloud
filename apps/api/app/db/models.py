@@ -229,6 +229,7 @@ class WebhookDeliveryRecord(Base):
         Index("ix_webhook_deliveries_status", "status"),
         Index("ix_webhook_deliveries_tenant_id", "tenant_id"),
         Index("ix_webhook_deliveries_delivery_id", "delivery_id", unique=True),
+        Index("ix_webhook_deliveries_event_type", "event_type"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -247,6 +248,14 @@ class WebhookDeliveryRecord(Base):
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     next_retry_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
     completed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # CloudEvents envelope attributes (Release 20.0) — populated when the inbound
+    # payload is detected as a CloudEvent (binary or structured content mode),
+    # e.g. events emitted by an SAP BTP Event Mesh broker. Null for non-CloudEvents
+    # deliveries — fully backward compatible with existing R12 webhook traffic.
+    event_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_source: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    event_type: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    event_spec_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

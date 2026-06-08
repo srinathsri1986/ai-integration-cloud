@@ -18,6 +18,13 @@ class WebhookDelivery(BaseModel):
     request_id: str | None = Field(default=None, alias="requestId")
     next_retry_at: str | None = Field(default=None, alias="nextRetryAt")
     completed_at: str | None = Field(default=None, alias="completedAt")
+    # CloudEvents envelope attributes (Release 20.0) — populated only when the
+    # inbound payload was detected as a CloudEvent (binary or structured content
+    # mode), e.g. events from an SAP BTP Event Mesh broker. Null otherwise.
+    event_id: str | None = Field(default=None, alias="eventId")
+    event_source: str | None = Field(default=None, alias="eventSource")
+    event_type: str | None = Field(default=None, alias="eventType")
+    event_spec_version: str | None = Field(default=None, alias="eventSpecVersion")
 
 
 class WebhookDeliveryStats(BaseModel):

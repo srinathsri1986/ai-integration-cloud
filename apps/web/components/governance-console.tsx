@@ -687,7 +687,7 @@ function WebhooksTab({ initialStats }: { initialStats?: WebhookDeliveryStats }) 
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50">
-                {["Delivery ID", "Flow", "Status", "Attempts", "Received", "Next Retry / Completed", ""].map((h) => (
+                {["Delivery ID", "Flow", "Event", "Status", "Attempts", "Received", "Next Retry / Completed", ""].map((h) => (
                   <th key={h} className="py-2.5 pl-4 pr-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     {h}
                   </th>
@@ -704,6 +704,18 @@ function WebhooksTab({ initialStats }: { initialStats?: WebhookDeliveryStats }) 
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
                       {d.flowId}
                     </span>
+                  </td>
+                  <td className="py-3 pr-3">
+                    {d.eventType ? (
+                      <span
+                        title={`CloudEvents v${d.eventSpecVersion ?? "?"} — source: ${d.eventSource ?? "unknown"} — id: ${d.eventId ?? "unknown"}`}
+                        className="inline-flex max-w-[160px] items-center gap-1 truncate rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[11px] text-indigo-700"
+                      >
+                        {d.eventType}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
                   <td className="py-3 pr-3">
                     <DeliveryStatusBadge status={d.status} />
