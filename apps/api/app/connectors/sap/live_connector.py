@@ -168,8 +168,20 @@ class SAPLiveConnector:
         entity_set: str,
         top: int = 50,
     ) -> list[dict[str, Any]]:
-        """Fetch a page of entities from an approved OData entity set (read-only GET)."""
-        params = {"$top": top, "$format": "json"}
+        """Fetch a page of entities from an approved OData entity set (read-only GET).
+
+        Deliberately sends ONLY `$top` as a system query option — JSON is
+        negotiated purely via the `Accept: application/json` header (set by
+        `_get`/`_get_text`). An earlier version also sent `$format=json` as a
+        query parameter; the sandbox's Apigee-fronted gateway rejected that
+        combination with the same HTTP 400 "Invalid system query options
+        value" error that `$metadata` + `Accept: application/json` produced
+        (see `_get_text`'s docstring) — `$format` is OData-version-sensitive
+        (V2 accepts the bare `json` shorthand; V4 backends behind this proxy
+        evidently don't), whereas the `Accept` header is the protocol-correct,
+        version-agnostic way to negotiate representation and works for both.
+        """
+        params = {"$top": top}
         try:
             url = f"{self._config.service_url(service_path)}/{entity_set}"
             data = self._get(url, params=params)

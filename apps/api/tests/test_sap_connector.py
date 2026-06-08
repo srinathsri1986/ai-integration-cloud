@@ -253,6 +253,48 @@ class TestSAPMetadataRequestsXML:
         assert captured[0].get_header("Accept") == "application/json"
 
 
+class TestSAPListEntitiesQueryParams:
+    """Regression guard for a second live-network bug, same error class:
+
+    list_entities() originally sent BOTH `$format=json` as a query parameter
+    AND `Accept: application/json` as a header. The sandbox's Apigee-fronted
+    gateway rejected `$format=json` with the same HTTP 400 "Invalid system
+    query options value" error — `$format` is OData-version-sensitive (the
+    bare `json` shorthand isn't universally accepted), whereas `Accept` is
+    the protocol-correct, version-agnostic negotiation mechanism. The fix:
+    send only `$top` as a query option; rely solely on `Accept` for format.
+    """
+
+    def _connector_with_captured_requests(self, captured: list, body: bytes):
+        from app.connectors.sap.live_connector import SAPLiveConfig, SAPLiveConnector
+
+        connector = SAPLiveConnector(
+            SAPLiveConfig(host="sandbox.api.sap.com", api_key="test-key", api_base_path="s4hanacloud")
+        )
+
+        def fake_open(req, timeout=None):
+            captured.append(req)
+            return _FakeMetadataResponse(body)
+
+        connector._opener = type("FakeOpener", (), {"open": staticmethod(fake_open)})()
+        return connector
+
+    def test_list_entities_query_string_omits_format_param(self) -> None:
+        captured: list = []
+        body = b'{"d": {"results": [{"BusinessPartner": "1003765"}]}}'
+        connector = self._connector_with_captured_requests(captured, body)
+
+        records = connector.list_entities("API_BUSINESS_PARTNER/A_BusinessPartner", "A_BusinessPartner", top=10)
+
+        assert len(captured) == 1
+        full_url = captured[0].full_url
+        # urlencode renders "$" as "%24"
+        assert "%24top=10" in full_url
+        assert "format" not in full_url
+        assert captured[0].get_header("Accept") == "application/json"
+        assert records == [{"BusinessPartner": "1003765"}]
+
+
 class TestSAPLiveConfigValidation:
     def test_requires_basic_auth_or_api_key(self) -> None:
         from app.api.connectors import SAPLiveConfig as SAPLiveConfigRequest
