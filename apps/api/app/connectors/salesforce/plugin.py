@@ -67,6 +67,20 @@ _TOOLS = [
             ConnectorToolParam("priority", "string", False, "High | Medium | Low"),
         ],
     ),
+    ConnectorTool(
+        "create_project",
+        "Create Project (custom object)",
+        "Create a Project_c__c record — populates the custom object with standard project field values.",
+        "salesforce",
+        [
+            ConnectorToolParam("name", "string", True, "Project name (Project_c__c.Name)"),
+            ConnectorToolParam("status", "string", False, "Status picklist value (Project_c__c.Status__c), e.g. 'In Progress'"),
+            ConnectorToolParam("budget", "number", False, "Approved budget (Project_c__c.Budget__c)"),
+            ConnectorToolParam("start_date", "string", False, "Start/due date YYYY-MM-DD (Project_c__c.Start_Date__c)"),
+            ConnectorToolParam("is_active", "boolean", False, "Whether the project is active (Project_c__c.Is_Active__c)"),
+            ConnectorToolParam("owner_id", "string", False, "Salesforce User record ID for the project owner lookup (Project_c__c.Project_Owner__c)"),
+        ],
+    ),
 ]
 
 _TOOL_MAP = {t.tool_id: t for t in _TOOLS}
@@ -87,6 +101,7 @@ _MOCK_DATA = {
         "total": 1,
     },
     "create_case": {"id": "CASE-0011", "status": "open", "subject": "Mock Case"},
+    "create_project": {"id": "a0B0x000004MockPr", "status": "created", "name": "Mock Project"},
 }
 
 
@@ -98,6 +113,98 @@ def _get_live_creds(tenant_id: int | None = None) -> dict | None:
     except Exception as exc:
         logger.debug("Could not load Salesforce credentials: %s", exc)
     return None
+
+
+# ── Automatic refresh-token handling ─────────────────────────────────────────
+#
+# Salesforce access tokens (session IDs) expire — often within ~2 hours for
+# Developer Edition orgs — and every live call up to now failed hard with
+# "Session expired or invalid / INVALID_SESSION_ID" once that happened, even
+# though we already store a refresh_token from the original OAuth grant.
+#
+# This wraps every live call: on a session-expiry error, exchange the stored
+# refresh_token for a fresh access_token (re-persisting it), then retry once.
+
+def _is_session_expired(exc: Exception) -> bool:
+    msg = str(exc)
+    return (
+        "INVALID_SESSION_ID" in msg
+        or "Session expired" in msg
+        or "invalid_grant" in msg
+    )
+
+
+def _refresh_access_token(creds: dict, tenant_id: int | None = None) -> dict | None:
+    """Exchange the stored refresh_token for a new access_token.
+
+    Returns the updated, already-persisted credential dict on success, or
+    None if refresh isn't possible (no refresh_token, missing Connected App
+    creds, or the refresh request itself failed).
+    """
+    refresh_token = creds.get("refresh_token")
+    if not refresh_token:
+        logger.warning("Salesforce session expired and no refresh_token is stored — re-authorisation required.")
+        return None
+
+    try:
+        import httpx
+        from app.services.credential_service import credential_service
+
+        app_creds = credential_service.get_credentials("oauth_app:salesforce", tenant_id)
+        client_id = (app_creds or {}).get("client_id")
+        client_secret = (app_creds or {}).get("client_secret")
+        if not client_id or not client_secret:
+            logger.warning("Cannot refresh Salesforce token — Connected App client_id/secret not stored.")
+            return None
+
+        # The instance_url also accepts /services/oauth2/token for refresh grants.
+        token_host = creds.get("instance_url") or "https://login.salesforce.com"
+        resp = httpx.post(
+            f"{token_host}/services/oauth2/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+            },
+            timeout=15,
+        )
+        token_data = resp.json()
+        if "access_token" not in token_data:
+            logger.warning(
+                "Salesforce token refresh failed: %s",
+                token_data.get("error_description", token_data),
+            )
+            return None
+
+        # The refresh response usually omits refresh_token (it's long-lived and
+        # stable) — preserve the original alongside any other stored fields.
+        updated = {**creds, **token_data}
+        updated.setdefault("refresh_token", refresh_token)
+        credential_service.store_oauth_token("salesforce", updated, tenant_id=tenant_id)
+        logger.info("Refreshed Salesforce access token for tenant=%s", tenant_id)
+        return updated
+    except Exception as exc:
+        logger.warning("Salesforce token refresh failed: %s", exc)
+        return None
+
+
+def _with_session_refresh(creds: dict, tenant_id: int | None, call):
+    """Invoke call(creds); on session-expiry, refresh once and retry.
+
+    `call` is a single-argument callable taking the credential dict and
+    returning whatever the live operation returns. Re-raises the original
+    exception if refresh isn't possible or the retry also fails.
+    """
+    try:
+        return call(creds)
+    except Exception as exc:
+        if not _is_session_expired(exc):
+            raise
+        refreshed = _refresh_access_token(creds, tenant_id)
+        if not refreshed:
+            raise
+        return call(refreshed)
 
 
 def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
@@ -191,6 +298,30 @@ def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
                 "result": {"items": items, "total": rows.get("totalSize", len(items))},
             }
 
+        elif tool_id == "create_project":
+            # Project_c__c is the custom object discovered via live schema fetch
+            # (15 fields, incl. Name, Status__c, Budget__c, Start_Date__c,
+            # Is_Active__c, Project_Owner__c — see mapping_catalog "salesforce-project-c").
+            # Populate it with standard/sample values supplied by the caller.
+            data = {"Name": params.get("name", "New Project")}
+            if params.get("status") is not None:
+                data["Status__c"] = params["status"]
+            if params.get("budget") is not None:
+                data["Budget__c"] = float(params["budget"])
+            if params.get("start_date"):
+                data["Start_Date__c"] = params["start_date"]
+            if params.get("is_active") is not None:
+                data["Is_Active__c"] = bool(params["is_active"])
+            if params.get("owner_id"):
+                data["Project_Owner__c"] = params["owner_id"]
+            result = sf.Project_c__c.create(data)
+            return {
+                "connector": "salesforce",
+                "tool": tool_id,
+                "mode": "live",
+                "result": {"id": result["id"], "success": result["success"], "fields": data},
+            }
+
         elif tool_id == "create_case":
             case_data: dict = {
                 "AccountId": params["account_id"],
@@ -228,7 +359,7 @@ class SalesforcePlugin:
         creds = _get_live_creds(tenant_id)
         if creds:
             try:
-                return _execute_live(tool_id, params, creds)
+                return _with_session_refresh(creds, tenant_id, lambda c: _execute_live(tool_id, params, c))
             except Exception as exc:
                 logger.warning(
                     "Salesforce live execution failed for tool=%s, falling back to mock: %s",
@@ -246,16 +377,16 @@ class SalesforcePlugin:
     def test_connection(self) -> dict:
         creds = _get_live_creds()
         if creds:
-            try:
+            def _ping(c: dict) -> dict:
                 from simple_salesforce import Salesforce  # type: ignore[import]
 
                 instance = (
-                    creds.get("instance_url", "")
+                    c.get("instance_url", "")
                     .replace("https://", "")
                     .replace("http://", "")
                     .rstrip("/")
                 )
-                sf = Salesforce(instance=instance, session_id=creds.get("access_token", ""))
+                sf = Salesforce(instance=instance, session_id=c.get("access_token", ""))
                 identity = sf.restful("chatter/users/me")
                 display = identity.get("displayName", identity.get("name", "user"))
                 return {
@@ -263,6 +394,9 @@ class SalesforcePlugin:
                     "mode": "live",
                     "message": f"Connected to Salesforce as {display} ({instance}).",
                 }
+
+            try:
+                return _with_session_refresh(creds, None, _ping)
             except Exception as exc:
                 return {"ok": False, "mode": "live", "message": f"Salesforce connection test failed: {exc}"}
 
@@ -276,7 +410,7 @@ class SalesforcePlugin:
         creds = _get_live_creds(tenant_id)
         if creds:
             try:
-                return _fetch_live_schema(creds)
+                return _with_session_refresh(creds, tenant_id, _fetch_live_schema)
             except Exception as exc:
                 logger.warning("Salesforce live schema fetch failed, using mock: %s", exc)
         return _MOCK_SCHEMA
@@ -332,6 +466,7 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
     object_names = list(_STANDARD_OBJECTS) + custom_object_names
 
     objects: list[SchemaObject] = []
+    session_expired_seen = False
     for obj_name in object_names:
         try:
             desc = sf.restful(f"sobjects/{obj_name}/describe")
@@ -352,7 +487,22 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
             label = desc.get("label", obj_name)
             objects.append(SchemaObject(object_id=obj_name, label=label, fields=fields[:40]))
         except Exception as exc:
+            if _is_session_expired(exc):
+                session_expired_seen = True
             logger.warning("Could not describe Salesforce object %s: %s", obj_name, exc)
+
+    # IMPORTANT: per-object describe() failures are caught and logged above so a
+    # handful of missing/renamed objects don't blank out the whole schema. But if
+    # the session expired, EVERY describe call fails the same way and this loop
+    # would silently return an empty object list — `_with_session_refresh()` (the
+    # caller) only retries on a *raised* exception, so a "successful" empty return
+    # would never trigger a refresh. Detect the all-failed-due-to-expiry case and
+    # raise so the wrapper can refresh the token and retry the whole fetch.
+    if not objects and session_expired_seen:
+        raise RuntimeError(
+            "Expired session while describing Salesforce schema objects "
+            "(INVALID_SESSION_ID) — every object describe call failed."
+        )
     return objects
 
 

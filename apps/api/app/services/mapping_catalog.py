@@ -614,6 +614,21 @@ MAPPING_OBJECTS: list[MappingObject] = [
             {"name": "AccountId", "description": "Parent account ID.",        "type": "string",                    "sample": "0010x000002XyZa"},
         ],
     ),
+    MappingObject(
+        id="salesforce-project-c",
+        displayName="Salesforce Project__c (custom object)",
+        systemId="salesforce",
+        fields=[
+            {"name": "Id",               "description": "Project__c Salesforce record ID (system-assigned; do not map as target).", "type": "string", "sample": "a0B0x000004AbCd"},
+            {"name": "Name",             "description": "Project__c display name.",                 "type": "string",                    "sample": "PRJ-1042"},
+            {"name": "Status__c",        "description": "Project status picklist.",                 "type": "string", "required": True,  "sample": "In Progress"},
+            {"name": "Budget__c",        "description": "Approved project budget.",                 "type": "number",                    "sample": 420000},
+            {"name": "Start_Date__c",    "description": "Project start/due date.",                  "type": "date",                      "sample": "2026-03-31"},
+            {"name": "Is_Active__c",     "description": "Whether the project is currently active.", "type": "boolean",                   "sample": True},
+            {"name": "Project_Owner__c", "description": "Reference to the owning user/contact record.", "type": "string",                "sample": "Maya Rao"},
+            {"name": "OwnerId",          "description": "Salesforce record owner ID (system; use lookup_placeholder).", "type": "string", "sample": "0050x000003WxYz"},
+        ],
+    ),
     # ── SAP (extra objects from live schema) ──────────────────────────────────
     MappingObject(
         id="sap-journal-entry",

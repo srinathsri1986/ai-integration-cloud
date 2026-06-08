@@ -71,8 +71,18 @@ class NetSuiteLiveConnector:
         Never raises — returns ok=False with a safe message on failure.
         """
         try:
-            url = f"{self._config.record_url}/customer?limit=1&fields=id,entityId"
-            response = self._get(url)
+            # IMPORTANT: pass query params via `params=` (not embedded in the URL
+            # string) so _get()/_auth_header() include them in the OAuth 1.0a
+            # signature base string. NetSuite validates the signature against the
+            # full parameter set — an unsigned query string causes a generic
+            # "401 Invalid login attempt" that looks like a credentials problem
+            # but is actually a signature mismatch (see list_record(), which signs
+            # `limit` correctly and surfaces the real 400 permission error instead).
+            # NOTE: the NetSuite REST Record API list endpoint does not accept a
+            # `fields` query parameter (it returns "Invalid query parameter name
+            # 'fields'") — `limit` alone is enough for a connectivity probe.
+            url = f"{self._config.record_url}/customer"
+            response = self._get(url, params={"limit": 1})
             count = len(response.get("items", []))
             return {
                 "ok": True,
@@ -150,8 +160,14 @@ class NetSuiteLiveConnector:
             "oauth_version": "1.0",
         }
 
-        # Merge all parameters for signature base string
-        all_params: dict[str, str] = {**oauth_params, **(extra_params or {})}
+        # Merge all parameters for signature base string.
+        # extra_params may carry non-string values (e.g. limit=50 as an int from
+        # list_record's `{"limit": limit}`), and urllib.parse.quote() requires
+        # str/bytes — coerce everything to str before quoting/signing.
+        all_params: dict[str, str] = {
+            **oauth_params,
+            **{k: str(v) for k, v in (extra_params or {}).items()},
+        }
         sorted_params = sorted(all_params.items())
         param_string = "&".join(
             f"{urllib.parse.quote(k, safe='')}"

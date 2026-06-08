@@ -1,8 +1,12 @@
 """NetSuite connector plugin — wraps mock implementation; live connector activated when credentials present."""
 from __future__ import annotations
 
+import logging
+
 from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 from .mock_connector import MockNetSuiteConnector
+
+logger = logging.getLogger(__name__)
 from .mock_data import (
     MOCK_CUSTOMERS,
     MOCK_CONTACTS,
@@ -19,6 +23,70 @@ from .mock_data import (
 )
 
 _mock = MockNetSuiteConnector()
+
+
+# ── Live connector wiring (OAuth 1.0a token-based auth) ──────────────────────
+#
+# Mirrors the Salesforce plugin's _get_live_creds / _execute_live pattern:
+# credentials are resolved from the encrypted vault, and a real
+# NetSuiteLiveConnector (HMAC-SHA256 TBA signing — see live_connector.py) is
+# used whenever they're present. Any failure falls back to mock data so the
+# UI never breaks — but is logged so a "live" connector never silently behaves
+# like mock without a trace (the simple-salesforce lesson).
+
+_LIVE_RECORD_TOOL_MAP: dict[str, tuple[str, str]] = {
+    # tool_id -> (NetSuite REST record type, mock-data key for filtering shape)
+    "crm.list_customers": ("customer", "entity_id"),
+    "crm.list_opportunities": ("opportunity", "entity_id"),
+    "o2c.list_sales_orders": ("salesOrder", "entity_id"),
+    "o2c.list_invoices": ("invoice", "entity_id"),
+    "p2p.list_vendor_bills": ("vendorBill", "entity_id"),
+    "p2p.list_purchase_orders": ("purchaseOrder", "entity_id"),
+}
+
+
+def _get_live_creds(tenant_id: int | None = None) -> dict | None:
+    """Return decrypted NetSuite token-based-auth credential dict, or None if not configured."""
+    try:
+        from app.services.credential_service import credential_service
+        return credential_service.get_credentials("netsuite", tenant_id)
+    except Exception as exc:
+        logger.debug("Could not load NetSuite credentials: %s", exc)
+    return None
+
+
+def _build_live_connector(creds: dict):
+    """Construct a NetSuiteLiveConnector from a decrypted credential dict."""
+    from .live_connector import NetSuiteLiveConfig, NetSuiteLiveConnector
+
+    config = NetSuiteLiveConfig(
+        account_id=creds.get("account_id", ""),
+        consumer_key=creds.get("consumer_key", ""),
+        consumer_secret=creds.get("consumer_secret", ""),
+        token_id=creds.get("token_id", ""),
+        token_secret=creds.get("token_secret", ""),
+    )
+    return NetSuiteLiveConnector(config)
+
+
+def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
+    """Dispatch a list-style tool call to the real NetSuite REST Record API."""
+    mapping = _LIVE_RECORD_TOOL_MAP.get(tool_id)
+    if mapping is None:
+        raise RuntimeError(f"NetSuite tool '{tool_id}' has no live implementation yet.")
+
+    record_type, _filter_key = mapping
+    connector = _build_live_connector(creds)
+    limit = int(params.get("limit", 50))
+    records = connector.list_record(record_type, limit=limit)
+    return {
+        "connector": "netsuite",
+        "tool": tool_id,
+        "mode": "live",
+        "source": "live",
+        "records": records,
+        "count": len(records),
+    }
 
 _TOOLS: list[ConnectorTool] = [
     # ── CFO / Finance reporting ────────────────────────────────────────────────
@@ -192,6 +260,19 @@ class NetSuitePlugin:
         if tool_id not in _TOOL_MAP:
             raise KeyError(f"Unknown NetSuite tool: {tool_id!r}")
 
+        # ── Live mode — try the real NetSuite REST API for list-style tools ───
+        if tool_id in _LIVE_RECORD_TOOL_MAP:
+            creds = _get_live_creds(tenant_id)
+            if creds:
+                try:
+                    return _execute_live(tool_id, params, creds)
+                except Exception as exc:
+                    logger.warning(
+                        "NetSuite live execution failed for tool=%s, falling back to mock: %s",
+                        tool_id,
+                        exc,
+                    )
+
         # ── CFO tools — delegate to CfoService (existing mock) ────────────────
         if tool_id == "cfo.dashboard_summary":
             from app.services.cfo_service import CfoService
@@ -327,10 +408,47 @@ class NetSuitePlugin:
         raise KeyError(f"Unhandled NetSuite tool: {tool_id!r}")
 
     def test_connection(self) -> dict:
-        return {"ok": True, "mode": "mock", "message": "NetSuite mock connector is ready (mock mode)."}
+        creds = _get_live_creds()
+        if creds:
+            try:
+                connector = _build_live_connector(creds)
+                result = connector.test_connection()
+                if result.get("ok"):
+                    return result
+                # Live config present but the API call failed — surface the
+                # real reason rather than pretending we're in mock mode.
+                return result
+            except Exception as exc:
+                logger.warning("NetSuite live connection test failed: %s", exc)
+                return {"ok": False, "mode": "live", "message": f"NetSuite connection test failed: {exc}"}
+
+        return {"ok": True, "mode": "mock", "message": "NetSuite mock connector is ready (mock mode). Click Connect to link a NetSuite account."}
 
     def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:  # noqa: PLR0915
-        """Return all 12 NetSuite record types with full field definitions."""
+        """Return NetSuite record types with full field definitions.
+
+        The curated catalog below is always used for *field-level* metadata —
+        NetSuite's REST metadata-catalog only exposes record-type names, not
+        field definitions, so faithfully discovering field schemas live would
+        require parsing per-record OpenAPI documents (a larger follow-up).
+        When live credentials are present we additionally ping the metadata
+        catalog purely to confirm connectivity / log which record types exist
+        in the connected account — but the curated, richly-typed catalog is
+        what powers the mapping UI.
+        """
+        creds = _get_live_creds(tenant_id)
+        if creds:
+            try:
+                connector = _build_live_connector(creds)
+                live_record_types = connector.fetch_schema_objects()
+                if live_record_types:
+                    logger.info(
+                        "NetSuite live account exposes %d record types (using curated field catalog for mapping).",
+                        len(live_record_types),
+                    )
+            except Exception as exc:
+                logger.warning("Could not reach NetSuite live metadata catalog: %s", exc)
+
         return [
             SchemaObject("customer", "Customer", [
                 SchemaField("id", "Internal ID", "string", required=True, sample="42"),
