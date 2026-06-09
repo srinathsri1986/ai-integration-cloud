@@ -179,6 +179,86 @@ def test_mapping_suggestions_can_require_live_ai_without_template_fallback() -> 
         raise AssertionError("Expected live AI enforcement to reject template fallback.")
 
 
+# ---------------------------------------------------------------------------
+# Field-name-similarity fallback for any object pair
+# ---------------------------------------------------------------------------
+
+def test_field_name_similarity_fallback_for_sap_vendor_to_sfdc_account() -> None:
+    """When no hardcoded candidates match (e.g. SAP Vendor → Salesforce Account),
+    the template must produce at least one suggestion from field-name similarity
+    rather than returning an empty list."""
+    service = MappingSuggestionService(
+        ai_provider="disabled",
+        model_name=None,
+        llm_provider=None,
+    )
+    response = service.suggest(
+        MappingSuggestionRequest(
+            prompt="Map SAP Vendor fields to Salesforce Account.",
+            sourceObjectId="sap-vendor",
+            targetObjectId="salesforce-account",
+        )
+    )
+    # disabled provider = template IS the primary path; fallback_used stays False
+    assert len(response.suggestions) > 0, (
+        "Expected at least one field-name-similarity suggestion for sap-vendor → salesforce-account"
+    )
+    source_fields = {s.source_field for s in response.suggestions}
+    # "name" (SAP Vendor) ↔ "Name" (Salesforce Account) — exact normalized match
+    assert "name" in source_fields, (
+        f"Expected 'name' field suggestion, got: {source_fields}"
+    )
+
+
+def test_field_name_similarity_fallback_no_false_positives() -> None:
+    """Suggestions must only reference field names that actually exist in both objects.
+    No hallucinated field names allowed — even in template mode."""
+    service = MappingSuggestionService(
+        ai_provider="disabled",
+        model_name=None,
+        llm_provider=None,
+    )
+    response = service.suggest(
+        MappingSuggestionRequest(
+            prompt="Map SAP Vendor to Salesforce Account.",
+            sourceObjectId="sap-vendor",
+            targetObjectId="salesforce-account",
+        )
+    )
+    from app.services.mapping_catalog import get_mapping_object
+    src_obj = get_mapping_object("sap-vendor")
+    tgt_obj = get_mapping_object("salesforce-account")
+    valid_src = {f.name for f in src_obj.fields}
+    valid_tgt = {f.name for f in tgt_obj.fields}
+    for suggestion in response.suggestions:
+        assert suggestion.source_field in valid_src, (
+            f"Invalid source field: {suggestion.source_field}"
+        )
+        assert suggestion.target_field in valid_tgt, (
+            f"Invalid target field: {suggestion.target_field}"
+        )
+
+
+def test_field_name_similarity_vendor_id_to_sap_vendor_id_field() -> None:
+    """vendor_id (SAP) should match SAP_Vendor_ID__c (Salesforce) via substring match."""
+    service = MappingSuggestionService(
+        ai_provider="disabled",
+        model_name=None,
+        llm_provider=None,
+    )
+    response = service.suggest(
+        MappingSuggestionRequest(
+            prompt="Map SAP Vendor to Salesforce Account.",
+            sourceObjectId="sap-vendor",
+            targetObjectId="salesforce-account",
+        )
+    )
+    target_fields = {s.target_field for s in response.suggestions}
+    assert "SAP_Vendor_ID__c" in target_fields, (
+        f"Expected vendor_id → SAP_Vendor_ID__c substring match, got targets: {target_fields}"
+    )
+
+
 def test_mapping_prompt_rejects_raw_query_and_secret_language() -> None:
     response = client.post(
         "/api/v1/mappings/suggestions",

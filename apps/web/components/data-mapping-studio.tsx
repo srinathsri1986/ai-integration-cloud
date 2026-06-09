@@ -382,7 +382,9 @@ export function DataMappingStudio() {
 
     const response = await suggestMappingDefinition({
       prompt: mappingPrompt,
-      requireLiveAi: true,
+      // requireLiveAi intentionally omitted (defaults false) — if the LLM is
+      // unavailable or returns invalid output the service falls back to
+      // field-name-similarity template suggestions instead of hard-failing.
       sourceObjectId,
       targetObjectId,
       ...(sourceObject && {
@@ -405,16 +407,27 @@ export function DataMappingStudio() {
       }),
     });
 
-    if (response.ok && !response.data.suggestionFallbackUsed) {
+    if (response.ok) {
       setSuggestions(response.data.suggestions);
-      setSuggestionStatus(
-        `${response.data.suggestionProvider} / ${
-          response.data.suggestionModel ?? "live model"
-        } suggested ${response.data.suggestions.length} reviewed draft matches.`
-      );
+      if (!response.data.suggestionFallbackUsed) {
+        setSuggestionStatus(
+          `${response.data.suggestionProvider} / ${
+            response.data.suggestionModel ?? "live model"
+          } suggested ${response.data.suggestions.length} reviewed draft matches.`
+        );
+      } else if (response.data.suggestions.length > 0) {
+        setSuggestionStatus(
+          `Template suggestions (AI model unavailable) — ${response.data.suggestions.length} ` +
+          `draft matches from field-name similarity. Review carefully before accepting.`
+        );
+      } else {
+        setSuggestionStatus(
+          "No automatic matches found. Map fields manually or refine the mapping prompt."
+        );
+      }
     } else {
       setSuggestions([]);
-      setSuggestionStatus(response.error ?? "Live AI did not return valid governed suggestions.");
+      setSuggestionStatus(response.error ?? "Suggestion service unavailable.");
     }
     setIsSuggesting(false);
     setActiveStep("map");

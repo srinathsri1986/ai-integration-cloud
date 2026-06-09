@@ -32,6 +32,84 @@ class LiveAIRequiredError(RuntimeError):
     pass
 
 
+def _field_name_similarity_suggestions(
+    source_object: MappingObject,
+    target_object: MappingObject,
+) -> list[MappingSuggestionItem]:
+    """Produce suggestions for ANY object pair by normalising field names.
+
+    Algorithm (applied per source field, in order):
+    1. Exact normalised match  — strip non-alphanumeric + lowercase → identical strings.
+       Confidence 0.92, transform "direct".
+    2. Substring match (min len 3) — one normalised name is a substring of the other.
+       Confidence 0.72, transform "rename".
+
+    Each target field is used at most once (first best match wins).
+    Only field names that exist in the catalog are ever emitted — no hallucinations.
+    """
+    import re as _re
+
+    def norm(s: str) -> str:
+        return _re.sub(r"[^a-z0-9]", "", s.lower())
+
+    suggestions: list[MappingSuggestionItem] = []
+    used_targets: set[str] = set()
+
+    for src in source_object.fields:
+        sn = norm(src.name)
+        if not sn:
+            continue
+
+        # ── Pass 1: exact normalised match ──────────────────────────────────
+        for tgt in target_object.fields:
+            if tgt.name in used_targets:
+                continue
+            tn = norm(tgt.name)
+            if not tn:
+                continue
+            if sn == tn:
+                suggestions.append(
+                    MappingSuggestionItem(
+                        sourceField=src.name,
+                        targetField=tgt.name,
+                        transform="direct",
+                        confidence=0.92,
+                        rationale=(
+                            f"{src.name} and {tgt.name} share the same normalised field name "
+                            "and are semantically equivalent."
+                        ),
+                    )
+                )
+                used_targets.add(tgt.name)
+                break
+        else:
+            # ── Pass 2: substring match (skip very short tokens) ─────────────
+            if len(sn) >= 3:
+                for tgt in target_object.fields:
+                    if tgt.name in used_targets:
+                        continue
+                    tn = norm(tgt.name)
+                    if len(tn) < 3:
+                        continue
+                    if sn in tn or tn in sn:
+                        suggestions.append(
+                            MappingSuggestionItem(
+                                sourceField=src.name,
+                                targetField=tgt.name,
+                                transform="rename",
+                                confidence=0.72,
+                                rationale=(
+                                    f"{src.name} is semantically related to {tgt.name} "
+                                    "by field-name similarity."
+                                ),
+                            )
+                        )
+                        used_targets.add(tgt.name)
+                        break
+
+    return suggestions
+
+
 class MappingSuggestionService:
     def __init__(
         self,
@@ -317,7 +395,12 @@ class MappingSuggestionService:
                 )
             )
 
-        return suggestions[:8]
+        if suggestions:
+            return suggestions[:8]
+
+        # No hardcoded candidate matched this object pair — derive suggestions
+        # from normalised field-name similarity so the studio is never empty.
+        return _field_name_similarity_suggestions(source_object, target_object)[:8]
 
     def _default_model_name(self) -> str:
         settings = get_settings()
