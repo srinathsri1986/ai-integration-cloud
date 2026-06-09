@@ -271,6 +271,32 @@ export function IntegrationManagementConsole({
     setBusyKey(`${flow.flowId}:link_mapping`);
     setMessage(undefined);
     setMessageIsError(false);
+
+    // If the chosen mapping is only "approved" (not yet published), auto-promote it
+    // to "published" first. This is the most common reason linking silently fails —
+    // users save a mapping but don't realise they must also publish it before linking.
+    if (mappingDefinitionId) {
+      const chosen = mappings.find((m) => m.mappingId === mappingDefinitionId);
+      if (chosen && chosen.status === "approved") {
+        const promoteResponse = await transitionMappingLifecycle(mappingDefinitionId, "publish");
+        if (promoteResponse.ok) {
+          // Keep local state in sync so the badge updates immediately
+          setMappings((current) =>
+            current.map((item) =>
+              item.mappingId === promoteResponse.data.mapping.mappingId
+                ? promoteResponse.data.mapping
+                : item
+            )
+          );
+        } else {
+          setMessage(promoteResponse.error ?? "Could not publish mapping before linking.");
+          setMessageIsError(true);
+          setBusyKey(undefined);
+          return;
+        }
+      }
+    }
+
     const response = await linkMappingToFlow(flow.flowId, mappingDefinitionId);
     if (response.ok) {
       setFlows((current) =>
@@ -457,7 +483,7 @@ export function IntegrationManagementConsole({
           flow={selectedFlow}
           linkedMapping={linkedMapping}
           mappingSimulation={mappingSimulation}
-          publishedMappings={mappings.filter((m) => m.status === "published")}
+          publishedMappings={mappings.filter((m) => m.status === "published" || m.status === "approved")}
           onDeleteFlow={deleteFlow}
           onDeleteMapping={deleteMapping}
           onFlowAction={applyFlowAction}
@@ -742,11 +768,11 @@ function IntegrationReviewPane({
               No data mapping is linked to this integration.
             </div>
 
-            {/* Link an existing published mapping -------------------------------- */}
+            {/* Link an existing mapping (published or approved) -------------------------------- */}
             {publishedMappings.length > 0 ? (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-slate-600">
-                  Link a published mapping:
+                  Link a mapping:
                 </p>
                 <div className="flex gap-2">
                   <select
@@ -757,7 +783,7 @@ function IntegrationReviewPane({
                     <option value="">— choose a mapping —</option>
                     {publishedMappings.map((m) => (
                       <option key={m.mappingId} value={m.mappingId}>
-                        {m.name}
+                        {m.name}{m.status === "approved" ? " (will be published on link)" : ""}
                       </option>
                     ))}
                   </select>
