@@ -144,6 +144,18 @@ def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
     if kind == "read":
         limit = int(params.get("limit", 50))
         records = connector.list_entities(service_path, entity_set, top=limit)
+        # Normalise field names so downstream mapping rules stay stable
+        # regardless of which SAP OData service is called.
+        if tool_id == "list_vendors":
+            records = [
+                {
+                    "id":   r.get("BusinessPartner") or r.get("id", ""),
+                    "name": r.get("BusinessPartnerFullName") or r.get("OrganizationBPName1") or r.get("name", ""),
+                    "type": r.get("BusinessPartnerType", ""),
+                    "search_term": r.get("SearchTerm1", ""),
+                }
+                for r in records
+            ]
         return {
             "connector": "sap",
             "tool": tool_id,

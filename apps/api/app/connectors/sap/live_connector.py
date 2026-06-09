@@ -321,12 +321,29 @@ class SAPLiveConnector:
         req = urllib.request.Request(full_url, headers={
             **self._auth_header(),
             "Accept": accept,
+            # Explicitly accept gzip so the gateway doesn't send a partially-
+            # compressed body without a Content-Encoding header (which breaks
+            # the plain .decode("utf-8") call below).
+            "Accept-Encoding": "gzip, identity",
         })
         try:
             with self._opener.open(req, timeout=self._config.timeout_seconds) as resp:
-                return resp.read().decode("utf-8")
+                raw = resp.read()
+                encoding = resp.headers.get("Content-Encoding", "")
+                if encoding == "gzip" or (raw[:2] == b"\x1f\x8b"):
+                    import gzip as _gzip
+                    raw = _gzip.decompress(raw)
+                return raw.decode("utf-8")
         except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")[:200]
+            raw_err = exc.read()
+            encoding = exc.headers.get("Content-Encoding", "")
+            if encoding == "gzip" or (raw_err[:2] == b"\x1f\x8b"):
+                import gzip as _gzip
+                try:
+                    raw_err = _gzip.decompress(raw_err)
+                except Exception:
+                    pass
+            body = raw_err.decode("utf-8", errors="replace")[:200]
             raise SAPLiveConnectorError(
                 f"SAP OData gateway returned HTTP {exc.code}. Check credentials, client, and "
                 f"service path. Detail: {body}"
