@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
@@ -119,6 +119,32 @@ class FlowRunRepository:
     def clear(self) -> None:
         self.session.execute(delete(FlowRunRecord))
         self.session.commit()
+
+    @staticmethod
+    def expire_stuck(timeout_minutes: int = 15) -> int:
+        """Mark all 'running' records older than *timeout_minutes* as 'timed_out'. Returns count."""
+        from datetime import timedelta
+
+        cutoff = (datetime.now(UTC) - timedelta(minutes=timeout_minutes)).isoformat()
+        now_str = datetime.now(UTC).isoformat()
+
+        from app.core.database import SessionLocal
+
+        with SessionLocal() as session:
+            records = session.scalars(
+                select(FlowRunRecord)
+                .where(FlowRunRecord.status == "running")
+                .where(FlowRunRecord.started_at < cutoff)
+            ).all()
+            expired = 0
+            for record in records:
+                record.status = "timed_out"
+                record.completed_at = now_str
+                record.message = "Run timed out — exceeded maximum execution time."
+                expired += 1
+            if expired:
+                session.commit()
+        return expired
 
     def _scope(self, statement):
         if self._tenant_id is not None:

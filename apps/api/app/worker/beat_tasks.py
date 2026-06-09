@@ -82,3 +82,12 @@ def check_scheduled_flows() -> None:
 
     if fired:
         logger.info("Beat: fired %d scheduled flow(s)", fired)
+
+
+@celery_app.task(name="app.worker.beat_tasks.expire_stuck_runs")
+def expire_stuck_runs() -> None:
+    from app.repositories.flow_run_repository import FlowRunRepository
+
+    expired = FlowRunRepository.expire_stuck(timeout_minutes=15)
+    if expired:
+        logger.info("Beat: expired %d stuck run(s)", expired)

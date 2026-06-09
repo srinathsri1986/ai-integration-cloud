@@ -569,12 +569,31 @@ class FlowService:
                 connector_id = step.connector_id or flow.source_connector
                 tool_id = step.approved_tool
                 step_start = datetime.now(UTC).isoformat()
-                try:
-                    result = connector_registry.execute_tool(
-                        connector_id, tool_id,
-                        params={**getattr(step, "params", {}), "_context": dict(execution_context)},
-                        tenant_id=tenant_id,
-                    )
+                policy = step.error_policy
+
+                # Retry loop: 1 attempt minimum + up to max_retries additional attempts
+                max_attempts = 1 + (policy.max_retries if policy.action == "retry" else 0)
+                attempts = 0
+                last_exc: Exception | None = None
+                result = None
+
+                while attempts < max_attempts:
+                    if attempts > 0 and policy.retry_delay_seconds > 0:
+                        import time
+                        time.sleep(policy.retry_delay_seconds)
+                    try:
+                        result = connector_registry.execute_tool(
+                            connector_id, tool_id,
+                            params={**getattr(step, "params", {}), "_context": dict(execution_context)},
+                            tenant_id=tenant_id,
+                        )
+                        last_exc = None
+                        break  # success
+                    except Exception as exc:
+                        last_exc = exc
+                        attempts += 1
+
+                if last_exc is None:
                     execution_context[step.id] = result
                     data[step.id] = result
                     tools_used.append(tool_id)
@@ -588,7 +607,20 @@ class FlowService:
                             mapping_definition_id=mapping_definition_id,
                         )
                     )
-                except KeyError as exc:
+                elif policy.action == "skip":
+                    execution_timeline.append(
+                        self._timeline_step(
+                            step_id=step.id,
+                            name=step.name,
+                            status="skipped",
+                            started_at=step_start,
+                            approved_tool=tool_id,
+                            warnings=[f"Step skipped after error: {last_exc}"],
+                        )
+                    )
+                    # skip: continue to next step, do NOT mark run as failed
+                else:
+                    # stop or retry-exhausted: mark run failed and halt
                     step_failed = True
                     execution_timeline.append(
                         self._timeline_step(
@@ -597,10 +629,10 @@ class FlowService:
                             status="failed",
                             started_at=step_start,
                             approved_tool=tool_id,
-                            warnings=[f"Tool not found: {exc}"],
+                            warnings=[f"Step failed (policy={policy.action}, attempts={attempts}): {last_exc}"],
                         )
                     )
-                    break  # stop on first step failure
+                    break
 
             # R18a: apply inline field mappings (source → target transformation)
             if not step_failed and flow.field_mappings:

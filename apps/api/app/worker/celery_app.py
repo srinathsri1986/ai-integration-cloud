@@ -28,6 +28,10 @@ celery_app.conf.update(
             "task": "app.worker.beat_tasks.check_scheduled_flows",
             "schedule": 60.0,  # every 60 seconds
         },
+        "expire-stuck-runs": {
+            "task": "app.worker.beat_tasks.expire_stuck_runs",
+            "schedule": 300.0,  # every 5 minutes
+        },
     },
     beat_schedule_filename="/tmp/celerybeat-schedule",
 )

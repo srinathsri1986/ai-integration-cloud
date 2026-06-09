@@ -9,10 +9,16 @@ from app.models.custom_endpoint import InlineFieldMapping
 FlowId = str
 FlowStatus = Literal["draft", "pending_approval", "approved", "published", "paused"]
 FlowLifecycleAction = Literal["submit_for_approval", "approve", "reject", "publish", "pause", "unpause"]
-FlowRunStatus = Literal["never_run", "running", "succeeded", "failed"]
+FlowRunStatus = Literal["never_run", "running", "succeeded", "failed", "timed_out"]
 FlowRunStepStatus = Literal["succeeded", "failed", "skipped"]
 FlowTriggerType = Literal["manual", "schedule", "webhook"]
 ApprovedFlowTool = str  # validated against connector_registry at request-time
+
+
+class StepErrorPolicy(BaseModel):
+    action: Literal["stop", "skip", "retry"] = "stop"
+    max_retries: int = Field(default=1, alias="maxRetries", ge=1, le=10)
+    retry_delay_seconds: int = Field(default=0, alias="retryDelaySeconds", ge=0, le=300)
 
 
 class FlowStep(BaseModel):
@@ -21,6 +27,7 @@ class FlowStep(BaseModel):
     description: str
     connector_id: str | None = Field(default=None, alias="connectorId")
     approved_tool: ApprovedFlowTool = Field(alias="approvedTool")
+    error_policy: StepErrorPolicy = Field(default_factory=StepErrorPolicy, alias="errorPolicy")
 
 
 class FlowDefinition(BaseModel):
