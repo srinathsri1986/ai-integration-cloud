@@ -1,4 +1,6 @@
 import type {
+  AskAIRequest,
+  AskAIResponse,
   AuditLogEntry,
   AuditLogSummary,
   LoginResponse,
@@ -2183,4 +2185,49 @@ export async function getCustomEndpointSchema(
     { endpointId, fields: [], fieldCount: 0 },
     (b) => b,
   );
+}
+
+// ── Ask AI — universal NL command endpoint ───────────────────────────────────
+
+const _fallbackAskAIResponse: AskAIResponse = {
+  question: "",
+  intent: "GENERAL",
+  answer: "The AI assistant is temporarily unavailable. Please try again shortly.",
+  action: { type: "INFO" },
+  provider: "template",
+  model: null,
+  thinkUsed: false,
+};
+
+export async function askAI(
+  request: AskAIRequest,
+): Promise<ClientApiResult<AskAIResponse>> {
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/ai/ask`, {
+      body: JSON.stringify(request),
+      cache: "no-store",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => undefined);
+      return {
+        data: { ..._fallbackAskAIResponse, question: request.question },
+        error: body?.detail ? String(body.detail) : `API returned ${response.status}`,
+        isFallback: true,
+        ok: false,
+      };
+    }
+
+    const body: AskAIResponse = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: { ..._fallbackAskAIResponse, question: request.question },
+      error: error instanceof Error ? error.message : "Network error",
+      isFallback: true,
+      ok: false,
+    };
+  }
 }

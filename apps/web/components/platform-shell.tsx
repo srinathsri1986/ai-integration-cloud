@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { BrainCircuit, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import type { UserRole } from "@ai-integration-cloud/shared";
 
+import { AskAIPanel } from "@/components/ask-ai-panel";
 import { Button } from "@/components/ui/button";
 import { EnvironmentSelector } from "@/components/environment-selector";
 import {
@@ -53,6 +54,8 @@ export function PlatformShell({
     }
   }, []);
 
+  const [askAIOpen, setAskAIOpen] = useState(false);
+
   const routes = routesForRole(role);
   const tenantName = tenant?.name ?? "Local Workspace";
   const plan = tenant?.plan
@@ -62,6 +65,9 @@ export function PlatformShell({
 
   return (
     <div className="min-h-screen bg-background">
+      {/* ── Ask AI panel — rendered above all content ─────────── */}
+      {askAIOpen && <AskAIPanel onClose={() => setAskAIOpen(false)} />}
+
       {/* ── Dark sidebar ───────────────────────────────────────── */}
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col bg-slate-900 xl:flex">
         {/* Teal top accent bar */}
@@ -171,6 +177,15 @@ export function PlatformShell({
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* ── Ask AI button — present on every screen ── */}
+              <button
+                type="button"
+                onClick={() => setAskAIOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition-colors hover:bg-teal-100 hover:border-teal-300"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Ask AI
+              </button>
               <EnvironmentSelector />
               <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
                 {tenantName}

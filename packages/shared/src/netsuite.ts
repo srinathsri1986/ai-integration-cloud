@@ -384,11 +384,27 @@ export const mappingTransformSchema = z.enum([
 
 export type MappingTransform = z.infer<typeof mappingTransformSchema>;
 
+// Live schema field passed directly from the connector schema API (R22b).
+// When present, the AI uses these instead of the static mapping catalog.
+export const liveSchemaFieldSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  type: z.string(),
+  required: z.boolean().optional(),
+  sample: z.union([z.string(), z.number(), z.boolean()]).nullable().optional(),
+});
+
+export type LiveSchemaField = z.infer<typeof liveSchemaFieldSchema>;
+
 export const mappingSuggestionRequestSchema = z.object({
   prompt: z.string().min(10).max(1000),
   sourceObjectId: z.string().min(3).max(80),
   targetObjectId: z.string().min(3).max(80),
-  requireLiveAi: z.boolean().optional()
+  requireLiveAi: z.boolean().optional(),
+  // R22b: optional live schema fields from GET /api/v1/connectors/{id}/schema.
+  // When provided, the AI reasons over actual connector fields instead of the static catalog.
+  sourceFields: z.array(liveSchemaFieldSchema).optional(),
+  targetFields: z.array(liveSchemaFieldSchema).optional(),
 });
 
 export type MappingSuggestionRequest = z.infer<typeof mappingSuggestionRequestSchema>;

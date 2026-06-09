@@ -116,13 +116,18 @@ function statusBadgeClass(status: string) {
 
 
 export function IntegrationManagementConsole({
-  initialFlows
+  initialFlows,
+  createdFlowId = null,
 }: {
   initialFlows: ApiResult<{ items: FlowDefinition[]; total: number; limit: number; offset: number }>;
+  createdFlowId?: string | null;
 }) {
   const router = useRouter();
   const [flows, setFlows] = useState(initialFlows.data.items);
-  const [selectedFlowId, setSelectedFlowId] = useState(initialFlows.data.items[0]?.flowId);
+  const [selectedFlowId, setSelectedFlowId] = useState(
+    createdFlowId ?? initialFlows.data.items[0]?.flowId
+  );
+  const [showCreatedBanner, setShowCreatedBanner] = useState(!!createdFlowId);
   const [filter, setFilter] = useState<Filter>("all");
   const [message, setMessage] = useState<string | undefined>(
     initialFlows.isFallback ? initialFlows.error : undefined
@@ -339,6 +344,37 @@ export function IntegrationManagementConsole({
           onClose={() => setDeleteModalFlow(null)}
           onDeleted={handleFlowDeleted}
         />
+      )}
+
+      {/* AI Builder success banner */}
+      {showCreatedBanner && createdFlowId && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-teal-200 bg-teal-50 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-teal-500">
+              <svg className="h-3.5 w-3.5 text-white" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-teal-900">
+                Flow draft saved by AI Builder
+              </p>
+              <p className="text-[12px] text-teal-700">
+                <span className="font-mono">{createdFlowId}</span> is saved as a draft — submit for approval when ready to publish.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCreatedBanner(false)}
+            className="shrink-0 rounded-md p-1 text-teal-500 hover:bg-teal-100 hover:text-teal-700"
+            aria-label="Dismiss"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none">
+              <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

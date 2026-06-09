@@ -54,12 +54,13 @@ class Settings(BaseSettings):
     netsuite_token_id: str | None = None
     netsuite_token_secret: str | None = None
     netsuite_timeout_seconds: int = 15
-    ai_provider: str = "mock"
+    ai_provider: str = "ollama"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5-coder:7b"
-    ollama_timeout_seconds: int = 30
+    ollama_timeout_seconds: int = 120  # allow time for first-token on larger prompts
+    ollama_think: bool = False  # Per-request thinking mode; services override per task
 
     # ── Slack OAuth2 connector ────────────────────────────────────────────────
     # Register a Slack app at https://api.slack.com/apps to get these values.

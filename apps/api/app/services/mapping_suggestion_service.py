@@ -7,6 +7,8 @@ from app.core.config import get_settings
 from app.models.audit import AuditLogEntry
 from app.models.llm import AIProvider
 from app.models.mapping import (
+    LiveSchemaField,
+    MappingField,
     MappingObject,
     MappingSuggestionItem,
     MappingSuggestionRequest,
@@ -48,6 +50,8 @@ class MappingSuggestionService:
             openai_api_key=self.openai_api_key,
             ollama_base_url=settings.ollama_base_url,
             ollama_timeout_seconds=settings.ollama_timeout_seconds,
+            # Mapping suggestion is a deep semantic task — enable Qwen3 reasoning mode.
+            ollama_think=True,
         )
 
     def suggest(self, request: MappingSuggestionRequest) -> MappingSuggestionResponse:
@@ -64,8 +68,18 @@ class MappingSuggestionService:
         )
 
         try:
-            source_object = get_mapping_object(request.source_object_id)
-            target_object = get_mapping_object(request.target_object_id)
+            # R22b: prefer live schema fields when provided by the frontend.
+            # Fall back to static catalog lookup when not supplied.
+            source_object = (
+                _live_fields_to_mapping_object(request.source_object_id, request.source_fields)
+                if request.source_fields
+                else get_mapping_object(request.source_object_id)
+            )
+            target_object = (
+                _live_fields_to_mapping_object(request.target_object_id, request.target_fields)
+                if request.target_fields
+                else get_mapping_object(request.target_object_id)
+            )
             suggestions, metadata = self._suggest_mappings(request, source_object, target_object)
             success = True
             return MappingSuggestionResponse(
@@ -133,14 +147,43 @@ class MappingSuggestionService:
                 ),
             )
 
+        # R22b: include field type and sample values in the context so Qwen3 can reason
+        # semantically (e.g. "SAP_Vendor_ID__c (string, sample: V-001)" → "vendorId").
         context = {
             "prompt": request.prompt,
-            "sourceObject": source_object.model_dump(by_alias=True),
-            "targetObject": target_object.model_dump(by_alias=True),
+            "sourceObject": {
+                "id": source_object.id,
+                "displayName": source_object.display_name,
+                "fields": [
+                    {
+                        "name": f.name,
+                        "label": f.description,
+                        "type": f.type,
+                        "required": f.required,
+                        **({"sample": f.sample} if f.sample is not None else {}),
+                    }
+                    for f in source_object.fields
+                ],
+            },
+            "targetObject": {
+                "id": target_object.id,
+                "displayName": target_object.display_name,
+                "fields": [
+                    {
+                        "name": f.name,
+                        "label": f.description,
+                        "type": f.type,
+                        "required": f.required,
+                        **({"sample": f.sample} if f.sample is not None else {}),
+                    }
+                    for f in target_object.fields
+                ],
+            },
             "allowedTransforms": APPROVED_MAPPING_TRANSFORMS,
             "policy": (
-                "Suggest draft field mappings only. Use only the provided field names and allowed "
-                "transforms. Do not generate SQL, SuiteQL, arbitrary code, credentials, secrets, "
+                "Suggest draft field mappings only. Use only the field names from sourceObject.fields "
+                "and targetObject.fields. Use type and sample values to determine the best transform. "
+                "Do not generate SQL, SuiteQL, arbitrary code, credentials, secrets, "
                 "or execution instructions. Humans must accept or reject every suggestion."
             ),
         }
@@ -298,6 +341,52 @@ class MappingSuggestionService:
             return "rule_based"
 
         return "disabled"
+
+
+_TYPE_NORMALISE: dict[str, str] = {
+    "currency": "number",
+    "percent": "number",
+    "integer": "number",
+    "float": "number",
+    "id": "string",
+    "reference": "string",
+    "text": "string",
+    "textarea": "string",
+    "email": "string",
+    "phone": "string",
+    "url": "string",
+    "picklist": "string",
+    "multipicklist": "string",
+    "datetime": "date",
+    "checkbox": "boolean",
+}
+
+
+def _live_fields_to_mapping_object(object_id: str, fields: list[LiveSchemaField]) -> MappingObject:
+    """Convert live connector schema fields into a MappingObject for the suggestion service.
+
+    Normalises connector-native types (currency, reference, etc.) to the four MappingFieldType
+    values the suggestion engine understands. Unknown types fall through to 'string'.
+    """
+    mapping_fields = [
+        MappingField(
+            name=f.name,
+            description=f.label,
+            type=_TYPE_NORMALISE.get(f.type.lower(), "string"),  # type: ignore[arg-type]
+            required=f.required,
+            sample=f.sample,
+        )
+        for f in fields
+    ]
+    # Derive a human-readable display name from the object_id (e.g. "salesforce-account" → "Salesforce Account")
+    display_name = object_id.replace("-", " ").replace("_", " ").title()
+    system_id = object_id.split("-")[0] if "-" in object_id else object_id
+    return MappingObject(
+        id=object_id,
+        displayName=display_name,
+        systemId=system_id,
+        fields=mapping_fields,
+    )
 
 
 mapping_suggestion_service = MappingSuggestionService()

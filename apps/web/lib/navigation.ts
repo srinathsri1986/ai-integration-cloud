@@ -8,7 +8,8 @@ import {
   GitBranch,
   LayoutDashboard,
   Map,
-  Settings
+  Settings,
+  Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -41,6 +42,13 @@ export const platformRoutes: PlatformRoute[] = [
     href: "/flows",
     icon: GitBranch,
     label: "Integration Studio",
+    roles: ["Integration Admin", "Developer"]
+  },
+  {
+    description: "NL → canvas → governed publish",
+    href: "/flows/builder",
+    icon: Wand2,
+    label: "AI Builder",
     roles: ["Integration Admin", "Developer"]
   },
   {

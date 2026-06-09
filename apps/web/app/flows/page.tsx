@@ -4,8 +4,13 @@ import { getFlows } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-export default async function FlowsPage() {
-  const flowsResult = await getFlows();
+export default async function FlowsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ created?: string }>;
+}) {
+  const [flowsResult, params] = await Promise.all([getFlows(), searchParams]);
+  const createdFlowId = params.created ?? null;
 
   return (
     <PlatformShell
@@ -14,7 +19,10 @@ export default async function FlowsPage() {
       title="Integration Studio"
     >
       <div className="-mx-5 lg:-mx-8">
-        <IntegrationManagementConsole initialFlows={flowsResult} />
+        <IntegrationManagementConsole
+          initialFlows={flowsResult}
+          createdFlowId={createdFlowId}
+        />
       </div>
     </PlatformShell>
   );

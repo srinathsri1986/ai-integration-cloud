@@ -224,6 +224,29 @@ export function DataMappingStudio() {
     setLastSavedMappingId(undefined);
   }
 
+  // Pick up pre-fill context injected by the Ask AI panel
+  useEffect(() => {
+    const stored = sessionStorage.getItem("askAI_mappingSuggestion");
+    if (!stored) return;
+    try {
+      const hint = JSON.parse(stored) as {
+        sourceSystemId?: string;
+        sourceObjectId?: string;
+        targetSystemId?: string;
+        targetObjectId?: string;
+        mappingPrompt?: string;
+      };
+      if (hint.sourceSystemId) setSourceSystemId(hint.sourceSystemId);
+      if (hint.sourceObjectId) setSourceObjectId(hint.sourceObjectId);
+      if (hint.targetSystemId) setTargetSystemId(hint.targetSystemId);
+      if (hint.targetObjectId) setTargetObjectId(hint.targetObjectId);
+      if (hint.mappingPrompt)  setMappingPrompt(hint.mappingPrompt);
+      sessionStorage.removeItem("askAI_mappingSuggestion");
+    } catch {
+      // Silently ignore malformed data
+    }
+  }, []);
+
   useEffect(() => {
     loadSavedMappings();
   }, []);
@@ -309,11 +332,35 @@ export function DataMappingStudio() {
     setIsSuggesting(true);
     setSuggestionStatus("Asking the governed model for field matches.");
 
+    // R22b: resolve live schema fields from the already-fetched allMappingObjects.
+    // Passing real field names, types, and samples lets Qwen3 reason semantically
+    // (e.g. SAP_Vendor_ID__c → vendorId) instead of guessing from catalog templates.
+    const sourceObject = allMappingObjects.find((o) => o.id === sourceObjectId);
+    const targetObject = allMappingObjects.find((o) => o.id === targetObjectId);
+
     const response = await suggestMappingDefinition({
       prompt: mappingPrompt,
       requireLiveAi: true,
       sourceObjectId,
-      targetObjectId
+      targetObjectId,
+      ...(sourceObject && {
+        sourceFields: sourceObject.fields.map((f) => ({
+          name: f.name,
+          label: f.description,
+          type: f.type,
+          required: f.required ?? false,
+          sample: f.sample != null ? String(f.sample) : null,
+        })),
+      }),
+      ...(targetObject && {
+        targetFields: targetObject.fields.map((f) => ({
+          name: f.name,
+          label: f.description,
+          type: f.type,
+          required: f.required ?? false,
+          sample: f.sample != null ? String(f.sample) : null,
+        })),
+      }),
     });
 
     if (response.ok && !response.data.suggestionFallbackUsed) {

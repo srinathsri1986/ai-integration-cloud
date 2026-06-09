@@ -435,10 +435,43 @@ class OllamaProvider:
         base_url: str,
         model_name: str,
         timeout_seconds: int = 20,
+        think: bool = False,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
+        # think=True enables Qwen3 chain-of-thought reasoning (slower, more accurate).
+        # Use for deep tasks like mapping suggestion and flow generation.
+        # Use think=False for fast classification tasks like intent extraction.
+        self.think = think
+
+    def _post(self, payload: dict) -> dict:
+        """POST to Ollama /api/generate.
+
+        If think=True and the model returns HTTP 400 (model does not support thinking),
+        automatically retries with think=False so non-Qwen3 models work transparently.
+        """
+        import urllib.error as urllib_error
+
+        def _do_post(p: dict) -> dict:
+            data = json.dumps(p).encode("utf-8")
+            req = urllib_request.Request(
+                f"{self.base_url}/api/generate",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+
+        try:
+            return _do_post(payload)
+        except urllib_error.HTTPError as exc:
+            if exc.code == 400 and payload.get("think"):
+                # Model doesn't support think mode (e.g. qwen2.5-coder, llama3).
+                # Retry without it — qwen3:14b will re-enable it once pulled.
+                return _do_post({**payload, "think": False})
+            raise
 
     def extract_intent(self, question: str) -> LLMIntentResult:
         prompt = (
@@ -454,18 +487,10 @@ class OllamaProvider:
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "think": self.think,
         }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(
-            f"{self.base_url}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
         try:
-            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
+            body = self._post(payload)
         except Exception as exc:
             raise LLMProviderError(
                 "Ollama intent extraction request failed.",
@@ -503,18 +528,10 @@ class OllamaProvider:
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "think": self.think,
         }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(
-            f"{self.base_url}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
         try:
-            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
+            body = self._post(payload)
         except Exception as exc:
             raise LLMProviderError(
                 "Ollama narrative generation request failed.",
@@ -548,18 +565,10 @@ class OllamaProvider:
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "think": self.think,
         }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(
-            f"{self.base_url}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
         try:
-            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
+            body = self._post(payload)
         except Exception as exc:
             raise LLMProviderError(
                 "Ollama flow suggestion request failed.",
@@ -594,18 +603,10 @@ class OllamaProvider:
             "prompt": prompt,
             "stream": False,
             "format": "json",
+            "think": self.think,
         }
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(
-            f"{self.base_url}/api/generate",
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
         try:
-            with urllib_request.urlopen(req, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
+            body = self._post(payload)
         except Exception as exc:
             raise LLMProviderError(
                 "Ollama mapping suggestion request failed.",
@@ -691,17 +692,61 @@ def _validate_narrative_text(text: str) -> str:
 
 def _flow_suggestion_system_prompt() -> str:
     return (
-        "You are a governed integration flow planner. Return only JSON with keys "
-        "suggestedFlow and rationale. suggestedFlow must include flowId, name, "
-        "description, sourceConnector, targetModule, status, triggerType, and steps. "
-        "sourceConnector must be netsuite. status must be draft. triggerType must be "
-        "manual or schedule_placeholder. Each step must include id, name, description, "
-        "and approvedTool. approvedTool must be one of: cfo.dashboard_summary, "
-        "cfo.pl_vs_budget, cfo.yoy_comparison, cfo.subsidiary_drilldown, "
-        "cfo.running_projects, cfo.overdue_projects_by_account_manager, "
-        "orchestrator.query. Do not include SQL, SuiteQL, credentials, raw NetSuite "
-        "queries, arbitrary code, execution commands, publish instructions, or tool calls."
+        "You are a governed iPaaS integration flow planner for an enterprise middleware platform. "
+        "Return ONLY a JSON object with two keys: suggestedFlow and rationale.\n\n"
+        "suggestedFlow must include: flowId (lowercase slug matching ^[a-z0-9-]+$), name, description "
+        "(10-500 chars), sourceConnector, targetModule, targetConnector, status (always 'draft'), "
+        "triggerType ('manual', 'schedule', or 'webhook'), triggerCron (cron string when schedule, "
+        "null otherwise), and steps (array, 1-8 items).\n\n"
+        "Each step must include: id, name, description, and approvedTool. "
+        "approvedTool must be exactly one of these approved values:\n"
+        "  Generic integration: connector.schedule_trigger, connector.webhook_trigger, "
+        "connector.fetch_records, connector.search_records, connector.upsert_record, "
+        "connector.create_record, connector.update_record, connector.transform_payload, "
+        "connector.send_notification, connector.audit_log, connector.retry_handler\n"
+        "  CFO/finance: cfo.dashboard_summary, cfo.pl_vs_budget, cfo.yoy_comparison, "
+        "cfo.subsidiary_drilldown, cfo.running_projects, cfo.overdue_projects_by_account_manager, "
+        "orchestrator.query\n\n"
+        "Typical integration step order: [schedule_trigger or webhook_trigger] → fetch_records → "
+        "transform_payload → search_records → upsert_record → audit_log.\n\n"
+        "CRITICAL format rules:\n"
+        "- flowId MUST use hyphens only, NO underscores. Example: netsuite-to-salesforce-customers\n"
+        "- triggerCron MUST be standard 5-field cron (minute hour dom month dow). "
+        "Hourly = '0 * * * *', daily = '0 0 * * *', every 15 min = '*/15 * * * *'. "
+        "Do NOT use 6-field Quartz cron format (no seconds field, no ? character).\n"
+        "- Each step id MUST be a string slug, not a number. Example: 'fetch-source', 'transform', 'upsert-target'.\n\n"
+        "rationale must be 10-600 chars explaining the integration design in business language.\n\n"
+        "Do not include SQL, SuiteQL, raw queries, credentials, secrets, arbitrary code, "
+        "execution commands, publish instructions, or direct tool calls."
     )
+
+
+def _sanitise_flow_suggestion(flow: dict) -> dict:
+    """Normalise common LLM output quirks before Pydantic validation."""
+    # flowId: underscores → hyphens; strip anything not in [a-z0-9-]
+    if "flowId" in flow and isinstance(flow["flowId"], str):
+        fid = flow["flowId"].lower().replace("_", "-").replace(" ", "-")
+        fid = "".join(c for c in fid if c.isalnum() or c == "-")
+        flow["flowId"] = fid or "ai-drafted-flow"
+
+    # triggerCron: some models emit 6-field Quartz cron (with a leading seconds field
+    # and/or a trailing ? day-of-week wildcard). Normalise to standard 5-field POSIX cron.
+    if "triggerCron" in flow and isinstance(flow["triggerCron"], str):
+        parts = flow["triggerCron"].split()
+        if len(parts) == 6:
+            # Quartz: seconds minutes hours dom month dow  → drop leading seconds
+            parts = parts[1:]
+        # Replace Quartz ? wildcard (unsupported by croniter) with *
+        parts = ["*" if p == "?" else p for p in parts]
+        flow["triggerCron"] = " ".join(parts)
+
+    # steps[*].id: LLM sometimes emits integers (1, 2, 3) instead of string slugs
+    if "steps" in flow and isinstance(flow["steps"], list):
+        for step in flow["steps"]:
+            if isinstance(step, dict) and "id" in step and not isinstance(step["id"], str):
+                step["id"] = str(step["id"])
+
+    return flow
 
 
 def _validated_flow_suggestion_payload(parsed: dict) -> tuple[dict, str]:
@@ -711,6 +756,9 @@ def _validated_flow_suggestion_payload(parsed: dict) -> tuple[dict, str]:
     if not isinstance(suggested_flow, dict):
         raise ValueError("suggestedFlow must be an object")
 
+    # Normalise LLM output quirks before Pydantic validates
+    suggested_flow = _sanitise_flow_suggestion(suggested_flow)
+
     if len(rationale) < 10 or len(rationale) > 600:
         raise ValueError("rationale length is outside the allowed range")
 
@@ -719,13 +767,23 @@ def _validated_flow_suggestion_payload(parsed: dict) -> tuple[dict, str]:
 
 def _mapping_suggestion_system_prompt() -> str:
     return (
-        "You are a governed data mapping assistant for an AI-native integration platform. "
-        "Return only JSON with key suggestions. suggestions must be an array of objects with "
-        "sourceField, targetField, transform, confidence, and rationale. Use only source field "
-        "names and target field names provided in the request context. transform must be one of "
-        "direct, rename, format_date, lookup_placeholder, constant_placeholder. confidence must "
-        "be between 0 and 1. Do not include SQL, SuiteQL, raw queries, credentials, secrets, "
-        "arbitrary code, execution commands, save instructions, or publish instructions."
+        "You are a governed data mapping assistant for an AI-native enterprise integration platform. "
+        "Return only JSON with key suggestions. suggestions must be an array of objects, each with "
+        "sourceField, targetField, transform, confidence, and rationale.\n\n"
+        "Rules:\n"
+        "- Use ONLY field names that appear in the sourceObject.fields and targetObject.fields arrays "
+        "provided in the context. Never invent field names.\n"
+        "- Use field type and sample values to determine the best transform. "
+        "If source type is 'date' and target type is 'date', prefer format_date. "
+        "If names are semantically similar but differ (e.g. entityId vs External_Id__c), use rename. "
+        "If types and names match closely, use direct.\n"
+        "- Confidence must be 0.0–1.0 reflecting genuine semantic match quality: "
+        "0.9+ for exact semantic matches, 0.7–0.89 for strong matches, below 0.7 for uncertain.\n"
+        "- transform must be one of: direct, rename, format_date, lookup_placeholder, constant_placeholder.\n"
+        "- Rationale must be a clear business-language explanation (10–240 chars) of why the fields match.\n"
+        "- Do not include SQL, SuiteQL, raw queries, credentials, secrets, arbitrary code, "
+        "execution commands, save instructions, or publish instructions.\n"
+        "- Humans must approve every suggestion before it is applied."
     )
 
 
@@ -906,6 +964,7 @@ def make_llm_provider(
     openai_api_key: str | None = None,
     ollama_base_url: str = "http://localhost:11434",
     ollama_timeout_seconds: int = 20,
+    ollama_think: bool = False,
 ) -> LLMProvider | None:
     if provider == "mock":
         return MockLLMProvider(model_name=model_name)
@@ -918,6 +977,7 @@ def make_llm_provider(
             base_url=ollama_base_url,
             model_name=model_name,
             timeout_seconds=ollama_timeout_seconds,
+            think=ollama_think,
         )
 
     return None

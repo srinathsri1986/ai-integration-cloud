@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import audit, auth, cfo, connectors, custom_endpoints, flows, health, mappings, orchestrator, tenants, webhooks
+from app.api import ai, audit, auth, cfo, connectors, custom_endpoints, flows, health, mappings, orchestrator, tenants, webhooks
 from app.core.config import get_settings
 from app.core.config_validation import validate_settings_or_raise
 from app.core.database import init_db
@@ -53,6 +53,7 @@ app.add_middleware(RateLimitMiddleware, redis_url=settings.redis_url)
 app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(health.router)
+app.include_router(ai.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(cfo.router, prefix="/api/v1")
 app.include_router(orchestrator.router, prefix="/api/v1")

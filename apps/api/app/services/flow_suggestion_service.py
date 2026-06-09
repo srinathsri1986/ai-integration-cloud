@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
@@ -9,6 +10,7 @@ from app.models.flows import (
     FlowDefinitionUpsertRequest,
     FlowSuggestionRequest,
     FlowSuggestionResponse,
+    FlowTriggerType,
 )
 from app.models.llm import AIProvider
 from app.services.audit_service import audit_service
@@ -16,6 +18,19 @@ from app.services.llm_provider import LLMProvider, LLMProviderError, make_llm_pr
 
 
 APPROVED_FLOW_TOOLS = [
+    # ── Generic integration actions ──────────────────────────────────────────
+    "connector.schedule_trigger",
+    "connector.webhook_trigger",
+    "connector.fetch_records",
+    "connector.search_records",
+    "connector.upsert_record",
+    "connector.create_record",
+    "connector.update_record",
+    "connector.transform_payload",
+    "connector.send_notification",
+    "connector.audit_log",
+    "connector.retry_handler",
+    # ── CFO / NetSuite specialised actions ───────────────────────────────────
     "cfo.dashboard_summary",
     "cfo.pl_vs_budget",
     "cfo.yoy_comparison",
@@ -24,6 +39,104 @@ APPROVED_FLOW_TOOLS = [
     "cfo.overdue_projects_by_account_manager",
     "orchestrator.query",
 ]
+
+# ── Connector detection ──────────────────────────────────────────────────────
+
+_KNOWN_CONNECTORS: dict[str, str] = {
+    "netsuite": "netsuite",
+    "net suite": "netsuite",
+    "salesforce": "salesforce",
+    "sfdc": "salesforce",
+    "sap": "sap",
+    "oracle": "oracle",
+    "servicenow": "servicenow",
+    "service now": "servicenow",
+    "hubspot": "hubspot",
+    "hub spot": "hubspot",
+    "workday": "workday",
+    "slack": "slack",
+    "sftp": "sftp",
+    "rest api": "rest-api",
+    "rest-api": "rest-api",
+    "postgres": "postgres",
+    "postgresql": "postgres",
+    "mysql": "mysql",
+}
+
+_HOURLY_RE    = re.compile(r"every\s+hour|hourly|each\s+hour",        re.IGNORECASE)
+_MINUTE_RE    = re.compile(r"every\s+(\d+)\s*min",                    re.IGNORECASE)
+_DAILY_RE     = re.compile(r"every\s+day|daily|nightly",              re.IGNORECASE)
+_WEEKLY_RE    = re.compile(r"every\s+week|weekly",                    re.IGNORECASE)
+_WEBHOOK_RE   = re.compile(
+    r"when\s+(?:a\s+|an\s+|the\s+)?\w+\s+(is\s+)?(created|updated|changed|modified|deleted|triggered)",
+    re.IGNORECASE,
+)
+
+_CFO_KEYWORDS = [
+    "cfo", "p/l", "pl vs", "profit and loss", "budget", "yoy",
+    "year over year", "year-over-year", "subsidiary", "overdue projects",
+    "finance", "financial report", "dashboard summary",
+]
+
+_OBJECT_KEYWORDS: dict[str, str] = {
+    "customer": "customers",
+    "account": "accounts",
+    "vendor": "vendors",
+    "invoice": "invoices",
+    "order": "orders",
+    "contact": "contacts",
+    "product": "products",
+    "item": "items",
+    "employee": "employees",
+    "ticket": "tickets",
+    "case": "cases",
+    "lead": "leads",
+    "opportunity": "opportunities",
+}
+
+
+def _detect_connector_pair(prompt: str) -> tuple[str, str]:
+    """Return (source_connector_id, target_connector_id) in the order they appear in the prompt.
+
+    Uses first-occurrence position so 'SAP ... Salesforce' always yields source=sap, target=salesforce
+    regardless of dict insertion order.
+    """
+    normalized = prompt.lower()
+    # Map connector_id → earliest character position in the prompt
+    first_pos: dict[str, int] = {}
+    for keyword, connector_id in _KNOWN_CONNECTORS.items():
+        pos = normalized.find(keyword)
+        if pos != -1 and connector_id not in first_pos:
+            first_pos[connector_id] = pos
+    # Sort by appearance order
+    ordered = [cid for cid, _ in sorted(first_pos.items(), key=lambda kv: kv[1])]
+    if len(ordered) >= 2:
+        return ordered[0], ordered[1]
+    if len(ordered) == 1:
+        return ordered[0], "target-system"
+    return "source-system", "target-system"
+
+
+def _detect_trigger(prompt: str) -> tuple[FlowTriggerType, str | None]:
+    """Return (trigger_type, cron_expression_or_None) from the NL prompt."""
+    if _WEBHOOK_RE.search(prompt):
+        return "webhook", None
+    if _HOURLY_RE.search(prompt):
+        return "schedule", "0 * * * *"
+    m = _MINUTE_RE.search(prompt)
+    if m:
+        mins = int(m.group(1))
+        if 1 <= mins <= 59:
+            return "schedule", f"*/{mins} * * * *"
+    if _DAILY_RE.search(prompt):
+        return "schedule", "0 0 * * *"
+    if _WEEKLY_RE.search(prompt):
+        return "schedule", "0 0 * * 0"
+    if any(kw in prompt.lower() for kw in ["monthly", "month"]):
+        return "schedule", "0 0 1 * *"
+    if "schedule" in prompt.lower():
+        return "schedule", "0 * * * *"
+    return "manual", None
 
 
 @dataclass(frozen=True)
@@ -57,6 +170,8 @@ class FlowSuggestionService:
             openai_api_key=self.openai_api_key,
             ollama_base_url=settings.ollama_base_url,
             ollama_timeout_seconds=settings.ollama_timeout_seconds,
+            # Flow generation requires reasoning over NL intent → multi-step workflow structure.
+            ollama_think=True,
         )
 
     def suggest(self, request: FlowSuggestionRequest) -> FlowSuggestionResponse:
@@ -129,7 +244,7 @@ class FlowSuggestionService:
                 raise LiveAIRequiredError("Live AI was requested, but no live AI provider is configured.")
             return (
                 self._template_flow(prompt),
-                "Template planner created a governed draft using approved NetSuite CFO actions.",
+                "Template planner created a governed draft using approved integration actions.",
                 FlowSuggestionMetadata(
                     provider="template",
                     model=None,
@@ -139,13 +254,15 @@ class FlowSuggestionService:
                 ),
             )
 
+        source_connector, target_connector = _detect_connector_pair(prompt)
         context = {
             "prompt": prompt,
-            "approvedConnector": "netsuite",
+            "sourceConnector": source_connector,
+            "targetConnector": target_connector,
             "approvedTools": APPROVED_FLOW_TOOLS,
             "policy": (
                 "Suggest a draft only. Do not execute, publish, save automatically, generate "
-                "SQL, SuiteQL, raw NetSuite queries, credentials, secrets, or arbitrary code."
+                "SQL, SuiteQL, raw queries, credentials, secrets, or arbitrary code."
             ),
         }
 
@@ -183,54 +300,174 @@ class FlowSuggestionService:
             )
 
     def _template_flow(self, prompt: str) -> FlowDefinitionUpsertRequest:
+        """Route to CFO template for finance prompts; generic integration template otherwise."""
         normalized = prompt.lower()
-        steps = [
-            {
-                "id": "load-cfo-summary",
-                "name": "Load CFO summary",
-                "description": "Load approved CFO dashboard summary data.",
-                "approvedTool": "cfo.dashboard_summary",
-            }
-        ]
+        if any(kw in normalized for kw in _CFO_KEYWORDS):
+            return self._template_cfo_flow(prompt)
+        return self._template_integration_flow(prompt)
+
+    def _template_integration_flow(self, prompt: str) -> FlowDefinitionUpsertRequest:
+        """Generic iPaaS integration template: trigger → fetch → transform → search → upsert → audit."""
+        source_connector, target_connector = _detect_connector_pair(prompt)
+        trigger_type, trigger_cron = _detect_trigger(prompt)
+
+        source_label = source_connector.replace("-", " ").title()
+        target_label = target_connector.replace("-", " ").title()
+
+        # Detect business object from prompt keywords
+        object_label = "records"
+        for kw, label in _OBJECT_KEYWORDS.items():
+            if kw in prompt.lower():
+                object_label = label
+                break
+
+        steps: list[dict] = []
+
+        # Step 1: Trigger (only for scheduled / webhook flows)
+        if trigger_type == "schedule":
+            steps.append({
+                "id": "trigger",
+                "name": "Schedule Trigger",
+                "description": (
+                    f"Execute on schedule ({trigger_cron}) to start "
+                    f"{source_label} {object_label} sync."
+                ),
+                "approvedTool": "connector.schedule_trigger",
+            })
+        elif trigger_type == "webhook":
+            steps.append({
+                "id": "trigger",
+                "name": "Webhook Trigger",
+                "description": f"Listen for {source_label} event to trigger the integration.",
+                "approvedTool": "connector.webhook_trigger",
+            })
+
+        # Step 2: Fetch from source
+        steps.append({
+            "id": "fetch-source",
+            "name": f"Fetch {source_label} {object_label.title()}",
+            "description": (
+                f"Fetch {object_label} from {source_label} using the approved connector."
+            ),
+            "approvedTool": "connector.fetch_records",
+        })
+
+        # Step 3: Transform payload
+        steps.append({
+            "id": "transform",
+            "name": "Transform Payload",
+            "description": (
+                f"Apply field mappings and type coercions to prepare "
+                f"{object_label} for {target_label}."
+            ),
+            "approvedTool": "connector.transform_payload",
+        })
+
+        # Step 4: Search target (deduplication)
+        steps.append({
+            "id": "search-target",
+            "name": f"Search {target_label}",
+            "description": (
+                f"Search {target_label} for existing {object_label} to enable deduplication."
+            ),
+            "approvedTool": "connector.search_records",
+        })
+
+        # Step 5: Upsert to target
+        steps.append({
+            "id": "upsert-target",
+            "name": f"Upsert {target_label} {object_label.title()}",
+            "description": f"Create or update {object_label} in {target_label} via governed upsert.",
+            "approvedTool": "connector.upsert_record",
+        })
+
+        # Step 6: Audit + retry
+        steps.append({
+            "id": "audit-log",
+            "name": "Audit & Retry",
+            "description": (
+                "Write an immutable audit log entry and apply retry policy on transient failures."
+            ),
+            "approvedTool": "connector.audit_log",
+        })
+
+        # flow_id slug must match ^[a-z0-9-]+$
+        flow_id = f"ai-drafted-{source_connector}-to-{target_connector}"
+        target_module = f"{target_connector}-{object_label}"
+
+        return FlowDefinitionUpsertRequest(
+            flowId=flow_id,
+            name=f"{source_label} → {target_label} {object_label.title()} Sync",
+            description=(
+                f"Draft integration generated from a natural-language request. "
+                f"Syncs {object_label} from {source_label} to {target_label} "
+                f"using approved connector actions only."
+            ),
+            sourceConnector=source_connector,
+            targetModule=target_module,
+            targetConnector=target_connector,
+            status="draft",
+            triggerType=trigger_type,
+            triggerCron=trigger_cron,
+            steps=steps[:8],
+        )
+
+    def _template_cfo_flow(self, prompt: str) -> FlowDefinitionUpsertRequest:
+        """Original CFO-specific template preserved for finance / NetSuite analytics prompts."""
+        normalized = prompt.lower()
+        steps: list[dict] = [{
+            "id": "load-cfo-summary",
+            "name": "Load CFO summary",
+            "description": "Load approved CFO dashboard summary data.",
+            "approvedTool": "cfo.dashboard_summary",
+        }]
 
         if any(term in normalized for term in ["budget", "p/l", "profit and loss", "variance"]):
-            steps.append(
-                {
-                    "id": "compare-pl-budget",
-                    "name": "Compare P/L vs budget",
-                    "description": "Compare approved P/L actuals against budget.",
-                    "approvedTool": "cfo.pl_vs_budget",
-                }
-            )
+            steps.append({
+                "id": "compare-pl-budget",
+                "name": "Compare P/L vs budget",
+                "description": "Compare approved P/L actuals against budget.",
+                "approvedTool": "cfo.pl_vs_budget",
+            })
 
         if any(term in normalized for term in ["overdue", "risk", "late", "project"]):
-            steps.append(
-                {
-                    "id": "summarize-overdue-projects",
-                    "name": "Summarize overdue projects",
-                    "description": "Summarize overdue project exposure by account manager.",
-                    "approvedTool": "cfo.overdue_projects_by_account_manager",
-                }
-            )
+            steps.append({
+                "id": "summarize-overdue-projects",
+                "name": "Summarize overdue projects",
+                "description": "Summarize overdue project exposure by account manager.",
+                "approvedTool": "cfo.overdue_projects_by_account_manager",
+            })
+
+        if any(term in normalized for term in ["subsidiary", "drilldown", "drill down"]):
+            steps.append({
+                "id": "load-subsidiary-drilldown",
+                "name": "Load subsidiary drilldown",
+                "description": "Load approved subsidiary operating performance data.",
+                "approvedTool": "cfo.subsidiary_drilldown",
+            })
+
+        if "yoy" in normalized or "year over year" in normalized or "year-over-year" in normalized:
+            steps.append({
+                "id": "compare-yoy",
+                "name": "Compare YoY performance",
+                "description": "Compare approved current year and prior year metrics.",
+                "approvedTool": "cfo.yoy_comparison",
+            })
+
+        if any(term in normalized for term in ["narrative", "summary", "ai", "cfo"]):
+            steps.append({
+                "id": "route-approved-cfo-question",
+                "name": "Route approved CFO question",
+                "description": "Route a governed CFO question without direct model tool execution.",
+                "approvedTool": "orchestrator.query",
+            })
 
         if "monthly" in normalized or "schedule" in normalized:
-            trigger_type = "schedule"
-            trigger_cron = "0 0 1 * *"  # 1st of each month at midnight
+            trigger_type: FlowTriggerType = "schedule"
+            trigger_cron: str | None = "0 0 1 * *"
         else:
             trigger_type = "manual"
             trigger_cron = None
-
-        if any(term in normalized for term in ["narrative", "summary", "ai", "cfo"]):
-            steps.append(
-                {
-                    "id": "route-approved-cfo-question",
-                    "name": "Route approved CFO question",
-                    "description": (
-                        "Route a governed CFO question without direct model tool execution."
-                    ),
-                    "approvedTool": "orchestrator.query",
-                }
-            )
 
         return FlowDefinitionUpsertRequest(
             flowId="ai-drafted-cfo-flow",

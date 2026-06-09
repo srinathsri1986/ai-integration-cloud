@@ -4,6 +4,15 @@ from pydantic import BaseModel, Field, field_validator
 
 
 MappingFieldType = Literal["string", "number", "date", "boolean"]
+
+# R22b: live schema field shape from GET /api/v1/connectors/{id}/schema.
+# A superset of MappingField — accepts any type string from the connector layer.
+class LiveSchemaField(BaseModel):
+    name: str
+    label: str
+    type: str  # connector-native type string e.g. "string", "currency", "reference"
+    required: bool = False
+    sample: str | int | float | bool | None = None
 MappingTransform = Literal[
     "direct",
     "rename",
@@ -35,6 +44,10 @@ class MappingSuggestionRequest(BaseModel):
     source_object_id: str = Field(alias="sourceObjectId", min_length=3, max_length=80)
     target_object_id: str = Field(alias="targetObjectId", min_length=3, max_length=80)
     require_live_ai: bool = Field(default=False, alias="requireLiveAi")
+    # R22b: optional live schema fields from the connector schema API.
+    # When provided, the AI reasons over these real fields instead of the static catalog.
+    source_fields: list[LiveSchemaField] | None = Field(default=None, alias="sourceFields")
+    target_fields: list[LiveSchemaField] | None = Field(default=None, alias="targetFields")
 
     @field_validator("prompt")
     @classmethod
