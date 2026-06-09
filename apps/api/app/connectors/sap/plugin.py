@@ -75,10 +75,13 @@ _STATIC_SCHEMA = [
 # the identical protocol whether pointed at the sandbox or a production system.
 _LIVE_TOOL_MAP: dict[str, tuple[str, str, str]] = {
     # tool_id -> (service_path, entity_set, "read" | "write")
-    "list_vendors": ("API_BUSINESS_PARTNER/A_BusinessPartner", "A_BusinessPartner", "read"),
-    "get_cost_center": ("API_COSTCENTER_SRV/A_CostCenter", "A_CostCenter", "read"),
-    "get_gl_balance": ("API_GLACCOUNTLINEITEM_SRV/A_GLAccountLineItem", "A_GLAccountLineItem", "read"),
-    "create_purchase_order": ("API_PURCHASEORDER_PROCESS_SRV/A_PurchaseOrder", "A_PurchaseOrder", "write"),
+    # service_path is the OData service root (registered with SAP API Hub).
+    # entity_set is the collection name appended by list_entities / create_entity.
+    # Do NOT include the entity_set name in the service_path — it would be doubled.
+    "list_vendors": ("API_BUSINESS_PARTNER", "A_BusinessPartner", "read"),
+    "get_cost_center": ("API_COSTCENTER_SRV", "A_CostCenter", "read"),
+    "get_gl_balance": ("API_GLACCOUNTLINEITEM_SRV", "A_GLAccountLineItem", "read"),
+    "create_purchase_order": ("API_PURCHASEORDER_PROCESS_SRV", "A_PurchaseOrder", "write"),
     # NOTE: post_journal_entry is intentionally NOT live-wired.
     #
     # The original mapping pointed at "API_OPLACCTGDOCITEMCRUDQP_SRV" — a

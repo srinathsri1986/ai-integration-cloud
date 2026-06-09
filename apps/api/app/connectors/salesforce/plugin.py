@@ -70,10 +70,11 @@ _TOOLS = [
     ConnectorTool(
         "create_account",
         "Create / Upsert Account",
-        "Create a new Account or upsert by Name. Used when syncing vendor/supplier records from source systems (e.g. SAP Vendor → Salesforce Account).",
+        "Create a new Account or upsert by SAP_Vendor_ID__c external ID to prevent duplicates on repeated syncs. Falls back to upsert-by-Name if external ID is not provided.",
         "salesforce",
         [
-            ConnectorToolParam("name", "string", True, "Account name (used as upsert key)"),
+            ConnectorToolParam("name", "string", True, "Account name"),
+            ConnectorToolParam("SAP_Vendor_ID__c", "string", False, "SAP Vendor external ID — used as the upsert key to prevent duplicates"),
             ConnectorToolParam("industry", "string", False, "Industry picklist value, e.g. 'Technology'"),
             ConnectorToolParam("annual_revenue", "number", False, "Annual revenue"),
             ConnectorToolParam("phone", "string", False, "Main phone number"),
@@ -337,12 +338,15 @@ def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
             }
 
         elif tool_id == "create_account":
-            # Upsert by Name so repeated syncs from SAP don't create duplicates.
-            # Falls back to create() if the org doesn't have an external-ID field set up.
             # Accept both camelCase tool-param style ("name") and Salesforce field-name
             # style ("Name") so that both direct tool calls and mapped payloads work.
             name = params.get("name") or params.get("Name") or "Unnamed Account"
             acct_data: dict = {"Name": name}
+
+            # Populate optional fields — accept both API field names and param aliases
+            sap_vendor_id = params.get("SAP_Vendor_ID__c") or params.get("sap_vendor_id")
+            if sap_vendor_id:
+                acct_data["SAP_Vendor_ID__c"] = str(sap_vendor_id)
             if params.get("industry") or params.get("Industry"):
                 acct_data["Industry"] = params.get("industry") or params.get("Industry")
             ann_rev = params.get("annual_revenue") or params.get("AnnualRevenue")
@@ -352,23 +356,28 @@ def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
                 acct_data["Phone"] = params.get("phone") or params.get("Phone")
             if params.get("billing_city") or params.get("BillingCity"):
                 acct_data["BillingCity"] = params.get("billing_city") or params.get("BillingCity")
-            try:
-                # Upsert on Name — uses PATCH /services/data/vXX/sobjects/Account/Name/{name}
-                upsert_result = sf.Account.upsert(f"Name/{name}", acct_data)
+
+            if sap_vendor_id:
+                # Preferred: upsert on SAP_Vendor_ID__c — prevents duplicate Accounts
+                # on repeated syncs. Uses PATCH sobjects/Account/SAP_Vendor_ID__c/{id}
+                # IMPORTANT: Salesforce requires the upsert key field to be EXCLUDED
+                # from the request body — only include it in the URL path.
+                upsert_body = {k: v for k, v in acct_data.items() if k != "SAP_Vendor_ID__c"}
+                upsert_result = sf.Account.upsert(f"SAP_Vendor_ID__c/{sap_vendor_id}", upsert_body)
                 return {
                     "connector": "salesforce",
                     "tool": tool_id,
                     "mode": "live",
                     "result": {
                         "upserted": True,
+                        "upsert_key": f"SAP_Vendor_ID__c={sap_vendor_id}",
                         "http_status": upsert_result,
                         "name": name,
-                        "fields": acct_data,
+                        "fields": upsert_body,
                     },
                 }
-            except Exception:
-                # upsert by Name is only supported when Name is configured as an
-                # idURI external-ID field; fall back to a plain create.
+            else:
+                # Fallback: plain create when no external ID is available
                 result = sf.Account.create(acct_data)
                 return {
                     "connector": "salesforce",
