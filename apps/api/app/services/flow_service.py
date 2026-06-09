@@ -660,6 +660,19 @@ class FlowService:
                     map_start = datetime.now(UTC).isoformat()
                     map_warnings: list[str] = []
 
+                    # ── Populate mappingSimulation from catalog sample data ──────
+                    # This gives operators a "what does this mapping do" preview
+                    # using well-known sample values from the mapping catalog, so
+                    # the UI always shows a meaningful simulation regardless of
+                    # what the live step actually returned.
+                    try:
+                        simulation = mapping_definition_service.simulate_mapping(
+                            mapping_definition_id, tenant_id=tenant_id
+                        )
+                        data["mappingSimulation"] = simulation.model_dump(by_alias=True)
+                    except Exception:
+                        data["mappingSimulation"] = {}
+
                     # ── Extract live source payload from step-1 result ──────────
                     # Step outputs are stored in data[step_id]; the actual record
                     # data lives under the "result" key inside the connector dict.
@@ -718,7 +731,7 @@ class FlowService:
                             data["targetWriteResult"] = write_result
                             execution_timeline.append(
                                 self._timeline_step(
-                                    step_id="mapping-apply",
+                                    step_id="mapping-simulation",
                                     name=f"Apply mapping → write to {target_connector_id}:{write_tool_id}",
                                     status="succeeded",
                                     started_at=map_start,
@@ -732,7 +745,7 @@ class FlowService:
                             step_failed = True
                             execution_timeline.append(
                                 self._timeline_step(
-                                    step_id="mapping-write",
+                                    step_id="mapping-simulation",
                                     name=f"Write to {target_connector_id}:{write_tool_id}",
                                     status="failed",
                                     started_at=map_start,
@@ -745,7 +758,7 @@ class FlowService:
                         step_failed = True
                         execution_timeline.append(
                             self._timeline_step(
-                                step_id="mapping-apply",
+                                step_id="mapping-simulation",
                                 name="Apply mapping definition",
                                 status="failed",
                                 started_at=map_start,

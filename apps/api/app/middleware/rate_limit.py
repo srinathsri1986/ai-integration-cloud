@@ -1,8 +1,10 @@
 """Redis-backed sliding-window rate limiting middleware.
 
 Limits:
-  - 300 requests per minute per authenticated tenant
-  - 60 requests per minute per unauthenticated source IP
+  - 10  requests per minute on POST /auth/* (compliance mandate — brute-force guard)
+  - 100 requests per minute on POST /webhooks/* (compliance mandate — flood guard)
+  - 300 requests per minute per authenticated tenant (general)
+  - 60  requests per minute per unauthenticated source IP (general)
 
 On limit exceeded: returns HTTP 429 with a Retry-After header.
 
@@ -30,6 +32,14 @@ _EXEMPT_PREFIXES = ("/health",)
 # Limits
 _TENANT_LIMIT = 300       # requests per minute when authenticated
 _IP_LIMIT = 60            # requests per minute when unauthenticated
+
+# Per-path strict limits: (path_prefix, method) -> limit per minute per IP.
+# These are applied before the general tenant/IP bucket and override it.
+# Compliance mandate: auth endpoints 10/min, webhook endpoints 100/min.
+_PATH_LIMITS: list[tuple[str, str, int]] = [
+    ("/api/v1/auth/",   "POST", 10),
+    ("/api/v1/webhooks/", "POST", 100),
+]
 
 
 def _extract_tenant_id(request: Request) -> str | None:
@@ -97,36 +107,50 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             logger.warning("Rate limit Redis unavailable — bypassing rate limit check.")
             return await call_next(request)
 
-        # Determine bucket key
-        tenant_id = _extract_tenant_id(request)
+        client_ip = request.client.host if request.client else "unknown"
         window = int(time.time()) // 60  # 1-minute aligned window
 
+        def _check(bucket: str, limit: int) -> bool:
+            """Return True if the request should be blocked (limit exceeded)."""
+            try:
+                count = redis.incr(bucket)
+                if count == 1:
+                    redis.expire(bucket, 120)
+                return count > limit
+            except Exception as exc:
+                logger.warning("Rate limit check failed: %s — bypassing.", exc)
+                return False
+
+        def _429():
+            retry_after = 60 - (int(time.time()) % 60)
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "rate_limit_exceeded",
+                    "message": "Too many requests. Please retry after the indicated delay.",
+                    "retryAfter": retry_after,
+                },
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        # ── Per-path strict limits (auth / webhooks) ──────────────────────────
+        for path_prefix, method, path_limit in _PATH_LIMITS:
+            if path.startswith(path_prefix) and request.method == method:
+                bucket = f"rl:path:{path_prefix}:{client_ip}:{window}"
+                if _check(bucket, path_limit):
+                    return _429()
+                break  # only one path rule applies per request
+
+        # ── General tenant / IP limit ──────────────────────────────────────────
+        tenant_id = _extract_tenant_id(request)
         if tenant_id:
             bucket = f"rl:tenant:{tenant_id}:{window}"
             limit = _TENANT_LIMIT
         else:
-            client_ip = request.client.host if request.client else "unknown"
             bucket = f"rl:ip:{client_ip}:{window}"
             limit = _IP_LIMIT
 
-        try:
-            count = redis.incr(bucket)
-            if count == 1:
-                redis.expire(bucket, 120)  # expire after 2 windows for safety
-
-            if count > limit:
-                retry_after = 60 - (int(time.time()) % 60)
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "error": "rate_limit_exceeded",
-                        "message": "Too many requests. Please retry after the indicated delay.",
-                        "retryAfter": retry_after,
-                    },
-                    headers={"Retry-After": str(retry_after)},
-                )
-        except Exception as exc:
-            # Redis error — fail open
-            logger.warning("Rate limit check failed: %s — bypassing.", exc)
+        if _check(bucket, limit):
+            return _429()
 
         return await call_next(request)

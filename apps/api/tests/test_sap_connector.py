@@ -57,7 +57,10 @@ class TestSAPLiveToolMap:
 
     def test_live_tool_map_entries_are_well_formed(self) -> None:
         for tool_id, (service_path, entity_set, kind) in _LIVE_TOOL_MAP.items():
-            assert "/" in service_path, f"{tool_id}: service_path should be 'API_X/EntitySet' shaped"
+            # service_path is the OData service root only (no EntitySet suffix) — the
+            # connector appends entity_set separately to avoid URL-doubling.
+            assert service_path, f"{tool_id}: service_path must not be empty"
+            assert "/" not in entity_set, f"{tool_id}: entity_set should be a bare name, not a path"
             assert entity_set, f"{tool_id}: entity_set must not be empty"
             assert kind in ("read", "write"), f"{tool_id}: kind must be 'read' or 'write'"
 
@@ -219,11 +222,22 @@ class TestSAPLiveConnectorSandboxMode:
         assert cfg.base_url == "https://sandbox.api.sap.com"
 
 
+class _FakeHeaders:
+    """Minimal stand-in for http.client.HTTPMessage."""
+
+    def __init__(self, mapping: dict | None = None) -> None:
+        self._m = mapping or {}
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._m.get(key, default)
+
+
 class _FakeMetadataResponse:
     """Minimal stand-in for the context-managed response `_opener.open()` returns."""
 
-    def __init__(self, body: bytes) -> None:
+    def __init__(self, body: bytes, headers: dict | None = None) -> None:
         self._body = body
+        self.headers = _FakeHeaders(headers)
 
     def __enter__(self):
         return self
