@@ -45,6 +45,8 @@ import {
   samplePayload
 } from "@/lib/mapping-catalog";
 import type { MappingField, MappingObject, MappingTransform } from "@/lib/mapping-catalog";
+import type { ConnectorSchema } from "@/lib/api";
+import { getConnectorSchema } from "@/lib/api";
 import { MappingCanvas } from "@/components/mapping-canvas";
 import type { CanvasMappingRow } from "@/components/mapping-canvas";
 
@@ -128,15 +130,22 @@ export function DataMappingStudio() {
   const [isPromotingSchema, setIsPromotingSchema] = useState(false);
   // R14 canvas: tracks whether the drag-and-drop canvas reports all required target fields mapped
   const [canvasAllRequiredMapped, setCanvasAllRequiredMapped] = useState(false);
+  // R22a: live schema from GET /connectors/{id}/schema — replaces hardcoded catalog entries
+  const [liveSchemaObjects, setLiveSchemaObjects] = useState<MappingObject[]>([]);
 
   const allMappingObjects = useMemo(
-    () => [
-      ...mappingObjects,
-      ...promotedRestObjects,
-      ...(discoveredSourceObject ? [discoveredSourceObject] : []),
-      ...(discoveredTargetObject ? [discoveredTargetObject] : [])
-    ],
-    [discoveredSourceObject, discoveredTargetObject, promotedRestObjects]
+    () => {
+      const liveIds = new Set(liveSchemaObjects.map((o) => o.id));
+      return [
+        ...liveSchemaObjects,
+        // keep static catalog entries that have no live equivalent (e.g. rest-api, sftp-csv)
+        ...mappingObjects.filter((o) => !liveIds.has(o.id)),
+        ...promotedRestObjects,
+        ...(discoveredSourceObject ? [discoveredSourceObject] : []),
+        ...(discoveredTargetObject ? [discoveredTargetObject] : [])
+      ];
+    },
+    [liveSchemaObjects, discoveredSourceObject, discoveredTargetObject, promotedRestObjects]
   );
   const sourceObjects = useMemo(
     () => objectsForSystemFrom(allMappingObjects, sourceSystemId),
@@ -218,6 +227,24 @@ export function DataMappingStudio() {
   useEffect(() => {
     loadSavedMappings();
   }, []);
+
+  // R22a: fetch live schema whenever source or target connector changes
+  useEffect(() => {
+    const connectorIds = Array.from(new Set([sourceSystemId, targetSystemId]));
+    Promise.all(connectorIds.map((id) => getConnectorSchema(id))).then((results) => {
+      const objects: MappingObject[] = results.flatMap((res) =>
+        !res.error && res.data.objects.length > 0 ? connectorSchemaToMappingObjects(res.data) : []
+      );
+      if (objects.length > 0) {
+        setLiveSchemaObjects((prev) => {
+          // Merge: replace any object with the same id, keep others
+          const incoming = new Map(objects.map((o) => [o.id, o]));
+          const kept = prev.filter((o) => !incoming.has(o.id));
+          return [...kept, ...objects];
+        });
+      }
+    });
+  }, [sourceSystemId, targetSystemId]);
 
   async function loadSavedMappings() {
     setIsLoadingMappings(true);
@@ -1216,6 +1243,26 @@ function FieldTray({
       </div>
     </Card>
   );
+}
+
+// ---------------------------------------------------------------------------
+// R22a: Convert live ConnectorSchema → MappingObject[] for the studio trays
+// ---------------------------------------------------------------------------
+
+function connectorSchemaToMappingObjects(schema: ConnectorSchema): MappingObject[] {
+  const _VALID_TYPES = new Set(["string", "number", "date", "boolean"]);
+  return schema.objects.map((obj) => ({
+    id: `${schema.connectorId}-${obj.objectId.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    displayName: obj.label,
+    systemId: schema.connectorId,
+    fields: obj.fields.map((f) => ({
+      name: f.name,
+      description: f.label || f.name,
+      type: (_VALID_TYPES.has(f.type) ? f.type : "string") as MappingField["type"],
+      required: f.required,
+      sample: f.sample ?? null,
+    })),
+  }));
 }
 
 function objectsForSelect(systemId: string) {

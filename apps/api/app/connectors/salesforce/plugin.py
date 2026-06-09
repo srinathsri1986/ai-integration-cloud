@@ -588,6 +588,7 @@ _MOCK_SCHEMA: list[SchemaObject] = [
         SchemaField("AnnualRevenue", "Annual Revenue", "number", sample="5000000"),
         SchemaField("BillingCity", "Billing City", "string", sample="San Francisco"),
         SchemaField("Phone", "Phone", "string", sample="+1 415 555 0100"),
+        SchemaField("SAP_Vendor_ID__c", "SAP Vendor ID (External)", "string", sample="V-001"),
     ]),
     SchemaObject("Contact", "Contact", [
         SchemaField("Id", "Contact ID", "id", required=True, updateable=False, sample="0030x000004AbCd"),
