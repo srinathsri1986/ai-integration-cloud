@@ -34,11 +34,36 @@ import {
   createCustomEndpoint,
   discoverCustomEndpointSchema,
   getConnectors,
+  getConnectorSchema,
   getConnectorTools,
   getCustomEndpointSchema,
   saveFlowDefinition,
   testCustomEndpointConnection,
 } from "@/lib/api";
+import type { ConnectorSchema } from "@/lib/api";
+
+// Convert live ConnectorSchema → flat FieldInfo[] for the FieldMapper.
+// Uses the first object's fields; if the connector exposes multiple objects,
+// all fields are merged (deduped by name) so the user can map across objects.
+function connectorSchemaToFieldInfo(schema: ConnectorSchema): FieldInfo[] {
+  const seen = new Set<string>();
+  const _VALID_TYPES = new Set(["string", "number", "date", "boolean"]);
+  return schema.objects.flatMap((obj) =>
+    obj.fields
+      .filter((f) => {
+        if (seen.has(f.name)) return false;
+        seen.add(f.name);
+        return true;
+      })
+      .map((f) => ({
+        name: f.name,
+        label: f.label || f.name,
+        type: (_VALID_TYPES.has(f.type) ? f.type : "string") as FieldInfo["type"],
+        required: f.required,
+        sample: f.sample ?? null,
+      }))
+  );
+}
 
 // --- Trigger type cards ---
 
@@ -447,12 +472,13 @@ export function FlowCreationWizard() {
     }
   }, [step]);
 
-  // When user picks a pre-built connector, try to load its schema for the mapper
+  // When user picks a pre-built connector, load its live schema for the FieldMapper
   useEffect(() => {
     if (!sourceConnector || sourceCustomId) return;
-    getCustomEndpointSchema(sourceConnector)
-      .then((r) => { if (r.data.fieldCount > 0) setSourceFields(r.data.fields); })
-      .catch(() => {});
+    getConnectorSchema(sourceConnector).then((r) => {
+      const fields = connectorSchemaToFieldInfo(r.data);
+      if (fields.length > 0) setSourceFields(fields);
+    }).catch(() => {});
   }, [sourceConnector, sourceCustomId]);
 
   // Resolve the source connector's REAL tool catalogue so the generated
@@ -470,9 +496,10 @@ export function FlowCreationWizard() {
 
   useEffect(() => {
     if (!targetConnector || targetCustomId) return;
-    getCustomEndpointSchema(targetConnector)
-      .then((r) => { if (r.data.fieldCount > 0) setTargetFields(r.data.fields); })
-      .catch(() => {});
+    getConnectorSchema(targetConnector).then((r) => {
+      const fields = connectorSchemaToFieldInfo(r.data);
+      if (fields.length > 0) setTargetFields(fields);
+    }).catch(() => {});
   }, [targetConnector, targetCustomId]);
 
   const canProceedStep1 = name.trim().length >= 3 && (
