@@ -117,6 +117,32 @@ class MappingDefinitionService:
                 latency_ms=int((perf_counter() - started) * 1000),
             )
 
+    def apply_mapping(
+        self,
+        mapping_id: str,
+        source_payload: dict,
+        tenant_id: int | None = None,
+    ) -> tuple[dict, list[str]]:
+        """Apply a published mapping's rules to a real source payload.
+
+        Unlike simulate_mapping (which uses static sample data from the
+        catalog), this takes actual live data from a connector step's output
+        and transforms it into the target schema using the stored field-mapping
+        rules and transforms. Returns (target_payload, warnings).
+        """
+        mapping = self.get_mapping(mapping_id)
+        target_payload: dict = {}
+        warnings: list[str] = []
+
+        for row in mapping.mappings:
+            if row.source_field not in source_payload:
+                warnings.append(f"Source field '{row.source_field}' not present in live payload — skipped.")
+                continue
+            source_value = source_payload[row.source_field]
+            target_payload[row.target_field] = self._apply_transform(row.transform, source_value)
+
+        return target_payload, warnings
+
     def delete_mapping(self, mapping_id: str, tenant_id: int | None = None) -> dict[str, str]:
         with SessionLocal() as session:
             MappingDefinitionRepository(session, tenant_id).delete_mapping(mapping_id)

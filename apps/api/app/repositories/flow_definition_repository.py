@@ -87,6 +87,33 @@ class FlowDefinitionRepository:
         self.session.commit()
         return self.get_flow(flow_id)
 
+    def patch_step(self, flow_id: str, step_id: str, approved_tool: str, name: str | None) -> FlowDefinition:
+        """Update a single step's approvedTool (and optionally name) in-place."""
+        from sqlalchemy.orm.attributes import flag_modified
+
+        record = self.session.get(FlowDefinitionRecord, flow_id)
+        if record is None:
+            raise KeyError(f"Unknown flow: '{flow_id}'")
+        # Build a fresh list so SQLAlchemy sees the assignment as a change even
+        # when the column uses a MutableList-tracked JSON type.
+        steps: list[dict] = [dict(s) for s in (record.steps or [])]
+        found = False
+        for step in steps:
+            if step.get("id") == step_id:
+                step["approvedTool"] = approved_tool
+                if name is not None:
+                    step["name"] = name
+                found = True
+                break
+        if not found:
+            raise KeyError(f"Step '{step_id}' not found in flow '{flow_id}'.")
+        record.steps = steps
+        # Explicitly mark the column dirty so SQLAlchemy flushes the change
+        # regardless of whether the JSON column uses mutation tracking.
+        flag_modified(record, "steps")
+        self.session.commit()
+        return self.get_flow(flow_id)
+
     def update_mapping_definition_id(self, flow_id: str, mapping_definition_id: str | None) -> FlowDefinition:
         record = self.session.get(FlowDefinitionRecord, flow_id)
         if record is None:

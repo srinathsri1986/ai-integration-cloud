@@ -68,6 +68,19 @@ _TOOLS = [
         ],
     ),
     ConnectorTool(
+        "create_account",
+        "Create / Upsert Account",
+        "Create a new Account or upsert by Name. Used when syncing vendor/supplier records from source systems (e.g. SAP Vendor → Salesforce Account).",
+        "salesforce",
+        [
+            ConnectorToolParam("name", "string", True, "Account name (used as upsert key)"),
+            ConnectorToolParam("industry", "string", False, "Industry picklist value, e.g. 'Technology'"),
+            ConnectorToolParam("annual_revenue", "number", False, "Annual revenue"),
+            ConnectorToolParam("phone", "string", False, "Main phone number"),
+            ConnectorToolParam("billing_city", "string", False, "Billing city"),
+        ],
+    ),
+    ConnectorTool(
         "create_project",
         "Create Project (custom object)",
         "Create a Project_c__c record — populates the custom object with standard project field values.",
@@ -102,6 +115,7 @@ _MOCK_DATA = {
     },
     "create_case": {"id": "CASE-0011", "status": "open", "subject": "Mock Case"},
     "create_project": {"id": "a0B0x000004MockPr", "status": "created", "name": "Mock Project"},
+    "create_account": {"id": "ACC-mock-0001", "status": "created", "name": "Mock Account"},
 }
 
 
@@ -321,6 +335,47 @@ def _execute_live(tool_id: str, params: dict, creds: dict) -> dict:
                 "mode": "live",
                 "result": {"id": result["id"], "success": result["success"], "fields": data},
             }
+
+        elif tool_id == "create_account":
+            # Upsert by Name so repeated syncs from SAP don't create duplicates.
+            # Falls back to create() if the org doesn't have an external-ID field set up.
+            # Accept both camelCase tool-param style ("name") and Salesforce field-name
+            # style ("Name") so that both direct tool calls and mapped payloads work.
+            name = params.get("name") or params.get("Name") or "Unnamed Account"
+            acct_data: dict = {"Name": name}
+            if params.get("industry") or params.get("Industry"):
+                acct_data["Industry"] = params.get("industry") or params.get("Industry")
+            ann_rev = params.get("annual_revenue") or params.get("AnnualRevenue")
+            if ann_rev is not None:
+                acct_data["AnnualRevenue"] = float(ann_rev)
+            if params.get("phone") or params.get("Phone"):
+                acct_data["Phone"] = params.get("phone") or params.get("Phone")
+            if params.get("billing_city") or params.get("BillingCity"):
+                acct_data["BillingCity"] = params.get("billing_city") or params.get("BillingCity")
+            try:
+                # Upsert on Name — uses PATCH /services/data/vXX/sobjects/Account/Name/{name}
+                upsert_result = sf.Account.upsert(f"Name/{name}", acct_data)
+                return {
+                    "connector": "salesforce",
+                    "tool": tool_id,
+                    "mode": "live",
+                    "result": {
+                        "upserted": True,
+                        "http_status": upsert_result,
+                        "name": name,
+                        "fields": acct_data,
+                    },
+                }
+            except Exception:
+                # upsert by Name is only supported when Name is configured as an
+                # idURI external-ID field; fall back to a plain create.
+                result = sf.Account.create(acct_data)
+                return {
+                    "connector": "salesforce",
+                    "tool": tool_id,
+                    "mode": "live",
+                    "result": {"id": result["id"], "success": result["success"], "fields": acct_data},
+                }
 
         elif tool_id == "create_case":
             case_data: dict = {

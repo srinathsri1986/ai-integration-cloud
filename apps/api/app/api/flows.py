@@ -31,6 +31,28 @@ class LinkMappingRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class PatchStepRequest(BaseModel):
+    """Narrow patch for a single flow step — only updates the fields supplied.
+
+    At minimum, callers must provide `approvedTool` (the connector tool ID).
+    Additional per-step fields may be added here as the engine grows.
+    """
+
+    approved_tool: str = Field(
+        alias="approvedTool",
+        min_length=1,
+        max_length=128,
+        description="Connector tool ID for this step, e.g. 'list_vendors'.",
+    )
+    name: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Human-readable step label (optional, defaults to current value).",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
 @router.get("", response_model=PaginatedFlows)
 def list_flows(
     limit: int = 50,
@@ -194,6 +216,33 @@ def link_mapping(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.patch("/{flow_id}/steps/{step_id}", response_model=FlowDefinition)
+def patch_flow_step(
+    flow_id: FlowId,
+    step_id: str,
+    body: PatchStepRequest,
+    user=Depends(require_permissions("flow:run")),
+) -> FlowDefinition:
+    """Update a single step inside any flow, regardless of lifecycle status.
+
+    Intentionally narrow: only `approvedTool` (and optionally `name`) are
+    touched. Everything else — flow status, other steps, mapping linkage —
+    is left unchanged. Audited so the change is traceable.
+    """
+    try:
+        return flow_service.patch_step(
+            flow_id,
+            step_id=step_id,
+            approved_tool=body.approved_tool,
+            name=body.name,
+            tenant_id=user.tenant_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)

@@ -332,6 +332,31 @@ class FlowService:
         )
         return updated
 
+    def patch_step(
+        self,
+        flow_id: str,
+        step_id: str,
+        approved_tool: str,
+        name: str | None = None,
+        tenant_id: int | None = None,
+    ) -> FlowDefinition:
+        """Update a single step's approvedTool (and optionally its display name).
+
+        Safe to call on published flows — only the targeted step is modified.
+        The change is audited for compliance traceability.
+        """
+        with SessionLocal() as session:
+            updated = FlowDefinitionRepository(session, tenant_id).patch_step(
+                flow_id, step_id=step_id, approved_tool=approved_tool, name=name
+            )
+
+        audit_service.record_flow_definition_action(
+            flow_id=flow_id,
+            action=f"patch_step:{step_id}:approvedTool={approved_tool}",
+            tools_used=[step.approved_tool for step in updated.steps],
+        )
+        return updated
+
     def transition_flow(
         self,
         flow_id: str,
@@ -615,7 +640,7 @@ class FlowService:
                         )
                     )
 
-            # If flow has a mapping definition, simulate it as an additional step
+            # If flow has a mapping definition, apply it to real step output and write to target.
             if not step_failed and mapping_definition_id:
                 mapping = mapping_definition_service.get_mapping(mapping_definition_id)
                 if mapping.status != "published":
@@ -632,20 +657,103 @@ class FlowService:
                         )
                     )
                 else:
-                    simulation = mapping_definition_service.simulate_mapping(mapping_definition_id)
-                    data["mappingSimulation"] = simulation.model_dump(by_alias=True)
-                    data["mappingDefinitionId"] = mapping_definition_id
-                    execution_timeline.append(
-                        self._timeline_step(
-                            step_id="mapping-simulation",
-                            name="Simulate attached mapping",
-                            status="succeeded",
-                            started_at=started,
-                            approved_tool=None,
-                            mapping_definition_id=mapping_definition_id,
-                            warnings=simulation.warnings,
+                    map_start = datetime.now(UTC).isoformat()
+                    map_warnings: list[str] = []
+
+                    # ── Extract live source payload from step-1 result ──────────
+                    # Step outputs are stored in data[step_id]; the actual record
+                    # data lives under the "result" key inside the connector dict.
+                    source_payload: dict = {}
+                    if flow.steps:
+                        first_step_output = data.get(flow.steps[0].id, {})
+                        # Most connector tools return {"connector":…,"tool":…,"mode":…,"result":{…}}
+                        raw_result = first_step_output.get("result", first_step_output)
+                        if isinstance(raw_result, dict):
+                            # If the result is a list-style response, take the first item
+                            items = raw_result.get("items") or raw_result.get("records")
+                            if isinstance(items, list) and items:
+                                source_payload = items[0]
+                            else:
+                                source_payload = raw_result
+                    if not source_payload:
+                        map_warnings.append(
+                            "Step-1 produced no extractable payload — mapping ran against an empty dict. "
+                            "Check that the source step tool returns real data."
                         )
-                    )
+
+                    # ── Apply mapping rules to live payload ─────────────────────
+                    try:
+                        target_payload, apply_warnings = mapping_definition_service.apply_mapping(
+                            mapping_definition_id, source_payload, tenant_id=tenant_id
+                        )
+                        map_warnings.extend(apply_warnings)
+                        data["mappedPayload"] = target_payload
+                        data["mappingDefinitionId"] = mapping_definition_id
+
+                        # ── Resolve target connector + write tool ───────────────
+                        # Use flow.target_connector if set; otherwise derive from
+                        # the mapping's target_object_id prefix (e.g. "salesforce-account" → "salesforce").
+                        target_connector_id = (
+                            flow.target_connector
+                            or mapping.target_object_id.split("-")[0]
+                        )
+                        # Object-ID → write tool lookup
+                        _OBJECT_WRITE_TOOL: dict[str, str] = {
+                            "salesforce-account": "create_account",
+                            "salesforce-opportunity": "create_opportunity",
+                            "salesforce-case": "create_case",
+                        }
+                        write_tool_id = _OBJECT_WRITE_TOOL.get(
+                            mapping.target_object_id, "create_account"
+                        )
+
+                        # ── Write to target connector ───────────────────────────
+                        try:
+                            write_result = connector_registry.execute_tool(
+                                target_connector_id,
+                                write_tool_id,
+                                params=target_payload,
+                                tenant_id=tenant_id,
+                            )
+                            data["targetWriteResult"] = write_result
+                            execution_timeline.append(
+                                self._timeline_step(
+                                    step_id="mapping-apply",
+                                    name=f"Apply mapping → write to {target_connector_id}:{write_tool_id}",
+                                    status="succeeded",
+                                    started_at=map_start,
+                                    approved_tool=write_tool_id,
+                                    mapping_definition_id=mapping_definition_id,
+                                    warnings=map_warnings,
+                                )
+                            )
+                        except Exception as write_exc:
+                            map_warnings.append(f"Target write failed: {write_exc}")
+                            step_failed = True
+                            execution_timeline.append(
+                                self._timeline_step(
+                                    step_id="mapping-write",
+                                    name=f"Write to {target_connector_id}:{write_tool_id}",
+                                    status="failed",
+                                    started_at=map_start,
+                                    approved_tool=write_tool_id,
+                                    mapping_definition_id=mapping_definition_id,
+                                    warnings=map_warnings,
+                                )
+                            )
+                    except Exception as map_exc:
+                        step_failed = True
+                        execution_timeline.append(
+                            self._timeline_step(
+                                step_id="mapping-apply",
+                                name="Apply mapping definition",
+                                status="failed",
+                                started_at=map_start,
+                                approved_tool=None,
+                                mapping_definition_id=mapping_definition_id,
+                                warnings=[f"Mapping apply failed: {map_exc}"],
+                            )
+                        )
 
             completed = datetime.now(UTC).isoformat()
             final_status = "failed" if step_failed else "succeeded"
