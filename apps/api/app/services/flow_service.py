@@ -564,14 +564,18 @@ class FlowService:
 
             # Step-driven execution: iterate steps, dispatch each to the connector registry
             step_failed = False
+            execution_context: dict = {}  # accumulates prior step results for each step to read
             for step in flow.steps:
                 connector_id = step.connector_id or flow.source_connector
                 tool_id = step.approved_tool
                 step_start = datetime.now(UTC).isoformat()
                 try:
                     result = connector_registry.execute_tool(
-                        connector_id, tool_id, params={}, tenant_id=tenant_id
+                        connector_id, tool_id,
+                        params={**getattr(step, "params", {}), "_context": dict(execution_context)},
+                        tenant_id=tenant_id,
                     )
+                    execution_context[step.id] = result
                     data[step.id] = result
                     tools_used.append(tool_id)
                     execution_timeline.append(
