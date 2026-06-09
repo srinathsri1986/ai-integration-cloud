@@ -673,100 +673,149 @@ class FlowService:
                     except Exception:
                         data["mappingSimulation"] = {}
 
-                    # ── Extract live source payload from step-1 result ──────────
+                    # ── Extract live source payload(s) from step-1 result ───────
                     # Step outputs are stored in data[step_id]; the actual record
                     # data lives under the "result" key inside the connector dict.
-                    source_payload: dict = {}
+                    source_payload: dict | None = None
+                    bulk_items: list | None = None
                     if flow.steps:
                         first_step_output = data.get(flow.steps[0].id, {})
                         # Most connector tools return {"connector":…,"tool":…,"mode":…,"result":{…}}
                         raw_result = first_step_output.get("result", first_step_output)
                         if isinstance(raw_result, dict):
-                            # If the result is a list-style response, take the first item
                             items = raw_result.get("items") or raw_result.get("records")
                             if isinstance(items, list) and items:
-                                source_payload = items[0]
+                                bulk_items = items  # For Each path
                             else:
-                                source_payload = raw_result
-                    if not source_payload:
-                        map_warnings.append(
-                            "Step-1 produced no extractable payload — mapping ran against an empty dict. "
-                            "Check that the source step tool returns real data."
-                        )
+                                source_payload = raw_result  # single-record path
 
-                    # ── Apply mapping rules to live payload ─────────────────────
-                    try:
-                        target_payload, apply_warnings = mapping_definition_service.apply_mapping(
-                            mapping_definition_id, source_payload, tenant_id=tenant_id
-                        )
-                        map_warnings.extend(apply_warnings)
-                        data["mappedPayload"] = target_payload
-                        data["mappingDefinitionId"] = mapping_definition_id
+                    # ── Resolve target connector + write tool ───────────────────
+                    target_connector_id = (
+                        flow.target_connector
+                        or mapping.target_object_id.split("-")[0]
+                    )
+                    _OBJECT_WRITE_TOOL: dict[str, str] = {
+                        "salesforce-account": "create_account",
+                        "salesforce-opportunity": "create_opportunity",
+                        "salesforce-case": "create_case",
+                    }
+                    write_tool_id = _OBJECT_WRITE_TOOL.get(
+                        mapping.target_object_id, "create_account"
+                    )
+                    data["mappingDefinitionId"] = mapping_definition_id
 
-                        # ── Resolve target connector + write tool ───────────────
-                        # Use flow.target_connector if set; otherwise derive from
-                        # the mapping's target_object_id prefix (e.g. "salesforce-account" → "salesforce").
-                        target_connector_id = (
-                            flow.target_connector
-                            or mapping.target_object_id.split("-")[0]
-                        )
-                        # Object-ID → write tool lookup
-                        _OBJECT_WRITE_TOOL: dict[str, str] = {
-                            "salesforce-account": "create_account",
-                            "salesforce-opportunity": "create_opportunity",
-                            "salesforce-case": "create_case",
-                        }
-                        write_tool_id = _OBJECT_WRITE_TOOL.get(
-                            mapping.target_object_id, "create_account"
-                        )
-
-                        # ── Write to target connector ───────────────────────────
-                        try:
-                            write_result = connector_registry.execute_tool(
-                                target_connector_id,
-                                write_tool_id,
-                                params=target_payload,
-                                tenant_id=tenant_id,
-                            )
-                            data["targetWriteResult"] = write_result
-                            execution_timeline.append(
-                                self._timeline_step(
-                                    step_id="mapping-simulation",
-                                    name=f"Apply mapping → write to {target_connector_id}:{write_tool_id}",
-                                    status="succeeded",
-                                    started_at=map_start,
-                                    approved_tool=write_tool_id,
-                                    mapping_definition_id=mapping_definition_id,
-                                    warnings=map_warnings,
+                    if bulk_items is not None:
+                        # ── For Each: iterate all records, map + write each ──────
+                        bulk_results: list[dict] = []
+                        succeeded = 0
+                        failed = 0
+                        for record in bulk_items:
+                            try:
+                                item_payload, _ = mapping_definition_service.apply_mapping(
+                                    mapping_definition_id, record, tenant_id=tenant_id
                                 )
+                                write_result = connector_registry.execute_tool(
+                                    target_connector_id, write_tool_id,
+                                    params=item_payload, tenant_id=tenant_id,
+                                )
+                                bulk_results.append({
+                                    "source": record,
+                                    "target": item_payload,
+                                    "result": write_result,
+                                    "status": "succeeded",
+                                })
+                                succeeded += 1
+                            except Exception as item_exc:
+                                bulk_results.append({
+                                    "source": record,
+                                    "status": "failed",
+                                    "error": str(item_exc),
+                                })
+                                failed += 1
+
+                        data["targetWriteResult"] = {
+                            "mode": "bulk",
+                            "total": len(bulk_items),
+                            "succeeded": succeeded,
+                            "failed": failed,
+                            "items": bulk_results,
+                        }
+                        bulk_status = "succeeded" if failed < len(bulk_items) else "failed"
+                        execution_timeline.append(
+                            self._timeline_step(
+                                step_id="mapping-simulation",
+                                name=f"For Each → {len(bulk_items)} records → {target_connector_id}:{write_tool_id}",
+                                status=bulk_status,
+                                started_at=map_start,
+                                approved_tool=write_tool_id,
+                                mapping_definition_id=mapping_definition_id,
+                                warnings=map_warnings + (
+                                    [f"{failed} of {len(bulk_items)} writes failed"] if failed else []
+                                ),
                             )
-                        except Exception as write_exc:
-                            map_warnings.append(f"Target write failed: {write_exc}")
+                        )
+                    else:
+                        # ── Single-record path ──────────────────────────────────
+                        if not source_payload:
+                            map_warnings.append(
+                                "Step-1 produced no extractable payload — mapping ran against an empty dict. "
+                                "Check that the source step tool returns real data."
+                            )
+                            source_payload = {}
+
+                        try:
+                            target_payload, apply_warnings = mapping_definition_service.apply_mapping(
+                                mapping_definition_id, source_payload, tenant_id=tenant_id
+                            )
+                            map_warnings.extend(apply_warnings)
+                            data["mappedPayload"] = target_payload
+
+                            try:
+                                write_result = connector_registry.execute_tool(
+                                    target_connector_id,
+                                    write_tool_id,
+                                    params=target_payload,
+                                    tenant_id=tenant_id,
+                                )
+                                data["targetWriteResult"] = write_result
+                                execution_timeline.append(
+                                    self._timeline_step(
+                                        step_id="mapping-simulation",
+                                        name=f"Apply mapping → write to {target_connector_id}:{write_tool_id}",
+                                        status="succeeded",
+                                        started_at=map_start,
+                                        approved_tool=write_tool_id,
+                                        mapping_definition_id=mapping_definition_id,
+                                        warnings=map_warnings,
+                                    )
+                                )
+                            except Exception as write_exc:
+                                map_warnings.append(f"Target write failed: {write_exc}")
+                                step_failed = True
+                                execution_timeline.append(
+                                    self._timeline_step(
+                                        step_id="mapping-simulation",
+                                        name=f"Write to {target_connector_id}:{write_tool_id}",
+                                        status="failed",
+                                        started_at=map_start,
+                                        approved_tool=write_tool_id,
+                                        mapping_definition_id=mapping_definition_id,
+                                        warnings=map_warnings,
+                                    )
+                                )
+                        except Exception as map_exc:
                             step_failed = True
                             execution_timeline.append(
                                 self._timeline_step(
                                     step_id="mapping-simulation",
-                                    name=f"Write to {target_connector_id}:{write_tool_id}",
+                                    name="Apply mapping definition",
                                     status="failed",
                                     started_at=map_start,
-                                    approved_tool=write_tool_id,
+                                    approved_tool=None,
                                     mapping_definition_id=mapping_definition_id,
-                                    warnings=map_warnings,
+                                    warnings=[f"Mapping apply failed: {map_exc}"],
                                 )
                             )
-                    except Exception as map_exc:
-                        step_failed = True
-                        execution_timeline.append(
-                            self._timeline_step(
-                                step_id="mapping-simulation",
-                                name="Apply mapping definition",
-                                status="failed",
-                                started_at=map_start,
-                                approved_tool=None,
-                                mapping_definition_id=mapping_definition_id,
-                                warnings=[f"Mapping apply failed: {map_exc}"],
-                            )
-                        )
 
             completed = datetime.now(UTC).isoformat()
             final_status = "failed" if step_failed else "succeeded"
