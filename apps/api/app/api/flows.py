@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 
 from app.core.auth import require_permissions
 from app.models.flows import (
@@ -17,6 +18,17 @@ from app.services.flow_suggestion_service import LiveAIRequiredError, flow_sugge
 from app.services.flow_service import flow_service
 
 router = APIRouter(prefix="/flows", tags=["flows"])
+
+
+class LinkMappingRequest(BaseModel):
+    mapping_definition_id: str | None = Field(
+        default=None,
+        alias="mappingDefinitionId",
+        max_length=96,
+        description="ID of a published MappingDefinition to attach, or null to detach.",
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 @router.get("", response_model=PaginatedFlows)
@@ -157,6 +169,31 @@ def list_flow_runs_for_flow(
         limit=limit,
         offset=offset,
     )
+
+
+@router.patch("/{flow_id}/mapping", response_model=FlowDefinition)
+def link_mapping(
+    flow_id: FlowId,
+    body: LinkMappingRequest,
+    user=Depends(require_permissions("flow:run")),
+) -> FlowDefinition:
+    """Attach or detach a published MappingDefinition on any flow, regardless of lifecycle status.
+
+    The regular upsert endpoint only accepts draft-status flows, making it
+    impossible to add a mapping to an already-published integration. This
+    endpoint is intentionally narrow — it only touches `mapping_definition_id`
+    and nothing else, so it cannot accidentally regress status or steps.
+    """
+    try:
+        return flow_service.link_mapping(
+            flow_id,
+            mapping_definition_id=body.mapping_definition_id,
+            tenant_id=user.tenant_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/{flow_id}", response_model=FlowDefinition)

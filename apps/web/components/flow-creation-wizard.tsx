@@ -34,6 +34,7 @@ import {
   createCustomEndpoint,
   discoverCustomEndpointSchema,
   getConnectors,
+  getConnectorTools,
   getCustomEndpointSchema,
   saveFlowDefinition,
   testCustomEndpointConnection,
@@ -411,6 +412,12 @@ export function FlowCreationWizard() {
   const [sourceCustomId, setSourceCustomId] = useState<string | null>(null);
   const [sourceFields, setSourceFields] = useState<FieldInfo[]>([]);
   const [showSourceCustomForm, setShowSourceCustomForm] = useState(false);
+  // The first real tool exposed by the chosen source connector — used as
+  // the generated step's `approvedTool`. Falls back to a generic
+  // orchestrator query only for custom REST endpoints (which have no
+  // registry-backed tool catalogue), never for a real connector — every
+  // registered connector always has at least one tool.
+  const [sourceConnectorTools, setSourceConnectorTools] = useState<{ toolId: string }[]>([]);
 
   // Step 3 (target)
   const [targetConnector, setTargetConnector] = useState<string>("");
@@ -448,6 +455,19 @@ export function FlowCreationWizard() {
       .catch(() => {});
   }, [sourceConnector, sourceCustomId]);
 
+  // Resolve the source connector's REAL tool catalogue so the generated
+  // step references a tool that actually exists — a hardcoded placeholder
+  // here previously shipped flows with `approvedTool: "orchestrator.query"`,
+  // which every connector's registry rejects with "Unknown <connector> tool"
+  // the moment the flow runs (discovered live via flow "sf-sa").
+  useEffect(() => {
+    setSourceConnectorTools([]);
+    if (!sourceConnector || sourceCustomId) return;
+    getConnectorTools(sourceConnector)
+      .then((r) => setSourceConnectorTools(r.data.map((t) => ({ toolId: t.toolId }))))
+      .catch(() => {});
+  }, [sourceConnector, sourceCustomId]);
+
   useEffect(() => {
     if (!targetConnector || targetCustomId) return;
     getCustomEndpointSchema(targetConnector)
@@ -480,6 +500,30 @@ export function FlowCreationWizard() {
     const effectiveSourceConnector = sourceCustomId ? `custom:${sourceCustomId}` : sourceConnector;
     const effectiveTargetConnector = targetCustomId ? `custom:${targetCustomId}` : targetConnector;
 
+    // Resolve a REAL tool for the generated step. Every registered connector
+    // (sap, salesforce, netsuite, ...) exposes a non-empty tool catalogue —
+    // confirmed by reading every plugin's _TOOLS list — so sourceConnectorTools[0]
+    // is reliable whenever a registry connector was picked.
+    //
+    // NOTE: a hardcoded "orchestrator.query" placeholder shipped here previously,
+    // and `connector_registry.execute_tool()` rejects it for EVERY connector
+    // (confirmed live: flow "sf-sa" failed at runtime with `Unknown SAP tool:
+    // 'orchestrator.query'` — the registry has no such tool for any plugin).
+    // "orchestrator.query" is not a connector tool at all; it only exists as an
+    // unrelated permission string ("orchestrator:query") for the separate
+    // /orchestrator/query LLM-assistant endpoint.
+    //
+    // Custom REST endpoints (`custom:<id>`) are a PRE-EXISTING, SEPARATE gap:
+    // connector_registry has no "custom:*" plugin entry, so step execution would
+    // raise "Unknown connector" regardless of which approvedTool string is used
+    // here — there is currently no dispatch path that runs a custom-endpoint step.
+    // Keeping the same placeholder for that branch changes nothing functionally;
+    // fixing custom-endpoint execution is out of scope for this change and needs
+    // its own dedicated connector_registry wiring.
+    const resolvedApprovedTool = sourceCustomId
+      ? "orchestrator.query"
+      : (sourceConnectorTools[0]?.toolId ?? "orchestrator.query");
+
     const payload: FlowDefinitionUpsertRequest = {
       flowId,
       name: name.trim(),
@@ -495,7 +539,7 @@ export function FlowCreationWizard() {
           id: "step-1",
           name: "Fetch source data",
           description: "Pull data from the source connector.",
-          approvedTool: "orchestrator.query",
+          approvedTool: resolvedApprovedTool,
         },
       ],
       ...(triggerType === "schedule" ? { triggerCron: cronExpression.trim() } : {}),

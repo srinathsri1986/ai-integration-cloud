@@ -87,6 +87,14 @@ class FlowDefinitionRepository:
         self.session.commit()
         return self.get_flow(flow_id)
 
+    def update_mapping_definition_id(self, flow_id: str, mapping_definition_id: str | None) -> FlowDefinition:
+        record = self.session.get(FlowDefinitionRecord, flow_id)
+        if record is None:
+            raise KeyError(f"Unknown flow: '{flow_id}'")
+        record.mapping_definition_id = mapping_definition_id
+        self.session.commit()
+        return self.get_flow(flow_id)
+
     def delete_flow(self, flow_id: str) -> None:
         record = self.session.get(FlowDefinitionRecord, flow_id)
         if record is None:

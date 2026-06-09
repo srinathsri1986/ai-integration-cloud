@@ -1310,6 +1310,43 @@ export async function transitionFlowLifecycle(
   }
 }
 
+export async function linkMappingToFlow(
+  flowId: FlowId,
+  mappingDefinitionId: string | null
+): Promise<ClientApiResult<FlowDefinition>> {
+  try {
+    const response = await fetch(`${apiBaseUrl()}/api/v1/flows/${flowId}/mapping`, {
+      body: JSON.stringify({ mappingDefinitionId }),
+      cache: "no-store",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      method: "PATCH"
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return {
+        data: {} as FlowDefinition,
+        error: (err as { detail?: string }).detail ?? `API returned ${response.status}`,
+        isFallback: true,
+        ok: false
+      };
+    }
+
+    const body = await response.json();
+    return { data: body, isFallback: false, ok: true };
+  } catch (error) {
+    return {
+      data: {} as FlowDefinition,
+      error: error instanceof Error ? error.message : "API unavailable",
+      isFallback: true,
+      ok: false
+    };
+  }
+}
+
 export async function deleteFlowDefinition(
   flowId: FlowId
 ): Promise<ClientApiResult<{ flowId: string; message: string }>> {

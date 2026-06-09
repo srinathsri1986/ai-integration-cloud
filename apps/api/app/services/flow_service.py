@@ -298,6 +298,40 @@ class FlowService:
         )
         return saved
 
+    def link_mapping(
+        self,
+        flow_id: str,
+        mapping_definition_id: str | None,
+        tenant_id: int | None = None,
+    ) -> FlowDefinition:
+        """Attach or detach a published MappingDefinition on any flow.
+
+        Unlike upsert_flow (which only accepts draft-status flows and requires
+        the full payload), this method only touches mapping_definition_id —
+        making it safe to call on published integrations without regressing
+        their lifecycle status or overwriting steps/connectors.
+        """
+        if mapping_definition_id:
+            mapping = mapping_definition_service.get_mapping(mapping_definition_id)
+            if mapping.status != "published":
+                raise ValueError(
+                    f"Mapping '{mapping_definition_id}' must be published before it can be "
+                    "linked to an integration. Promote it through the Data Mapping lifecycle first."
+                )
+
+        with SessionLocal() as session:
+            updated = FlowDefinitionRepository(session, tenant_id).update_mapping_definition_id(
+                flow_id, mapping_definition_id
+            )
+
+        action = f"link_mapping:{mapping_definition_id}" if mapping_definition_id else "unlink_mapping"
+        audit_service.record_flow_definition_action(
+            flow_id=flow_id,
+            action=action,
+            tools_used=[step.approved_tool for step in updated.steps],
+        )
+        return updated
+
     def transition_flow(
         self,
         flow_id: str,

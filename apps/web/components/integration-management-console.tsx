@@ -40,6 +40,7 @@ import {
   deleteMappingDefinition,
   getFlowRun,
   getMappingDefinitions,
+  linkMappingToFlow,
   runFlow,
   simulateMappingDefinition,
   transitionFlowLifecycle,
@@ -266,6 +267,25 @@ export function IntegrationManagementConsole({
     setDeleteModalFlow(null);
   }
 
+  async function linkMapping(flow: FlowDefinition, mappingDefinitionId: string | null) {
+    setBusyKey(`${flow.flowId}:link_mapping`);
+    setMessage(undefined);
+    setMessageIsError(false);
+    const response = await linkMappingToFlow(flow.flowId, mappingDefinitionId);
+    if (response.ok) {
+      setFlows((current) =>
+        current.map((item) => (item.flowId === response.data.flowId ? response.data : item))
+      );
+      const label = mappingDefinitionId ? `Mapping linked to "${flow.name}".` : `Mapping detached from "${flow.name}".`;
+      setMessage(label);
+      setMessageIsError(false);
+    } else {
+      setMessage(response.error ?? "Unable to link mapping.");
+      setMessageIsError(true);
+    }
+    setBusyKey(undefined);
+  }
+
   async function deleteMapping(mapping: MappingDefinition) {
     const confirmed = window.confirm(`Delete ${mapping.name}? This removes the saved mapping.`);
     if (!confirmed) return;
@@ -437,9 +457,11 @@ export function IntegrationManagementConsole({
           flow={selectedFlow}
           linkedMapping={linkedMapping}
           mappingSimulation={mappingSimulation}
+          publishedMappings={mappings.filter((m) => m.status === "published")}
           onDeleteFlow={deleteFlow}
           onDeleteMapping={deleteMapping}
           onFlowAction={applyFlowAction}
+          onLinkMapping={linkMapping}
           onMappingAction={applyMappingAction}
           onRefreshMappings={refreshMappings}
           onRun={runSelectedFlow}
@@ -528,9 +550,11 @@ function IntegrationReviewPane({
   flow,
   linkedMapping,
   mappingSimulation,
+  publishedMappings,
   onDeleteFlow,
   onDeleteMapping,
   onFlowAction,
+  onLinkMapping,
   onMappingAction,
   onRefreshMappings,
   onRun,
@@ -541,15 +565,18 @@ function IntegrationReviewPane({
   flow?: FlowDefinition;
   linkedMapping?: MappingDefinition;
   mappingSimulation?: MappingSimulationResponse;
+  publishedMappings: MappingDefinition[];
   onDeleteFlow: (flow: FlowDefinition) => void;
   onDeleteMapping: (mapping: MappingDefinition) => void;
   onFlowAction: (flow: FlowDefinition, action: FlowLifecycleAction) => void;
+  onLinkMapping: (flow: FlowDefinition, mappingDefinitionId: string | null) => void;
   onMappingAction: (mapping: MappingDefinition, action: MappingLifecycleAction) => void;
   onRefreshMappings: () => void;
   onRun: (flow: FlowDefinition) => void;
   onSimulateMapping: (mapping: MappingDefinition) => void;
   run?: FlowRunResponse;
 }) {
+  const [selectedMappingId, setSelectedMappingId] = useState<string>("");
   const router = useRouter();
   if (!flow) {
     return (
@@ -714,12 +741,50 @@ function IntegrationReviewPane({
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-muted-foreground">
               No data mapping is linked to this integration.
             </div>
+
+            {/* Link an existing published mapping -------------------------------- */}
+            {publishedMappings.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-600">
+                  Link a published mapping:
+                </p>
+                <div className="flex gap-2">
+                  <select
+                    className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    value={selectedMappingId}
+                    onChange={(e) => setSelectedMappingId(e.target.value)}
+                  >
+                    <option value="">— choose a mapping —</option>
+                    {publishedMappings.map((m) => (
+                      <option key={m.mappingId} value={m.mappingId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    disabled={!selectedMappingId || busyKey === `${flow.flowId}:link_mapping`}
+                    onClick={() => {
+                      if (selectedMappingId) onLinkMapping(flow, selectedMappingId);
+                    }}
+                    type="button"
+                  >
+                    {busyKey === `${flow.flowId}:link_mapping` ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Link2 className="h-4 w-4" />
+                    )}
+                    Link
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <Link
               className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
               href="/mapping"
             >
               <Map className="h-4 w-4 shrink-0" />
-              Create a data mapping →
+              Create a new data mapping →
             </Link>
           </div>
         )}
