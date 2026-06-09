@@ -82,9 +82,14 @@ export function AskAIPanel({ onClose, initialQuestion = "" }: AskAIPanelProps) {
   const [result, setResult] = useState<AskAIResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleAsk() {
-    const q = question.trim();
+  // Accept an optional text override so quick-start chips can pass their label
+  // directly without waiting for a React state update cycle.
+  async function handleAsk(overrideText?: string) {
+    const q = (overrideText ?? question).trim();
     if (!q || q.length < 5) return;
+
+    // Sync textarea state if the call came from a chip
+    if (overrideText) setQuestion(overrideText);
 
     setLoading(true);
     setResult(null);
@@ -120,7 +125,9 @@ export function AskAIPanel({ onClose, initialQuestion = "" }: AskAIPanelProps) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    // Enter alone → submit (standard chat behaviour)
+    // Shift+Enter or Cmd/Ctrl+Enter → insert a newline for multi-line questions
+    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
       e.preventDefault();
       handleAsk();
     }
@@ -181,10 +188,12 @@ export function AskAIPanel({ onClose, initialQuestion = "" }: AskAIPanelProps) {
             />
             <div className="mt-2 flex items-center justify-between">
               <p className="text-[11px] text-slate-400">
-                Press <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[10px] font-mono">⌘ Enter</kbd> to ask
+                <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[10px] font-mono">Enter</kbd> to ask
+                &nbsp;·&nbsp;
+                <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[10px] font-mono">Shift Enter</kbd> for new line
               </p>
               <Button
-                onClick={handleAsk}
+                onClick={() => handleAsk()}
                 disabled={loading || question.trim().length < 5}
                 className="h-9 gap-2 rounded-lg px-4 text-sm"
               >
@@ -251,7 +260,9 @@ export function AskAIPanel({ onClose, initialQuestion = "" }: AskAIPanelProps) {
                   <button
                     key={suggestion}
                     type="button"
-                    onClick={() => setQuestion(suggestion)}
+                    // Click or Enter/Space on the chip immediately submits the question —
+                    // no extra "Ask" click required.
+                    onClick={() => handleAsk(suggestion)}
                     className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
                   >
                     {suggestion}
