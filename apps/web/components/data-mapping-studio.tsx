@@ -132,6 +132,9 @@ export function DataMappingStudio() {
   const [canvasAllRequiredMapped, setCanvasAllRequiredMapped] = useState(false);
   // R22a: live schema from GET /connectors/{id}/schema — replaces hardcoded catalog entries
   const [liveSchemaObjects, setLiveSchemaObjects] = useState<MappingObject[]>([]);
+  // Set to true by the Ask-AI mount effect when the AI detected both source + target objects.
+  // A separate useEffect watches this flag and fires suggestMappings() once state has settled.
+  const [pendingAutoSuggest, setPendingAutoSuggest] = useState(false);
 
   const allMappingObjects = useMemo(
     () => {
@@ -224,28 +227,67 @@ export function DataMappingStudio() {
     setLastSavedMappingId(undefined);
   }
 
-  // Pick up pre-fill context injected by the Ask AI panel
+  // Pick up pre-fill context injected by the Ask AI panel.
+  //
+  // Two-tier behaviour:
+  //   • System + Object detected  → set both; will auto-trigger AI suggestions if autoSuggest=true
+  //   • System only detected      → call onSourceSystemChange / onTargetSystemChange so the
+  //                                  component resets to the system's first available object,
+  //                                  leaving the user free to choose a different one.
   useEffect(() => {
     const stored = sessionStorage.getItem("askAI_mappingSuggestion");
     if (!stored) return;
     try {
       const hint = JSON.parse(stored) as {
         sourceSystemId?: string;
-        sourceObjectId?: string;
+        sourceObjectId?: string | null;
         targetSystemId?: string;
-        targetObjectId?: string;
+        targetObjectId?: string | null;
         mappingPrompt?: string;
+        autoSuggest?: boolean;
       };
-      if (hint.sourceSystemId) setSourceSystemId(hint.sourceSystemId);
-      if (hint.sourceObjectId) setSourceObjectId(hint.sourceObjectId);
-      if (hint.targetSystemId) setTargetSystemId(hint.targetSystemId);
-      if (hint.targetObjectId) setTargetObjectId(hint.targetObjectId);
-      if (hint.mappingPrompt)  setMappingPrompt(hint.mappingPrompt);
+
+      // Source side
+      if (hint.sourceSystemId) {
+        if (hint.sourceObjectId) {
+          // Explicit object — set both directly so the exact catalog entry is selected
+          setSourceSystemId(hint.sourceSystemId);
+          setSourceObjectId(hint.sourceObjectId);
+        } else {
+          // System only — reset to that system's first object (user will pick the exact object)
+          onSourceSystemChange(hint.sourceSystemId);
+        }
+      }
+
+      // Target side
+      if (hint.targetSystemId) {
+        if (hint.targetObjectId) {
+          setTargetSystemId(hint.targetSystemId);
+          setTargetObjectId(hint.targetObjectId);
+        } else {
+          onTargetSystemChange(hint.targetSystemId);
+        }
+      }
+
+      if (hint.mappingPrompt) setMappingPrompt(hint.mappingPrompt);
+
+      // Schedule auto-suggest only when the AI detected both objects — this fires
+      // after the state updates above have been committed (next render cycle).
+      if (hint.autoSuggest) setPendingAutoSuggest(true);
+
       sessionStorage.removeItem("askAI_mappingSuggestion");
     } catch {
       // Silently ignore malformed data
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When both source + target objects were pre-filled by Ask AI, automatically
+  // fire the AI field-mapping suggestion so the user sees results right away.
+  useEffect(() => {
+    if (!pendingAutoSuggest) return;
+    setPendingAutoSuggest(false);
+    suggestMappings();
+  }, [pendingAutoSuggest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadSavedMappings();

@@ -209,13 +209,14 @@ def test_ask_ai_mapping_payload_has_context_keys() -> None:
 @pytest.mark.parametrize("question,expected", [
     (
         "Map SAP vendor fields to Salesforce Account",
-        {"sourceSystemId": "sap", "sourceObjectId": "sap-vendor",
+        {"sourceSystemId": "sap",      "sourceObjectId": "sap-vendor",
          "targetSystemId": "salesforce", "targetObjectId": "salesforce-account"},
     ),
     (
+        # No explicit Salesforce object → targetObjectId must be null
         "Map NetSuite customers to Salesforce",
         {"sourceSystemId": "netsuite", "sourceObjectId": "netsuite-customer",
-         "targetSystemId": "salesforce", "targetObjectId": "salesforce-account"},
+         "targetSystemId": "salesforce", "targetObjectId": None},
     ),
     (
         "How should I map fields from NetSuite contacts to Salesforce contacts",
@@ -234,6 +235,57 @@ def test_ask_ai_mapping_payload_values(question: str, expected: dict) -> None:
     payload = resp.json()["action"]["payload"]
     for key, val in expected.items():
         assert payload[key] == val, f"question={question!r}: {key} expected {val!r}, got {payload[key]!r}"
+
+
+# ---------------------------------------------------------------------------
+# Test 12: two-tier pre-fill — null objectIds when object not mentioned
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("question", [
+    "Map SAP to Salesforce",
+    "Map SAP fields to Salesforce",
+    "How should I map SAP fields to Salesforce",
+])
+def test_mapping_system_only_has_null_object_ids(question: str) -> None:
+    """When no object is mentioned, both objectIds must be null so the
+    frontend leaves the object dropdowns for the user to choose."""
+    resp = client.post("/api/v1/ai/ask", json={"question": question})
+    assert resp.status_code == 200
+    payload = resp.json()["action"]["payload"]
+    assert payload["sourceObjectId"] is None, (
+        f"question={question!r}: sourceObjectId should be null, got {payload['sourceObjectId']!r}"
+    )
+    assert payload["targetObjectId"] is None, (
+        f"question={question!r}: targetObjectId should be null, got {payload['targetObjectId']!r}"
+    )
+
+
+@pytest.mark.parametrize("question,expected_auto", [
+    ("Map SAP vendor to Salesforce Account",    True),
+    ("Map NetSuite invoice to Salesforce opportunity", True),
+    ("Map SAP to Salesforce",                   False),
+    ("Map SAP fields to Salesforce",            False),
+    ("Map NetSuite customers to Salesforce",    False),   # target object absent
+])
+def test_mapping_auto_suggest_flag(question: str, expected_auto: bool) -> None:
+    """autoSuggest is True only when BOTH source AND target objects are detected."""
+    resp = client.post("/api/v1/ai/ask", json={"question": question})
+    assert resp.status_code == 200
+    payload = resp.json()["action"]["payload"]
+    assert payload["autoSuggest"] is expected_auto, (
+        f"question={question!r}: autoSuggest expected {expected_auto}, got {payload['autoSuggest']!r}"
+    )
+
+
+def test_mapping_partial_object_source_only() -> None:
+    """Source object detected, target not → autoSuggest False, targetObjectId null."""
+    question = "Map SAP vendor fields to Salesforce"
+    resp = client.post("/api/v1/ai/ask", json={"question": question})
+    assert resp.status_code == 200
+    payload = resp.json()["action"]["payload"]
+    assert payload["sourceObjectId"] == "sap-vendor"
+    assert payload["targetObjectId"] is None
+    assert payload["autoSuggest"] is False
 
 
 def test_ask_ai_mapping_payload_has_prompt() -> None:

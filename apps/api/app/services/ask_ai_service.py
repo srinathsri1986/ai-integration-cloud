@@ -203,16 +203,18 @@ _OBJECT_LABELS: dict[str, str] = {
 }
 
 
-def _best_object_id(system_id: str, text: str) -> str:
+def _best_object_id(system_id: str, text: str) -> str | None:
     """Return the best-matching catalog object ID for a system given a text snippet.
 
     Matches longest keyword first so 'sales order' beats 'order'.
+    Returns None when no object keyword is found — callers should treat None as
+    "user did not specify an object; leave the selector for them to choose."
     """
     obj_map = _OBJECT_MAP.get(system_id, {})
     for keyword in sorted(obj_map, key=len, reverse=True):
         if keyword in text.lower():
             return obj_map[keyword]
-    return _DEFAULT_OBJECT.get(system_id, f"{system_id}-record")
+    return None
 
 
 def _parse_mapping_context(question: str) -> dict:
@@ -242,25 +244,50 @@ def _parse_mapping_context(question: str) -> dict:
         src_text = q_lower
         tgt_text = q_lower
 
-    src_obj = _best_object_id(src_system, src_text)
-    tgt_obj = _best_object_id(tgt_system, tgt_text)
+    src_obj = _best_object_id(src_system, src_text)   # None if not explicitly mentioned
+    tgt_obj = _best_object_id(tgt_system, tgt_text)   # None if not explicitly mentioned
 
     src_label = _CONNECTOR_LABELS.get(src_system, src_system.title())
     tgt_label = _CONNECTOR_LABELS.get(tgt_system, tgt_system.title())
-    src_obj_label = _OBJECT_LABELS.get(src_obj, src_obj.replace("-", " ").title())
-    tgt_obj_label = _OBJECT_LABELS.get(tgt_obj, tgt_obj.replace("-", " ").title())
 
-    mapping_prompt = (
-        f"Map {src_label} {src_obj_label} fields to {tgt_label} {tgt_obj_label}. "
-        f"Suggest field-level transformations with confidence scores."
-    )
+    # Build a human-readable mapping prompt — use object labels when available,
+    # fall back to system-level phrasing so the studio textarea is always useful.
+    if src_obj and tgt_obj:
+        src_obj_label = _OBJECT_LABELS.get(src_obj, src_obj.replace("-", " ").title())
+        tgt_obj_label = _OBJECT_LABELS.get(tgt_obj, tgt_obj.replace("-", " ").title())
+        mapping_prompt = (
+            f"Map {src_label} {src_obj_label} fields to {tgt_label} {tgt_obj_label}. "
+            "Suggest field-level transformations with confidence scores."
+        )
+    elif src_obj:
+        src_obj_label = _OBJECT_LABELS.get(src_obj, src_obj.replace("-", " ").title())
+        mapping_prompt = (
+            f"Map {src_label} {src_obj_label} fields to {tgt_label}. "
+            "Select the target object, then suggest field-level transformations with confidence scores."
+        )
+    elif tgt_obj:
+        tgt_obj_label = _OBJECT_LABELS.get(tgt_obj, tgt_obj.replace("-", " ").title())
+        mapping_prompt = (
+            f"Map {src_label} fields to {tgt_label} {tgt_obj_label}. "
+            "Select the source object, then suggest field-level transformations with confidence scores."
+        )
+    else:
+        mapping_prompt = (
+            f"Map {src_label} fields to {tgt_label}. "
+            "Select the source and target objects, then suggest field-level transformations with confidence scores."
+        )
+
+    # autoSuggest: True only when BOTH objects are explicitly detected — the frontend
+    # will immediately fire the AI field-mapping call in this case.
+    auto_suggest = bool(src_obj and tgt_obj)
 
     return {
         "sourceSystemId":  src_system,
-        "sourceObjectId":  src_obj,
+        "sourceObjectId":  src_obj,      # None → user must choose
         "targetSystemId":  tgt_system,
-        "targetObjectId":  tgt_obj,
+        "targetObjectId":  tgt_obj,      # None → user must choose
         "mappingPrompt":   mapping_prompt,
+        "autoSuggest":     auto_suggest,
     }
 
 
@@ -289,15 +316,37 @@ class AskAIService:
                                                mapping_ctx["sourceSystemId"].title())
             tgt_label = _CONNECTOR_LABELS.get(mapping_ctx["targetSystemId"],
                                                mapping_ctx["targetSystemId"].title())
-            src_obj_label = _OBJECT_LABELS.get(mapping_ctx["sourceObjectId"],
-                                                mapping_ctx["sourceObjectId"].replace("-", " ").title())
-            tgt_obj_label = _OBJECT_LABELS.get(mapping_ctx["targetObjectId"],
-                                                mapping_ctx["targetObjectId"].replace("-", " ").title())
-            answer = (
-                f"Opening the Data Mapping Studio pre-filled for "
-                f"{src_label} {src_obj_label} → {tgt_label} {tgt_obj_label}. "
-                "AI-suggested field mappings with confidence scores are ready to review."
-            )
+            src_obj = mapping_ctx.get("sourceObjectId")
+            tgt_obj = mapping_ctx.get("targetObjectId")
+
+            if src_obj and tgt_obj:
+                src_obj_label = _OBJECT_LABELS.get(src_obj, src_obj.replace("-", " ").title())
+                tgt_obj_label = _OBJECT_LABELS.get(tgt_obj, tgt_obj.replace("-", " ").title())
+                answer = (
+                    f"Opening the Data Mapping Studio pre-filled for "
+                    f"{src_label} {src_obj_label} → {tgt_label} {tgt_obj_label}. "
+                    "AI-suggested field mappings with confidence scores are ready to review."
+                )
+            elif src_obj:
+                src_obj_label = _OBJECT_LABELS.get(src_obj, src_obj.replace("-", " ").title())
+                answer = (
+                    f"Opening the Data Mapping Studio with source set to "
+                    f"{src_label} {src_obj_label} and target system {tgt_label}. "
+                    "Choose the target object and AI will suggest field mappings."
+                )
+            elif tgt_obj:
+                tgt_obj_label = _OBJECT_LABELS.get(tgt_obj, tgt_obj.replace("-", " ").title())
+                answer = (
+                    f"Opening the Data Mapping Studio with target set to "
+                    f"{tgt_label} {tgt_obj_label} and source system {src_label}. "
+                    "Choose the source object and AI will suggest field mappings."
+                )
+            else:
+                answer = (
+                    f"Opening the Data Mapping Studio for {src_label} → {tgt_label}. "
+                    "Select the source and target objects and AI will suggest field-level "
+                    "mappings with confidence scores."
+                )
             return AskAIResponse(
                 question=request.question,
                 intent=intent,
