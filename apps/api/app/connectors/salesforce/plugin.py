@@ -549,7 +549,10 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
                     sample=None,
                 ))
             label = desc.get("label", obj_name)
-            objects.append(SchemaObject(object_id=obj_name, label=label, fields=fields[:40]))
+            # Custom fields first so they're never truncated by the 40-field cap
+            custom = [f for f in fields if f.name.endswith("__c")]
+            standard = [f for f in fields if not f.name.endswith("__c")]
+            objects.append(SchemaObject(object_id=obj_name, label=label, fields=(custom + standard)[:40]))
         except Exception as exc:
             if _is_session_expired(exc):
                 session_expired_seen = True
