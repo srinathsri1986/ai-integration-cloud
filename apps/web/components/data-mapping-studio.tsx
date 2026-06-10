@@ -271,9 +271,14 @@ export function DataMappingStudio() {
 
       if (hint.mappingPrompt) setMappingPrompt(hint.mappingPrompt);
 
-      // Schedule auto-suggest only when the AI detected both objects — this fires
-      // after the state updates above have been committed (next render cycle).
-      if (hint.autoSuggest) setPendingAutoSuggest(true);
+      // Navigate to the right wizard step regardless of prior React state:
+      //   • autoSuggest=true  → suggestMappings() will call setActiveStep("map") once done
+      //   • autoSuggest=false → land on "discover" so the user can choose the objects
+      if (hint.autoSuggest) {
+        setPendingAutoSuggest(true);
+      } else {
+        setActiveStep("discover");
+      }
 
       sessionStorage.removeItem("askAI_mappingSuggestion");
     } catch {
