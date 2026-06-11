@@ -94,6 +94,10 @@ const mappingTransformSchema = z.enum([
   "format_date",
   "lookup_placeholder",
   "constant_placeholder",
+  "uppercase",
+  "lowercase",
+  "to_string",
+  "to_number",
 ]);
 
 export const inlineFieldMappingSchema = z.object({
