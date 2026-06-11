@@ -958,6 +958,155 @@ def _template_mapping_suggestions(context: dict) -> list[dict]:
     ][:8]
 
 
+class BedrockProvider:
+    """AWS Bedrock provider using the Converse API.
+
+    Credentials are resolved automatically via boto3's standard chain:
+    EC2 instance profile → environment variables → ~/.aws/credentials.
+    No API key is needed when running on EC2 with an appropriate IAM role.
+    """
+
+    provider_name = "bedrock"
+
+    def __init__(self, model_id: str, region: str = "ap-southeast-2") -> None:
+        self.model_name = model_id
+        self._region = region
+        self._client = None  # lazy-initialised to avoid import cost at startup
+
+    def _get_client(self):  # type: ignore[return]
+        if self._client is None:
+            import boto3  # noqa: PLC0415
+
+            self._client = boto3.client("bedrock-runtime", region_name=self._region)
+        return self._client
+
+    def _converse(self, system_prompt: str, user_message: str) -> str:
+        """Call Bedrock Converse API and return the text reply."""
+        client = self._get_client()
+        try:
+            response = client.converse(
+                modelId=self.model_name,
+                system=[{"text": system_prompt}],
+                messages=[{"role": "user", "content": [{"text": user_message}]}],
+                inferenceConfig={"maxTokens": 512, "temperature": 0.2},
+            )
+        except Exception as exc:
+            raise LLMProviderError(
+                f"Bedrock Converse request failed: {exc}",
+                model_call_attempted=True,
+            ) from exc
+
+        try:
+            return response["output"]["message"]["content"][0]["text"]
+        except (KeyError, IndexError) as exc:
+            raise LLMProviderError(
+                "Bedrock response missing expected content.",
+                model_call_attempted=True,
+                model_call_succeeded=True,
+            ) from exc
+
+    def extract_intent(self, question: str) -> LLMIntentResult:
+        system = (
+            "Return only JSON with keys intent and confidence. "
+            "The intent must be one of: CFO_DASHBOARD_SUMMARY, PL_VS_BUDGET, "
+            "YOY_COMPARISON, SUBSIDIARY_DRILLDOWN, RUNNING_PROJECTS, "
+            "OVERDUE_PROJECTS_BY_ACCOUNT_MANAGER, UNKNOWN. "
+            "Do not call tools. Do not generate SQL, SuiteQL, or NetSuite queries."
+        )
+        raw = self._converse(system, question)
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(raw))
+            intent, confidence = _validated_intent_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Bedrock intent extraction returned invalid structured output.",
+                model_call_attempted=True,
+                model_call_succeeded=True,
+            ) from exc
+
+        return LLMIntentResult(
+            confidence=confidence,
+            intent=intent,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
+    def generate_narrative(self, context: dict) -> LLMNarrativeResult:
+        system = (
+            "Generate a concise CFO executive narrative from only the approved summarized JSON "
+            "provided. Return only JSON with key narrative. Keep it under 900 characters. "
+            "Do not ask for or include credentials, raw transactions, SQL, SuiteQL, raw NetSuite "
+            "queries, or tool calls."
+        )
+        raw = self._converse(system, json.dumps(context, separators=(",", ":")))
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(raw))
+            narrative = _validated_narrative_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Bedrock narrative generation returned invalid structured output.",
+                model_call_attempted=True,
+                model_call_succeeded=True,
+            ) from exc
+
+        return LLMNarrativeResult(
+            narrative=narrative,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
+    def generate_flow_suggestion(self, context: dict) -> LLMFlowSuggestionResult:
+        raw = self._converse(
+            _flow_suggestion_system_prompt(),
+            json.dumps(context, separators=(",", ":")),
+        )
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(raw))
+            suggested_flow, rationale = _validated_flow_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Bedrock flow suggestion returned invalid structured output.",
+                model_call_attempted=True,
+                model_call_succeeded=True,
+            ) from exc
+
+        return LLMFlowSuggestionResult(
+            suggested_flow=suggested_flow,
+            rationale=rationale,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
+    def generate_mapping_suggestion(self, context: dict) -> LLMMappingSuggestionResult:
+        raw = self._converse(
+            _mapping_suggestion_system_prompt(),
+            json.dumps(context, separators=(",", ":")),
+        )
+        try:
+            parsed = json.loads(_strip_markdown_json_fence(raw))
+            suggestions = _validated_mapping_suggestion_payload(parsed)
+        except Exception as exc:
+            raise LLMProviderError(
+                "Bedrock mapping suggestion returned invalid structured output.",
+                model_call_attempted=True,
+                model_call_succeeded=True,
+            ) from exc
+
+        return LLMMappingSuggestionResult(
+            suggestions=suggestions,
+            model_name=self.model_name,
+            model_call_attempted=True,
+            model_call_succeeded=True,
+            provider_name=self.provider_name,
+        )
+
+
 def make_llm_provider(
     provider: AIProvider,
     model_name: str,
@@ -965,6 +1114,7 @@ def make_llm_provider(
     ollama_base_url: str = "http://localhost:11434",
     ollama_timeout_seconds: int = 20,
     ollama_think: bool = False,
+    bedrock_region: str = "ap-southeast-2",
 ) -> LLMProvider | None:
     if provider == "mock":
         return MockLLMProvider(model_name=model_name)
@@ -979,5 +1129,8 @@ def make_llm_provider(
             timeout_seconds=ollama_timeout_seconds,
             think=ollama_think,
         )
+
+    if provider == "bedrock":
+        return BedrockProvider(model_id=model_name, region=bedrock_region)
 
     return None

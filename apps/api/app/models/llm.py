@@ -3,8 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-AIProvider = Literal["disabled", "mock", "openai", "ollama"]
-AIRoutingMode = Literal["rule_based", "mock_llm", "openai", "ollama", "disabled"]
+AIProvider = Literal["disabled", "mock", "openai", "ollama", "bedrock"]
+AIRoutingMode = Literal["rule_based", "mock_llm", "openai", "ollama", "bedrock", "disabled"]
 
 
 class AIRoutingMetadata(BaseModel):

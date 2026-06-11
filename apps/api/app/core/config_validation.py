@@ -47,8 +47,8 @@ def validate_settings(settings: Settings) -> ConfigValidationResult:
             warnings.append("NetSuite sandbox token-based auth values are incomplete.")
 
     ai_provider = settings.ai_provider.lower()
-    if ai_provider not in {"disabled", "mock", "openai", "ollama"}:
-        errors.append("AI_PROVIDER must be disabled, mock, openai, or ollama.")
+    if ai_provider not in {"disabled", "mock", "openai", "ollama", "bedrock"}:
+        errors.append("AI_PROVIDER must be disabled, mock, openai, ollama, or bedrock.")
 
     if ai_provider == "openai" and not settings.openai_api_key:
         warnings.append("OPENAI_API_KEY is not configured; OpenAI mode will fall back safely.")
@@ -67,6 +67,7 @@ def validate_settings(settings: Settings) -> ConfigValidationResult:
             "aiProvider": ai_provider,
             "openAiKeyConfigured": bool(settings.openai_api_key),
             "ollamaBaseUrlConfigured": bool(settings.ollama_base_url),
+            "bedrockModelId": settings.bedrock_model_id if ai_provider == "bedrock" else None,
         },
     )
 

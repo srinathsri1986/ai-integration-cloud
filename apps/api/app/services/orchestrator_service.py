@@ -49,6 +49,7 @@ class OrchestratorService:
             openai_api_key=self.openai_api_key,
             ollama_base_url=settings.ollama_base_url,
             ollama_timeout_seconds=settings.ollama_timeout_seconds,
+            bedrock_region=settings.bedrock_region,
         )
 
     def _default_model_name(self) -> str:
@@ -59,6 +60,9 @@ class OrchestratorService:
 
         if self.ai_provider == "ollama":
             return settings.ollama_model
+
+        if self.ai_provider == "bedrock":
+            return settings.bedrock_model_id
 
         return "mock-cfo-intent-v0"
 

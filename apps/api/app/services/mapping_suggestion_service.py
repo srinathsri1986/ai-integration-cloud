@@ -130,6 +130,7 @@ class MappingSuggestionService:
             ollama_timeout_seconds=settings.ollama_timeout_seconds,
             # Mapping suggestion is a deep semantic task — enable Qwen3 reasoning mode.
             ollama_think=True,
+            bedrock_region=settings.bedrock_region,
         )
 
     def suggest(self, request: MappingSuggestionRequest) -> MappingSuggestionResponse:
@@ -410,6 +411,9 @@ class MappingSuggestionService:
 
         if self.ai_provider == "ollama":
             return settings.ollama_model
+
+        if self.ai_provider == "bedrock":
+            return settings.bedrock_model_id
 
         return "mock-mapping-suggestion-v0"
 

@@ -172,6 +172,7 @@ class FlowSuggestionService:
             ollama_timeout_seconds=settings.ollama_timeout_seconds,
             # Flow generation requires reasoning over NL intent → multi-step workflow structure.
             ollama_think=True,
+            bedrock_region=settings.bedrock_region,
         )
 
     def suggest(self, request: FlowSuggestionRequest) -> FlowSuggestionResponse:
@@ -492,6 +493,9 @@ class FlowSuggestionService:
 
         if self.ai_provider == "ollama":
             return settings.ollama_model
+
+        if self.ai_provider == "bedrock":
+            return settings.bedrock_model_id
 
         return "mock-flow-suggestion-v0"
 

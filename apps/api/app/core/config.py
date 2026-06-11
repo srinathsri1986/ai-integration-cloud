@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: int = 120  # allow time for first-token on larger prompts
     ollama_think: bool = False  # Per-request thinking mode; services override per task
 
+    # ── AWS Bedrock ───────────────────────────────────────────────────────────
+    # Leave blank to use the EC2 instance profile / environment credentials.
+    # Model IDs: amazon.nova-micro-v1:0 (fast/cheap), amazon.nova-lite-v1:0, amazon.nova-pro-v1:0
+    bedrock_model_id: str = "amazon.nova-micro-v1:0"
+    bedrock_region: str = "ap-southeast-2"
+
     # ── Slack OAuth2 connector ────────────────────────────────────────────────
     # Register a Slack app at https://api.slack.com/apps to get these values.
     # Leave blank in mock mode — the Slack connector will use mock responses.
