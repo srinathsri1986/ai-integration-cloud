@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── API: lint + test ────────────────────────────────────────────────────────
+  api-test:
+    name: API — lint & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install ".[dev]"
+
+      - name: Lint (ruff)
+        working-directory: apps/api
+        run: ruff check app tests
+
+      - name: Test (pytest)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: "sqlite+pysqlite:////tmp/ci_tests.db"
+          AI_PROVIDER: "mock"
+          NETSUITE_MODE: "mock"
+          ENVIRONMENT: "test"
+        run: pytest --tb=short -q
+
+  # ── Web: type-check + build ─────────────────────────────────────────────────
+  web-build:
+    name: Web — typecheck & build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @ai-integration-cloud/shared build
+
+      - name: Typecheck
+        run: pnpm --filter @ai-integration-cloud/web exec tsc --noEmit
+
+      - name: Build web
+        run: pnpm --filter @ai-integration-cloud/web build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: "https://api.example.com"
