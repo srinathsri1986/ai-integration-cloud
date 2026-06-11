@@ -18,7 +18,11 @@ export type MappingTransform =
   | "rename"
   | "format_date"
   | "lookup_placeholder"
-  | "constant_placeholder";
+  | "constant_placeholder"
+  | "uppercase"
+  | "lowercase"
+  | "to_string"
+  | "to_number";
 
 export const mappingTransforms: Array<{
   description: string;
@@ -49,6 +53,26 @@ export const mappingTransforms: Array<{
     description: "Set a reviewed constant value placeholder.",
     label: "Constant placeholder",
     value: "constant_placeholder"
+  },
+  {
+    description: "Convert text to uppercase.",
+    label: "Uppercase",
+    value: "uppercase"
+  },
+  {
+    description: "Convert text to lowercase.",
+    label: "Lowercase",
+    value: "lowercase"
+  },
+  {
+    description: "Convert value to string.",
+    label: "To string",
+    value: "to_string"
+  },
+  {
+    description: "Convert value to number.",
+    label: "To number",
+    value: "to_number"
   }
 ];
 
