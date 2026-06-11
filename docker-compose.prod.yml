@@ -71,7 +71,7 @@ services:
   celery:
     image: ${API_IMAGE}
     restart: unless-stopped
-    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    command: celery -A app.worker.celery_app:celery_app worker --loglevel=info --concurrency=2
     <<: *api-env
     depends_on:
       postgres:
