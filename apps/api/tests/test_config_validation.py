@@ -40,7 +40,7 @@ def test_invalid_modes_fail_closed() -> None:
 
     assert result.is_valid is False
     assert "NETSUITE_MODE must be mock or sandbox." in result.errors
-    assert "AI_PROVIDER must be disabled, mock, openai, or ollama." in result.errors
+    assert "AI_PROVIDER must be disabled, mock, openai, ollama, or bedrock." in result.errors
 
 
 def test_validation_posture_does_not_include_secret_values() -> None:
