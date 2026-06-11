@@ -379,7 +379,11 @@ export const mappingTransformSchema = z.enum([
   "rename",
   "format_date",
   "lookup_placeholder",
-  "constant_placeholder"
+  "constant_placeholder",
+  "uppercase",
+  "lowercase",
+  "to_string",
+  "to_number",
 ]);
 
 export type MappingTransform = z.infer<typeof mappingTransformSchema>;

@@ -26,19 +26,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Plus, RotateCcw, Trash2, Wand2 } from "lucide-react";
-import type { FieldInfo, InlineFieldMapping } from "@ai-integration-cloud/shared";
+import type { FieldInfo, InlineFieldMapping, MappingTransform } from "@ai-integration-cloud/shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export type MappingTransform =
-  | "direct"
-  | "uppercase"
-  | "lowercase"
-  | "to_string"
-  | "to_number"
-  | "format_date";
 
 const TRANSFORMS: { value: MappingTransform; label: string }[] = [
   { value: "direct",      label: "Direct copy"    },
