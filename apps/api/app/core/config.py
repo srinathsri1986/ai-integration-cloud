@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: int = 120  # allow time for first-token on larger prompts
     ollama_think: bool = False  # Per-request thinking mode; services override per task
 
+    # ── Cookie security ──────────────────────────────────────────────────────
+    # Set to false when running behind a reverse proxy (e.g. CloudFront) that
+    # terminates TLS and forwards over HTTP internally.
+    secure_cookies: bool = True
+
     # ── AWS Bedrock ───────────────────────────────────────────────────────────
     # Leave blank to use the EC2 instance profile / environment credentials.
     # Model IDs: amazon.nova-micro-v1:0 (fast/cheap), amazon.nova-lite-v1:0, amazon.nova-pro-v1:0
