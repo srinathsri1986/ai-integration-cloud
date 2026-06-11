@@ -277,7 +277,9 @@ export function DataMappingStudio() {
       if (hint.autoSuggest) {
         setPendingAutoSuggest(true);
       } else {
-        setActiveStep("discover");
+        // Land on "describe" (step 1) so the user sees the pre-selected systems
+        // and only needs to choose the specific objects before hitting Suggest.
+        setActiveStep("describe");
       }
 
       sessionStorage.removeItem("askAI_mappingSuggestion");
@@ -737,6 +739,65 @@ export function DataMappingStudio() {
                 Human approval required
               </Badge>
             </div>
+
+            {/* ── Source → Target system + object selectors ───────────────── */}
+            <div className="mt-5 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_auto_1fr]">
+              {/* Source */}
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Source</p>
+                <select
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-primary"
+                  value={sourceSystemId}
+                  onChange={(e) => onSourceSystemChange(e.target.value)}
+                >
+                  {integrationSystems
+                    .filter((s) => objectsForSystemFrom(allMappingObjects, s.id).length > 0)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                </select>
+                <select
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-primary"
+                  value={sourceObjectId}
+                  onChange={(e) => { setSourceObjectId(e.target.value); setMappings([]); setSuggestions([]); }}
+                >
+                  {sourceObjects.map((o) => (
+                    <option key={o.id} value={o.id}>{o.displayName}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Arrow divider */}
+              <div className="flex items-center justify-center py-2 text-slate-400">
+                <ArrowRightLeft className="h-4 w-4" />
+              </div>
+
+              {/* Target */}
+              <div className="grid gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Target</p>
+                <select
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-primary"
+                  value={targetSystemId}
+                  onChange={(e) => onTargetSystemChange(e.target.value)}
+                >
+                  {integrationSystems
+                    .filter((s) => objectsForSystemFrom(allMappingObjects, s.id).length > 0)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                </select>
+                <select
+                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-primary"
+                  value={targetObjectId}
+                  onChange={(e) => { setTargetObjectId(e.target.value); setMappings([]); setSuggestions([]); }}
+                >
+                  {targetObjects.map((o) => (
+                    <option key={o.id} value={o.id}>{o.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <label className="mt-5 block text-sm font-semibold text-slate-950" htmlFor="mapping-prompt">
               Describe the integration mapping
             </label>
