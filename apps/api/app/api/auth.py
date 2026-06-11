@@ -199,7 +199,17 @@ def me(user: AuthUser = Depends(get_current_user)) -> AuthUser:
 # --- Legacy placeholder login (dev/test only) ---
 
 @router.post("/login/placeholder", response_model=LoginResponse, include_in_schema=False)
-def login_placeholder(request: LegacyLoginRequest) -> LoginResponse:
+def login_placeholder(request: LegacyLoginRequest, response: Response) -> LoginResponse:
     """Local dev / test endpoint. Not for production use."""
+    settings = get_settings()
     user = AuthUser(userId="local-dev-user", email=request.email, role=request.role)
-    return LoginResponse(accessToken=create_placeholder_token(user), user=user)
+    token = create_placeholder_token(user)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=settings.secure_cookies and settings.environment != "local",
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+    return LoginResponse(accessToken=token, user=user)
