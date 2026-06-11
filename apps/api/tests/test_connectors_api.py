@@ -552,7 +552,6 @@ def test_generic_test_endpoint_does_not_expose_stack_trace() -> None:
             return _ErrorPlugin()
         return original_get(connector_id)
 
-    import pytest
     from fastapi.testclient import TestClient as _TC
     from app.main import app as _app
 

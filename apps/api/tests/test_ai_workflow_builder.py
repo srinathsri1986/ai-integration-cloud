@@ -10,7 +10,6 @@ Tests cover:
   • LLM context includes sourceConnector + targetConnector when ai_provider != disabled
 """
 
-import pytest
 
 from app.models.flows import FlowSuggestionRequest
 from app.services.flow_suggestion_service import (

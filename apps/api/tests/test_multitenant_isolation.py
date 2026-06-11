@@ -10,7 +10,6 @@ Covers:
 
 from unittest.mock import patch, MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.core.auth import create_placeholder_token

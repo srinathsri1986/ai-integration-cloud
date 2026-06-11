@@ -1,0 +1,108 @@
+# Production Docker Compose — single EC2 instance (t3.micro)
+# Copy .env.prod.example → .env.prod, fill real values, then:
+#   docker compose -f docker-compose.prod.yml up -d
+
+version: "3.9"
+
+x-api-env: &api-env
+  environment:
+    ENVIRONMENT: production
+    DATABASE_URL: postgresql+psycopg://aic_app:${POSTGRES_PASSWORD}@postgres:5432/aic_db
+    REDIS_URL: redis://redis:6379/0
+    PLACEHOLDER_JWT_SECRET: ${PLACEHOLDER_JWT_SECRET}
+    JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+    CONNECTOR_ENCRYPTION_KEY: ${CONNECTOR_ENCRYPTION_KEY}
+    API_CORS_ORIGINS: ${API_CORS_ORIGINS}
+    AI_PROVIDER: ${AI_PROVIDER:-mock}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    NETSUITE_MODE: ${NETSUITE_MODE:-mock}
+    LOG_LEVEL: INFO
+
+services:
+  # ── Database ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aic_db
+      POSTGRES_USER: aic_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aic_app -d aic_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Cache / broker ────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API ───────────────────────────────────────────────────────────────────
+  api:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    <<: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Celery worker ─────────────────────────────────────────────────────────
+  celery:
+    image: ${API_IMAGE}
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    <<: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Web (Next.js) ─────────────────────────────────────────────────────────
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    expose:
+      - "3000"
+    depends_on:
+      - api
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - web
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -10,7 +10,6 @@ from app.core.auth import require_permissions, require_tenant
 from app.core.config import get_settings
 from app.services.credential_service import credential_service
 from app.models.connectors import (
-    ConnectorListItem,
     ConnectorTestResult,
     NetSuiteConnectionTestResponse,
     NetSuiteConnectorConfig,
@@ -473,7 +472,7 @@ def salesforce_oauth_authorize(user=Depends(require_permissions("connector:admin
     db_creds  = _get_oauth_app_creds("salesforce", tenant_id=user.tenant_id)
     client_id = (db_creds or {}).get("client_id")  or settings.salesforce_client_id
     login_url = (db_creds or {}).get("client_id") and (
-        credential_service._fetch_config(f"oauth_app:salesforce", user.tenant_id) or {}
+        credential_service._fetch_config("oauth_app:salesforce", user.tenant_id) or {}
     ).get("config", {}).get("login_url_override") or settings.salesforce_login_url
 
     if not client_id:

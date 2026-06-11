@@ -10,11 +10,7 @@ Guards two post-R20 behaviours:
 from __future__ import annotations
 
 import gzip
-import io
-import types
-import urllib.error
 
-import pytest
 
 from app.connectors.sap.live_connector import SAPLiveConfig, SAPLiveConnector
 

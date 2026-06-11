@@ -12,7 +12,6 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.connectors import connector_registry
-from app.connectors.base import ConnectorTool
 from app.main import app
 from app.services.audit_service import audit_service
 from app.services.credential_service import credential_service
@@ -156,7 +155,6 @@ def test_schema_cache_invalidate_connector_clears_all_tenants() -> None:
 
 def test_schema_cache_live_ttl_set(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """Live schemas should have a TTL; mock schemas cached indefinitely."""
-    import app.services.schema_cache as sc_module
     cache = _make_cache()
     # Live schema: TTL should be set (expires_at is not None)
     cache.set("salesforce", [{}], tenant_id=1, is_mock=False)

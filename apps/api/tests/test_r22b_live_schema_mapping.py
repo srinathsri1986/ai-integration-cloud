@@ -9,11 +9,10 @@ from __future__ import annotations
 import pytest
 from unittest import mock
 
-from app.models.mapping import LiveSchemaField, MappingObject, MappingSuggestionRequest
+from app.models.mapping import LiveSchemaField, MappingSuggestionRequest
 from app.services.mapping_suggestion_service import (
     MappingSuggestionService,
     _live_fields_to_mapping_object,
-    _TYPE_NORMALISE,
 )
 
 

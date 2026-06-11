@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import unittest.mock as mock
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app

@@ -1,6 +1,5 @@
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
-from statistics import median
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session

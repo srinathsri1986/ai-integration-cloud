@@ -22,8 +22,6 @@ from app.connectors.netsuite.mock_data import (
     MOCK_JOURNAL_ENTRIES,
     MOCK_EMPLOYEES,
     MOCK_ITEMS,
-    MOCK_EXPENSE_REPORTS,
-    MOCK_SUBSIDIARIES,
 )
 from app.services.mapping_catalog import list_mapping_objects
 
@@ -315,7 +313,7 @@ class TestLiveConnectorOAuth:
         assert h1 != h2  # nonce + timestamp differ between calls
 
     def test_error_on_network_failure(self) -> None:
-        from app.connectors.netsuite.live_connector import NetSuiteLiveConnector, NetSuiteLiveConnectorError
+        from app.connectors.netsuite.live_connector import NetSuiteLiveConnector
         connector = NetSuiteLiveConnector(self._make_config())
         result = connector.test_connection()  # no network → returns ok=False
         assert result["mode"] == "live"
