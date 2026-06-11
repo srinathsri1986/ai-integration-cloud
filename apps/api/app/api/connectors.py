@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.connectors import connector_registry
-from app.core.auth import require_permissions
+from app.core.auth import require_permissions, require_tenant
 from app.core.config import get_settings
 from app.services.credential_service import credential_service
 from app.models.connectors import (
@@ -59,6 +59,7 @@ def save_oauth_app_config(
     connector_id: str,
     config: OAuthAppConfig,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Store the OAuth2 Connected App credentials entered from the UI.
 
@@ -101,6 +102,7 @@ def get_oauth_app_config_status(
 def delete_oauth_app_config(
     connector_id: str,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Remove stored OAuth app credentials."""
     credential_service.revoke_token(f"oauth_app:{connector_id}", tenant_id=user.tenant_id)
@@ -131,6 +133,7 @@ class NetSuiteLiveConfig(BaseModel):
 def configure_netsuite(
     config: NetSuiteLiveConfig,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Store encrypted NetSuite token-based OAuth credentials entered from the UI."""
     from app.services.schema_cache import schema_cache
@@ -151,7 +154,10 @@ def configure_netsuite(
 
 
 @router.delete("/netsuite/live-config/disconnect")
-def disconnect_netsuite(user=Depends(require_permissions("connector:admin"))) -> dict:
+def disconnect_netsuite(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("netsuite", tenant_id=user.tenant_id)
     schema_cache.invalidate("netsuite", tenant_id=user.tenant_id)
@@ -201,6 +207,7 @@ class SAPLiveConfig(BaseModel):
 def configure_sap(
     config: SAPLiveConfig,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Store encrypted SAP credentials entered from the UI."""
     from app.services.schema_cache import schema_cache
@@ -228,7 +235,10 @@ def configure_sap(
 
 
 @router.delete("/sap/live-config/disconnect")
-def disconnect_sap(user=Depends(require_permissions("connector:admin"))) -> dict:
+def disconnect_sap(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("sap", tenant_id=user.tenant_id)
     schema_cache.invalidate("sap", tenant_id=user.tenant_id)
@@ -254,6 +264,7 @@ class OracleLiveConfig(BaseModel):
 def configure_oracle(
     config: OracleLiveConfig,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Store encrypted Oracle DB credentials entered from the UI."""
     from app.services.schema_cache import schema_cache
@@ -274,7 +285,10 @@ def configure_oracle(
 
 
 @router.delete("/oracle/live-config/disconnect")
-def disconnect_oracle(user=Depends(require_permissions("connector:admin"))) -> dict:
+def disconnect_oracle(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("oracle", tenant_id=user.tenant_id)
     schema_cache.invalidate("oracle", tenant_id=user.tenant_id)
@@ -309,6 +323,7 @@ class HCMLiveConfig(BaseModel):
 def configure_hcm(
     config: HCMLiveConfig,
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Store encrypted HCM (Workday) credentials entered from the UI."""
     from app.services.schema_cache import schema_cache
@@ -329,7 +344,10 @@ def configure_hcm(
 
 
 @router.delete("/hcm/live-config/disconnect")
-def disconnect_hcm(user=Depends(require_permissions("connector:admin"))) -> dict:
+def disconnect_hcm(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("hcm", tenant_id=user.tenant_id)
     schema_cache.invalidate("hcm", tenant_id=user.tenant_id)
@@ -428,7 +446,10 @@ def slack_oauth_callback(code: str = "", error: str = "") -> RedirectResponse:
 
 
 @router.delete("/slack/oauth/disconnect")
-def slack_oauth_disconnect(user=Depends(require_permissions("connector:admin"))) -> dict:
+def slack_oauth_disconnect(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     """Revoke the stored Slack token and reset to mock mode."""
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("slack", tenant_id=user.tenant_id)
@@ -526,7 +547,10 @@ def salesforce_oauth_callback(code: str = "", error: str = "", error_description
 
 
 @router.delete("/salesforce/oauth/disconnect")
-def salesforce_oauth_disconnect(user=Depends(require_permissions("connector:admin"))) -> dict:
+def salesforce_oauth_disconnect(
+    user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
+) -> dict:
     """Revoke the stored Salesforce token and reset to mock mode."""
     from app.services.schema_cache import schema_cache
     credential_service.revoke_token("salesforce", tenant_id=user.tenant_id)
@@ -903,6 +927,7 @@ def update_connector_config(
     connector_id: str,
     body: dict = Body(...),
     user=Depends(require_permissions("connector:admin")),
+    _tenant=Depends(require_tenant),
 ) -> dict:
     """Update non-secret configuration metadata for a connector (per-tenant).
 

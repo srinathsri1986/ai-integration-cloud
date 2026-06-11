@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.auth import require_permissions
+from app.core.auth import require_permissions, require_tenant
 from app.models.mapping import (
     MappingDefinition,
     MappingDefinitionUpsertRequest,
@@ -37,6 +37,7 @@ def list_mapping_definitions(
 def upsert_mapping_definition(
     request: MappingDefinitionUpsertRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> MappingDefinition:
     try:
         return mapping_definition_service.upsert_mapping(request, tenant_id=user.tenant_id)
@@ -90,6 +91,7 @@ def transition_mapping_lifecycle(
     mapping_id: str,
     request: MappingLifecycleRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> MappingLifecycleResponse:
     try:
         return mapping_definition_service.transition_mapping(mapping_id, request.action, request.note, tenant_id=user.tenant_id)
@@ -128,6 +130,7 @@ def simulate_mapping_definition(
 def delete_mapping_definition(
     mapping_id: str,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> dict[str, str]:
     try:
         return mapping_definition_service.delete_mapping(mapping_id, tenant_id=user.tenant_id)

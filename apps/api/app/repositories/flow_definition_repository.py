@@ -135,18 +135,28 @@ class FlowDefinitionRepository:
 
     def _scope(self, statement):
         if self._tenant_id is not None:
+            # Authenticated tenant: see own records + unscoped global records.
             statement = statement.where(
                 or_(
                     FlowDefinitionRecord.tenant_id == self._tenant_id,
                     FlowDefinitionRecord.tenant_id.is_(None),
                 )
             )
+        else:
+            # No resolved tenant — show only unscoped records, never all tenants.
+            statement = statement.where(FlowDefinitionRecord.tenant_id.is_(None))
         return statement
 
     def _assert_visible(self, record: FlowDefinitionRecord) -> None:
+        """Raise 403 (not 404) when the record belongs to a different tenant.
+
+        Returning 404 for cross-tenant access leaks the existence of the resource.
+        403 is the correct response: the record exists, but you are not allowed to see it.
+        """
+        from fastapi import HTTPException
         if self._tenant_id is not None:
             if record.tenant_id is not None and record.tenant_id != self._tenant_id:
-                raise KeyError(record.flow_id)
+                raise HTTPException(status_code=403, detail="Access denied.")
 
     def list_scheduled_flow_specs(self) -> list[dict]:
         """Return minimal specs for all published scheduled flows (for Beat scheduler)."""

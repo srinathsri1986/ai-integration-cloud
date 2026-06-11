@@ -73,18 +73,24 @@ class MappingDefinitionRepository:
 
     def _scope(self, statement):
         if self._tenant_id is not None:
+            # Authenticated tenant: see own records + unscoped global records.
             statement = statement.where(
                 or_(
                     MappingDefinitionRecord.tenant_id == self._tenant_id,
                     MappingDefinitionRecord.tenant_id.is_(None),
                 )
             )
+        else:
+            # No resolved tenant — show only unscoped records, never all tenants.
+            statement = statement.where(MappingDefinitionRecord.tenant_id.is_(None))
         return statement
 
     def _assert_visible(self, record: MappingDefinitionRecord) -> None:
+        """Raise 403 (not 404) when the record belongs to a different tenant."""
+        from fastapi import HTTPException
         if self._tenant_id is not None:
             if record.tenant_id is not None and record.tenant_id != self._tenant_id:
-                raise KeyError(record.mapping_id)
+                raise HTTPException(status_code=403, detail="Access denied.")
 
     def _to_model(self, record: MappingDefinitionRecord) -> MappingDefinition:
         return MappingDefinition(

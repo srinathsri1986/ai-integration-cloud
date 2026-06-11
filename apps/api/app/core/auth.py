@@ -121,7 +121,17 @@ def get_current_user(
         token = access_token
 
     if token is None:
-        # Dev fallback: unauthenticated request gets a default local-dev identity
+        # In non-local environments, unauthenticated requests must be rejected.
+        # Silently granting a dev identity in production would bypass all tenant
+        # isolation — fail closed instead.
+        settings = get_settings()
+        if settings.environment not in ("local", "test"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # Dev/test fallback: grant a local-dev identity with no tenant scope.
         return AuthUser(userId="local-dev-user", email="local-dev@example.com", role="Integration Admin")
 
     # Try real JWT first
@@ -154,6 +164,24 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
         ) from exc
+
+
+def require_tenant(user: AuthUser = Depends(get_current_user)) -> AuthUser:
+    """Dependency that rejects requests with no resolved tenant_id in production.
+
+    Use on any endpoint that reads or writes tenant-scoped data.
+    In local/test environments a missing tenant_id is tolerated (dev fallback).
+    In all other environments a missing tenant_id → 403 to prevent accidental
+    cross-tenant data access when the JWT is missing the tenantId claim.
+    """
+    if user.tenant_id is None:
+        settings = get_settings()
+        if settings.environment not in ("local", "test"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="A valid tenant context is required for this operation.",
+            )
+    return user
 
 
 def require_permissions(*permissions: str) -> Callable[[AuthUser], AuthUser]:

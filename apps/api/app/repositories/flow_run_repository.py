@@ -148,12 +148,17 @@ class FlowRunRepository:
 
     def _scope(self, statement):
         if self._tenant_id is not None:
+            # Authenticated tenant: see own records + unscoped global records.
             statement = statement.where(
                 or_(
                     FlowRunRecord.tenant_id == self._tenant_id,
                     FlowRunRecord.tenant_id.is_(None),
                 )
             )
+        else:
+            # No resolved tenant (dev/test fallback) — show only unscoped records.
+            # Never return all tenants' data when tenant context is absent.
+            statement = statement.where(FlowRunRecord.tenant_id.is_(None))
         return statement
 
     def _to_response(self, record: FlowRunRecord) -> FlowRunResponse:

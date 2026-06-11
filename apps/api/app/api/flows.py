@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.core.auth import require_permissions
+from app.core.auth import require_permissions, require_tenant
 from app.models.flows import (
     FlowDefinition,
     FlowDefinitionUpsertRequest,
@@ -101,6 +101,7 @@ def get_flow_run(
 def upsert_flow_definition(
     request: FlowDefinitionUpsertRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> FlowDefinition:
     try:
         return flow_service.upsert_flow(request, tenant_id=user.tenant_id)
@@ -135,6 +136,7 @@ def transition_flow_lifecycle(
     flow_id: FlowId,
     request: FlowLifecycleRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> FlowLifecycleResponse:
     try:
         return flow_service.transition_flow(flow_id, request.action, request.note, tenant_id=user.tenant_id)
@@ -154,6 +156,7 @@ def transition_flow_lifecycle(
 def delete_flow_definition(
     flow_id: FlowId,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> dict[str, str]:
     try:
         return flow_service.delete_flow(flow_id, tenant_id=user.tenant_id)
@@ -198,6 +201,7 @@ def link_mapping(
     flow_id: FlowId,
     body: LinkMappingRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> FlowDefinition:
     """Attach or detach a published MappingDefinition on any flow, regardless of lifecycle status.
 
@@ -224,6 +228,7 @@ def patch_flow_step(
     step_id: str,
     body: PatchStepRequest,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> FlowDefinition:
     """Update a single step inside any flow, regardless of lifecycle status.
 
@@ -257,7 +262,11 @@ def get_flow(flow_id: FlowId, user=Depends(require_permissions("flow:read"))) ->
 
 
 @router.post("/{flow_id}/run", response_model=FlowRunResponse, status_code=status.HTTP_202_ACCEPTED)
-def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> FlowRunResponse:
+def run_flow(
+    flow_id: FlowId,
+    user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
+) -> FlowRunResponse:
     try:
         return flow_service.enqueue_flow_run(flow_id, tenant_id=user.tenant_id)
     except KeyError as exc:
@@ -271,6 +280,7 @@ def run_flow(flow_id: FlowId, user=Depends(require_permissions("flow:run"))) -> 
 def replay_flow_run(
     request_id: str,
     user=Depends(require_permissions("flow:run")),
+    _tenant=Depends(require_tenant),
 ) -> FlowRunResponse:
     """Re-trigger the flow that produced the given run. Useful for retrying failed runs
     or re-executing a flow with the same configuration without navigating to the flow page."""

@@ -186,9 +186,13 @@ class AuditRepository:
 
     def _scope(self, statement):
         if self._tenant_id is not None:
+            # Authenticated tenant: see own audit logs + unscoped global entries.
             statement = statement.where(
                 (AuditLogRecord.tenant_id == self._tenant_id) | AuditLogRecord.tenant_id.is_(None)
             )
+        else:
+            # No resolved tenant — show only unscoped entries, never all tenants.
+            statement = statement.where(AuditLogRecord.tenant_id.is_(None))
         return statement
 
     def _to_entry(self, record: AuditLogRecord) -> AuditLogEntry:
