@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ConnectorDefinition, ConnectorTool } from "@ai-integration-cloud/shared";
 import type { ApiResult, ConnectorSchema } from "@/lib/api";
-import { testConnector, getConnectorTools, getConnectorSchema } from "@/lib/api";
+import { LOCAL_AUTH_TOKEN_KEY, testConnector, getConnectorTools, getConnectorSchema } from "@/lib/api";
 import {
   CheckCircle2,
   ChevronDown,
@@ -216,7 +216,7 @@ function SchemaViewer({ schema }: { schema: ConnectorSchema }) {
 
 function _getToken(): string {
   if (typeof window === "undefined") return "";
-  return window.localStorage.getItem("auth_token") ?? "";
+  return window.localStorage.getItem(LOCAL_AUTH_TOKEN_KEY) ?? "";
 }
 
 function Field({
@@ -496,7 +496,7 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
                 <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
                   <p className="font-semibold">Create a Connected App first</p>
                   <p className="mt-0.5">In Salesforce: Setup → App Manager → New Connected App.<br />
-                  Set callback URL to: <code className="font-mono">http://localhost:8000/api/v1/connectors/salesforce/oauth/callback</code><br />
+                  Set callback URL to: <code className="font-mono">{API_BASE}/api/v1/connectors/salesforce/oauth/callback</code><br />
                   Scopes: <code className="font-mono">api, refresh_token, offline_access</code></p>
                 </div>
               )}
@@ -504,7 +504,7 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
                 <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800">
                   <p className="font-semibold">Create a Slack App first</p>
                   <p className="mt-0.5">Go to <strong>api.slack.com/apps</strong> → Create New App → From scratch.<br />
-                  Add redirect URI: <code className="font-mono">http://localhost:8000/api/v1/connectors/slack/oauth/callback</code><br />
+                  Add redirect URI: <code className="font-mono">{API_BASE}/api/v1/connectors/slack/oauth/callback</code><br />
                   Bot token scopes: <code className="font-mono">chat:write, channels:read, channels:join</code></p>
                 </div>
               )}

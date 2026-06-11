@@ -17,6 +17,20 @@ x-api-env: &api-env
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     NETSUITE_MODE: ${NETSUITE_MODE:-mock}
     LOG_LEVEL: INFO
+    # Cookie flag — set false when TLS is terminated at CloudFront (HTTP internally)
+    SECURE_COOKIES: ${SECURE_COOKIES:-true}
+    # Salesforce OAuth2 connector
+    SALESFORCE_CLIENT_ID: ${SALESFORCE_CLIENT_ID:-}
+    SALESFORCE_CLIENT_SECRET: ${SALESFORCE_CLIENT_SECRET:-}
+    SALESFORCE_REDIRECT_URI: ${SALESFORCE_REDIRECT_URI:-}
+    SALESFORCE_LOGIN_URL: ${SALESFORCE_LOGIN_URL:-https://login.salesforce.com}
+    # Slack OAuth2 connector
+    SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+    SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+    SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-}
+    # AWS Bedrock
+    BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-amazon.nova-micro-v1:0}
+    BEDROCK_REGION: ${BEDROCK_REGION:-ap-southeast-2}
 
 services:
   # ── Database ──────────────────────────────────────────────────────────────
@@ -86,6 +100,8 @@ services:
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+      # Server-side fetches go direct to the API container — no CloudFront round-trip
+      SERVER_API_BASE_URL: http://api:8000
     expose:
       - "3000"
     depends_on:
