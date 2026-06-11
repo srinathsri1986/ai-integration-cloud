@@ -96,9 +96,20 @@ class CustomEndpointCreateRequest(BaseModel):
         v = v.rstrip("/")
         if not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("base_url must start with http:// or https://")
-        forbidden = ["localhost", "127.0.0.1", "0.0.0.0", "169.254.", "10.", "192.168.", "172.16."]
-        # Allow localhost in dev (not in a deployed environment — SSRF guard is at infra level)
-        # For now we let localhost through so tests can run against a local mock server.
+        # SSRF guard: block private/loopback addresses in deployed environments.
+        # localhost is permitted only in local/test to allow integration test mocks.
+        from app.core.config import get_settings
+        settings = get_settings()
+        if settings.environment not in ("local", "test"):
+            forbidden = [
+                "localhost", "127.0.0.1", "0.0.0.0", "169.254.",
+                "10.", "192.168.", "172.16.",
+            ]
+            if any(token in v for token in forbidden):
+                raise ValueError(
+                    "base_url must resolve to a publicly routable address. "
+                    "Private/loopback addresses are not permitted."
+                )
         return v
 
     @field_validator("name", "description")

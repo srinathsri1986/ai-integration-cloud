@@ -26,7 +26,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_strong_secrets_in_production(self) -> "Settings":
-        """Refuse to start in non-local environments with known-weak secrets."""
+        """Refuse to start in non-local environments with known-weak or missing secrets."""
         if self.environment in ("local", "test"):
             return self
         weak_fields = []
@@ -34,6 +34,10 @@ class Settings(BaseSettings):
             weak_fields.append("PLACEHOLDER_JWT_SECRET")
         if self.jwt_secret_key in _WEAK_SECRETS:
             weak_fields.append("JWT_SECRET_KEY")
+        if not self.connector_encryption_key:
+            # Blank encryption key means credentials are stored without Fernet encryption.
+            # This is a hard requirement in any deployed environment.
+            weak_fields.append("CONNECTOR_ENCRYPTION_KEY")
         if weak_fields:
             raise ValueError(
                 f"Refusing to start in environment={self.environment!r} with weak default "
