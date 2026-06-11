@@ -32,7 +32,8 @@ class HCMPlugin:
 
     def list_tools(self): return list(_TOOLS)
     def execute_tool(self, tool_id: str, params: dict, tenant_id: int | None = None) -> dict:
-        if tool_id not in _TOOL_MAP: raise KeyError(f"Unknown HCM tool: {tool_id!r}")
+        if tool_id not in _TOOL_MAP:
+            raise KeyError(f"Unknown HCM tool: {tool_id!r}")
         return {"connector": "hcm", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
     def test_connection(self): return {"ok": True, "mode": "mock", "message": "HCM mock connector is ready (mock mode)."}
     def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:

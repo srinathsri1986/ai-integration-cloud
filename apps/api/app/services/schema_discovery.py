@@ -13,7 +13,6 @@ Security notes:
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -98,7 +97,6 @@ def _fields_from_openapi_schema(schema: dict, name: str = "", depth: int = 0) ->
         return []
 
     fields: list[dict] = []
-    schema_type = schema.get("type", "object")
     properties = schema.get("properties", {})
     required_set = set(schema.get("required", []))
 

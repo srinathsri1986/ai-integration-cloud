@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.custom_endpoint_service import custom_endpoint_service
-from app.services.mapping_engine import apply_mappings, _deep_get, _deep_set, _transform
+from app.services.mapping_engine import apply_mappings, _deep_get, _deep_set
 from app.services.audit_service import audit_service
 from app.services.flow_service import flow_service
 from app.models.custom_endpoint import InlineFieldMapping, CustomEndpointCreateRequest
@@ -321,7 +321,8 @@ def test_flow_execution_with_field_mappings_adds_timeline_step() -> None:
     assert run_resp.status_code == 202
     request_id = run_resp.json()["requestId"]
 
-    import time; time.sleep(0.5)
+    import time
+    time.sleep(0.5)
 
     detail_resp = client.get(f"/api/v1/flows/runs/{request_id}")
     assert detail_resp.status_code == 200

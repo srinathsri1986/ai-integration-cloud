@@ -281,8 +281,6 @@ class ConnectorCredentialService:
                 ).fetchall()
                 # Build result: process global rows first, then tenant rows override them.
                 result: dict[str, str] = {}
-                global_rows: dict[str, str] = {}
-                tenant_rows: dict[str, str] = {}
                 for row in rows:
                     # We need to distinguish global vs tenant rows — re-query with flag
                     pass

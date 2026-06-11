@@ -5,8 +5,6 @@ import logging
 
 from ..base import ConnectorTool, ConnectorToolParam, SchemaField, SchemaObject
 from .mock_connector import MockNetSuiteConnector
-
-logger = logging.getLogger(__name__)
 from .mock_data import (
     MOCK_CUSTOMERS,
     MOCK_CONTACTS,
@@ -18,9 +16,9 @@ from .mock_data import (
     MOCK_JOURNAL_ENTRIES,
     MOCK_EMPLOYEES,
     MOCK_ITEMS,
-    MOCK_EXPENSE_REPORTS,
-    MOCK_SUBSIDIARIES,
 )
+
+logger = logging.getLogger(__name__)
 
 _mock = MockNetSuiteConnector()
 
