@@ -778,9 +778,10 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-6 py-4">
           <button type="button" disabled={testing} onClick={handleTestInline}
+            title="Saves your credentials first, then tests the connection against the saved state."
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 disabled:opacity-50">
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Test Connection
+            Test Saved Credentials
           </button>
 
           <div className="flex gap-2">

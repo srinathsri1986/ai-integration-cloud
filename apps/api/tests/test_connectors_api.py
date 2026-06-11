@@ -511,3 +511,60 @@ def test_sandbox_connection_test_fails_closed_when_credentials_missing(monkeypat
     assert "credentials are not fully configured" in body["message"]
     assert "password" not in str(body).lower()
     assert "token_secret" not in str(body).lower()
+
+
+# ---------------------------------------------------------------------------
+# ConnectorTestResult contract tests (Step 1.1 / R13)
+# ---------------------------------------------------------------------------
+
+def test_generic_test_endpoint_returns_connector_test_result_shape() -> None:
+    """POST /connectors/{id}/test must return ok, mode, message — all typed correctly."""
+    for connector_id in ("sap", "salesforce", "netsuite", "slack"):
+        resp = client.post(f"/api/v1/connectors/{connector_id}/test")
+        assert resp.status_code == 200, f"{connector_id}: expected 200, got {resp.status_code}"
+        body = resp.json()
+        assert isinstance(body.get("ok"), bool), f"{connector_id}: 'ok' must be bool"
+        assert isinstance(body.get("mode"), str), f"{connector_id}: 'mode' must be str"
+        assert isinstance(body.get("message"), str), f"{connector_id}: 'message' must be str"
+
+
+def test_generic_test_endpoint_unknown_connector_returns_404() -> None:
+    """POST /connectors/unknown-id/test must return 404."""
+    resp = client.post("/api/v1/connectors/nonexistent-connector-xyz/test")
+    assert resp.status_code == 404
+
+
+def test_generic_test_endpoint_does_not_expose_stack_trace() -> None:
+    """If a plugin's test_connection raises, the 500 body must not be a raw traceback."""
+    from app.connectors import connector_registry
+
+    original_get = connector_registry.get
+
+    class _ErrorPlugin:
+        def test_connection(self):
+            raise RuntimeError("INTERNAL: private_key=supersecret")
+
+        def fetch_schema(self, tenant_id=None):  # pragma: no cover
+            raise NotImplementedError
+
+    def _patched_get(connector_id):
+        if connector_id == "sap":
+            return _ErrorPlugin()
+        return original_get(connector_id)
+
+    import pytest
+    from fastapi.testclient import TestClient as _TC
+    from app.main import app as _app
+
+    # Use a fresh client so the monkeypatch is local
+    monkeypatch_client = _TC(_app, raise_server_exceptions=False)
+    connector_registry.get = _patched_get
+    try:
+        resp = monkeypatch_client.post("/api/v1/connectors/sap/test")
+    finally:
+        connector_registry.get = original_get
+
+    # Either a 200 with ok=False or a 500 is acceptable,
+    # but the raw secret must never appear in the response body.
+    assert "supersecret" not in resp.text
+    assert "private_key" not in resp.text

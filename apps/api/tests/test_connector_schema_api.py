@@ -152,3 +152,38 @@ def test_schema_object_ids_are_lowercase_strings() -> None:
             assert oid == oid.lower() or oid.replace("_", "").replace("-", "").isalnum(), (
                 f"objectId '{oid}' in {connector_id} must be a valid ID string"
             )
+
+
+# ---------------------------------------------------------------------------
+# Test 8: schema 502 error path — internal details must not leak to client
+# ---------------------------------------------------------------------------
+
+def test_schema_fetch_error_returns_safe_502(monkeypatch) -> None:
+    """When fetch_schema raises, the 502 body must not expose internal details."""
+    from app.connectors import connector_registry
+
+    original_get = connector_registry.get
+
+    class _BrokenPlugin:
+        def fetch_schema(self, tenant_id=None):
+            raise RuntimeError("INTERNAL: db_password=s3cr3t connection refused")
+
+        def test_connection(self):
+            return {"ok": False, "message": "broken"}
+
+    def _patched_get(connector_id):
+        if connector_id == "sap":
+            return _BrokenPlugin()
+        return original_get(connector_id)
+
+    monkeypatch.setattr(connector_registry, "get", _patched_get)
+
+    resp = client.get("/api/v1/connectors/sap/schema?refresh=true")
+    assert resp.status_code == 502
+    body = resp.json()
+    # Safe message must be present
+    assert "credentials" in body["detail"].lower() or "failed" in body["detail"].lower()
+    # Raw internal exception text must NOT appear in the response
+    assert "db_password" not in body["detail"]
+    assert "s3cr3t" not in body["detail"]
+    assert "INTERNAL" not in body["detail"]

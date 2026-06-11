@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.services.credential_service import credential_service
 from app.models.connectors import (
     ConnectorListItem,
+    ConnectorTestResult,
     NetSuiteConnectionTestResponse,
     NetSuiteConnectorConfig,
     NetSuiteConnectorConfigUpdate,
@@ -643,17 +644,27 @@ def list_connector_tools(
     ]
 
 
-@router.post("/{connector_id}/test", response_model=dict)
+@router.post("/{connector_id}/test", response_model=ConnectorTestResult)
 def test_connector(
     connector_id: str,
     user=Depends(require_permissions("connector:admin")),
-) -> dict:
-    """Test the connection for any registered connector."""
+) -> ConnectorTestResult:
+    """Test the connection for any registered connector.
+
+    Returns a normalised ConnectorTestResult (ok, mode, message) regardless
+    of which plugin handles the request.  Unknown keys from the plugin response
+    are stripped; missing keys receive safe defaults.
+    """
     try:
         plugin = connector_registry.get(connector_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
-    return plugin.test_connection()
+    raw = plugin.test_connection()
+    return ConnectorTestResult(
+        ok=raw.get("ok", False),
+        mode=raw.get("mode", "mock"),
+        message=raw.get("message", "No message returned by connector."),
+    )
 
 
 @router.get("/{connector_id}/schema", response_model=dict)
@@ -692,9 +703,16 @@ def get_connector_schema(
     try:
         raw_objects = plugin.fetch_schema(tenant_id=tenant_id)
     except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Schema fetch failed for connector %r (tenant %s): %s",
+            connector_id,
+            tenant_id,
+            exc,
+        )
         raise HTTPException(
             status_code=502,
-            detail=f"Schema fetch failed for connector '{connector_id}': {exc}",
+            detail="Schema fetch failed. Check connector credentials and try again.",
         )
 
     test_result = plugin.test_connection()

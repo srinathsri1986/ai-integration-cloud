@@ -43,6 +43,19 @@ class NetSuiteConnectorConfigUpdate(BaseModel):
     mock_mode: bool = Field(alias="mockMode")
 
 
+class ConnectorTestResult(BaseModel):
+    """Normalised response shape returned by POST /{connector_id}/test.
+
+    Every connector plugin must return at minimum ``ok`` and ``message``.
+    The optional ``mode`` key ("mock" / "sandbox" / "live") is preserved when
+    the plugin provides it; it defaults to "mock" for plugins that don't.
+    """
+
+    ok: bool
+    mode: str = "mock"
+    message: str
+
+
 class NetSuiteConnectionTestResponse(BaseModel):
     connector_id: Literal["netsuite"] = Field(alias="connectorId")
     success: bool

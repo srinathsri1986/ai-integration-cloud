@@ -1215,6 +1215,8 @@ export function DataMappingStudio() {
         <MappingCanvas
           key={canvasResetKey}
           initialMappings={canvasInitialMappings}
+          initialSourceConnectorId={sourceSystemId || undefined}
+          initialTargetConnectorId={targetSystemId || undefined}
           onMappingsChange={handleCanvasChange}
         />
 

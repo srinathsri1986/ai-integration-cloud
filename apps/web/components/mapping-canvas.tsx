@@ -43,6 +43,17 @@ export interface MappingCanvasProps {
   /** Pre-seed mappings (e.g. when opening a saved definition). */
   initialMappings?: CanvasMappingRow[];
   /**
+   * Seed the SOURCE connector dropdown from the parent studio's pre-fill context
+   * (e.g. when Ask AI says "Map SAP → Salesforce").
+   * Treated as an initial value — user manual changes are always respected.
+   */
+  initialSourceConnectorId?: string;
+  /**
+   * Seed the TARGET connector dropdown from the parent studio's pre-fill context.
+   * Treated as an initial value — user manual changes are always respected.
+   */
+  initialTargetConnectorId?: string;
+  /**
    * Called whenever the canvas mapping state changes.
    * @param allRequiredMapped - true when every required target field has ≥1 mapping
    */
@@ -115,7 +126,12 @@ function schemaFields(schema: ConnectorSchema | null, objectId: string): Connect
 // Main component
 // ---------------------------------------------------------------------------
 
-export function MappingCanvas({ initialMappings = [], onMappingsChange }: MappingCanvasProps) {
+export function MappingCanvas({
+  initialMappings = [],
+  initialSourceConnectorId,
+  initialTargetConnectorId,
+  onMappingsChange,
+}: MappingCanvasProps) {
   // Stable ref for the callback — prevents it from being a useEffect dependency
   // and causing an infinite re-render loop when the parent re-creates the function.
   const onMappingsChangeRef = useRef(onMappingsChange);
@@ -124,12 +140,18 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
   // --- Connector / object selection ---
   const [connectors, setConnectors] = useState<ConnectorDefinition[]>([]);
 
-  const [srcConnId, setSrcConnId]   = useState("salesforce");
+  // Seed source/target connector from parent props (Ask AI pre-fill).
+  // These are initial values — user manual selection always wins.
+  // Guard ref prevents the parent re-render from overwriting a user's choice.
+  const userPickedSrc = useRef(false);
+  const userPickedTgt = useRef(false);
+
+  const [srcConnId, setSrcConnId]   = useState(initialSourceConnectorId ?? "salesforce");
   const [srcObjId,  setSrcObjId]    = useState("");
   const [srcSchema, setSrcSchema]   = useState<ConnectorSchema | null>(null);
   const [srcLoading, setSrcLoading] = useState(false);
 
-  const [tgtConnId, setTgtConnId]   = useState("netsuite");
+  const [tgtConnId, setTgtConnId]   = useState(initialTargetConnectorId ?? "netsuite");
   const [tgtObjId,  setTgtObjId]    = useState("");
   const [tgtSchema, setTgtSchema]   = useState<ConnectorSchema | null>(null);
   const [tgtLoading, setTgtLoading] = useState(false);
@@ -191,6 +213,23 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
 
   useEffect(() => { void fetchSrcSchema(srcConnId); }, [srcConnId]);
   useEffect(() => { void fetchTgtSchema(tgtConnId); }, [tgtConnId]);
+
+  // If the parent updates the pre-fill props (e.g. user submits Ask AI again
+  // while the canvas is already mounted), update the connector selection —
+  // but only when the user hasn't manually picked a different connector yet.
+  useEffect(() => {
+    if (!userPickedSrc.current && initialSourceConnectorId && initialSourceConnectorId !== srcConnId) {
+      setSrcConnId(initialSourceConnectorId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSourceConnectorId]);
+
+  useEffect(() => {
+    if (!userPickedTgt.current && initialTargetConnectorId && initialTargetConnectorId !== tgtConnId) {
+      setTgtConnId(initialTargetConnectorId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTargetConnectorId]);
 
   // Clear mappings when objects change (stale field names)
   useEffect(() => { setMappings([]); }, [srcObjId, tgtObjId]);
@@ -380,6 +419,7 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
             className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
             value={srcConnId}
             onChange={(e) => {
+              userPickedSrc.current = true;
               setSrcConnId(e.target.value);
               setMappings([]);
             }}
@@ -409,6 +449,7 @@ export function MappingCanvas({ initialMappings = [], onMappingsChange }: Mappin
             className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
             value={tgtConnId}
             onChange={(e) => {
+              userPickedTgt.current = true;
               setTgtConnId(e.target.value);
               setMappings([]);
             }}

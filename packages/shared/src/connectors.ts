@@ -85,14 +85,15 @@ export const fieldInfoSchema = z.object({
 });
 export type FieldInfo = z.infer<typeof fieldInfoSchema>;
 
-// NOTE: mappingTransformSchema / MappingTransform are also in netsuite.ts — re-use that definition.
+// Canonical transform set — must match APPROVED_MAPPING_TRANSFORMS in
+// apps/api/app/services/mapping_catalog.py exactly.
+// Do NOT add values here without adding them to the backend allow-list first.
 const mappingTransformSchema = z.enum([
   "direct",
-  "uppercase",
-  "lowercase",
-  "to_string",
-  "to_number",
+  "rename",
   "format_date",
+  "lookup_placeholder",
+  "constant_placeholder",
 ]);
 
 export const inlineFieldMappingSchema = z.object({
@@ -103,6 +104,14 @@ export const inlineFieldMappingSchema = z.object({
   targetType: fieldTypeSchema.default("string"),
 });
 export type InlineFieldMapping = z.infer<typeof inlineFieldMappingSchema>;
+
+/** Normalised response from POST /connectors/{id}/test */
+export const connectorTestResultSchema = z.object({
+  ok: z.boolean(),
+  mode: z.string().default("mock"),
+  message: z.string(),
+});
+export type ConnectorTestResult = z.infer<typeof connectorTestResultSchema>;
 
 export const customEndpointSchema = z.object({
   endpointId: z.string(),
