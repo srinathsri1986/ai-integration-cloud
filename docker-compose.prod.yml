@@ -7,7 +7,7 @@ version: "3.9"
 x-api-env: &api-env
   environment:
     ENVIRONMENT: production
-    DATABASE_URL: postgresql+psycopg://aic_app:${POSTGRES_PASSWORD}@postgres:5432/aic_db
+    DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://aic_app:${POSTGRES_PASSWORD}@postgres:5432/aic_db}
     REDIS_URL: redis://redis:6379/0
     PLACEHOLDER_JWT_SECRET: ${PLACEHOLDER_JWT_SECRET}
     JWT_SECRET_KEY: ${JWT_SECRET_KEY}
