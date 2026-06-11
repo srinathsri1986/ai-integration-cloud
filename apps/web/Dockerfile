@@ -7,6 +7,8 @@ COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN pnpm --filter @ai-integration-cloud/shared build
