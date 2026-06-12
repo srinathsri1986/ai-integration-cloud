@@ -478,13 +478,18 @@ def salesforce_oauth_authorize(user=Depends(require_permissions("connector:admin
 
     Client ID / Secret + optional login URL are pulled from credentials stored
     via the UI first; falls back to SALESFORCE_CLIENT_ID env var.
+
+    The tenant_id is encoded in the OAuth `state` parameter so the callback
+    (which has no authenticated user) can look up the right credentials and
+    store the resulting token under the correct tenant.
     """
     settings = get_settings()
     db_creds  = _get_oauth_app_creds("salesforce", tenant_id=user.tenant_id)
-    client_id = (db_creds or {}).get("client_id")  or settings.salesforce_client_id
-    login_url = (db_creds or {}).get("client_id") and (
-        credential_service._fetch_config("oauth_app:salesforce", user.tenant_id) or {}
-    ).get("config", {}).get("login_url_override") or settings.salesforce_login_url
+    client_id = (db_creds or {}).get("client_id") or settings.salesforce_client_id
+
+    # Resolve login URL: check stored override first, then env var default
+    raw_record = credential_service._fetch_config("oauth_app:salesforce", user.tenant_id)
+    login_url = ((raw_record or {}).get("config") or {}).get("login_url_override") or settings.salesforce_login_url
 
     if not client_id:
         raise HTTPException(
@@ -496,14 +501,28 @@ def salesforce_oauth_authorize(user=Depends(require_permissions("connector:admin
         "client_id":     client_id,
         "redirect_uri":  settings.salesforce_redirect_uri,
         "scope":         "api refresh_token offline_access",
+        # Encode tenant_id in state so the callback can look up credentials
+        # and store the token under the correct tenant without needing a JWT.
+        "state":         str(user.tenant_id) if user.tenant_id is not None else "",
     }
     url = f"{login_url}/services/oauth2/authorize?" + urllib.parse.urlencode(params)
     return RedirectResponse(url)
 
 
 @router.get("/salesforce/oauth/callback")
-def salesforce_oauth_callback(code: str = "", error: str = "", error_description: str = "") -> RedirectResponse:
-    """Salesforce OAuth2 callback — exchange code for token, store encrypted, redirect to UI."""
+def salesforce_oauth_callback(
+    code: str = "",
+    error: str = "",
+    error_description: str = "",
+    state: str = "",
+) -> RedirectResponse:
+    """Salesforce OAuth2 callback — exchange code for token, store encrypted, redirect to UI.
+
+    The `state` parameter carries the tenant_id from the authorize redirect so
+    we can look up the right Connected App credentials and store the resulting
+    token under the correct tenant — without needing an authenticated user in
+    this browser-redirect request.
+    """
     settings = get_settings()
     frontend_base = settings.app_base_url
 
@@ -516,12 +535,15 @@ def salesforce_oauth_callback(code: str = "", error: str = "", error_description
     if not code:
         return RedirectResponse(f"{frontend_base}/connectors?salesforce_error=missing_code")
 
-    # DB-first credential resolution
-    db_creds      = _get_oauth_app_creds("salesforce", tenant_id=None)
+    # Recover tenant_id from the OAuth state parameter (set in /authorize).
+    tenant_id: int | None = int(state) if state and state.isdigit() else None
+
+    # DB-first credential resolution using the tenant that initiated the flow.
+    db_creds      = _get_oauth_app_creds("salesforce", tenant_id=tenant_id)
     client_id     = (db_creds or {}).get("client_id")     or settings.salesforce_client_id
     client_secret = (db_creds or {}).get("client_secret") or settings.salesforce_client_secret
     # Resolve login URL — check stored override, fall back to settings
-    raw_record = credential_service._fetch_config("oauth_app:salesforce", None)
+    raw_record = credential_service._fetch_config("oauth_app:salesforce", tenant_id)
     login_url  = ((raw_record or {}).get("config") or {}).get("login_url_override") or settings.salesforce_login_url
 
     try:
@@ -547,8 +569,8 @@ def salesforce_oauth_callback(code: str = "", error: str = "", error_description
             f"{frontend_base}/connectors?salesforce_error={urllib.parse.quote(token_data.get('error_description', token_data['error']))}"
         )
 
-    # Store encrypted OAuth token (includes access_token, refresh_token, instance_url)
-    credential_service.store_oauth_token("salesforce", token_data, tenant_id=None)
+    # Store encrypted OAuth token under the tenant that initiated the flow.
+    credential_service.store_oauth_token("salesforce", token_data, tenant_id=tenant_id)
 
     instance_url = token_data.get("instance_url", "your Salesforce org")
     return RedirectResponse(
