@@ -126,9 +126,12 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_* vars are baked into the Next.js bundle at BUILD TIME.
+        # Passing them here (not just in environment:) is required for the
+        # CloudFront URL to reach client-side code.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://d1r5tmaju0d3ve.cloudfront.net}
     environment:
-      # Browser-side URL (must be reachable from the user's machine)
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
       # Server-side URL (container-to-container; never exposed to browser)
       SERVER_API_BASE_URL: ${SERVER_API_BASE_URL:-http://api:8000}
     depends_on:
