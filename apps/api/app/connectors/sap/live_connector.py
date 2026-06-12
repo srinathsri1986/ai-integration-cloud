@@ -147,9 +147,14 @@ class SAPLiveConnector:
         """
         try:
             if self._config.is_sandbox_mode:
-                url = f"{self._config.service_url('API_BUSINESS_PARTNER/A_BusinessPartner')}/$metadata"
-                # $metadata is XML/CSDL by spec — requesting JSON here makes
-                # the gateway reject with "Invalid system query options value".
+                # $metadata lives at the service root — NOT under an entity set.
+                # Correct:   .../sap/opu/odata/sap/API_BUSINESS_PARTNER/$metadata
+                # Wrong:     .../sap/opu/odata/sap/API_BUSINESS_PARTNER/A_BusinessPartner/$metadata
+                # (the latter path folds the entity set into the service path and
+                # causes SAP's Apigee gateway to return HTTP 400.)
+                # $metadata is XML/CSDL by spec — requesting JSON causes SAP to
+                # reject with "Invalid system query options value".
+                url = f"{self._config.service_url('API_BUSINESS_PARTNER')}/$metadata"
                 self._get_text(url, accept="application/xml")
                 detail = "SAP Business Accelerator Hub Sandbox"
             else:
