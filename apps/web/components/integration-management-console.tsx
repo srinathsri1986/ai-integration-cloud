@@ -39,6 +39,7 @@ import {
   type ApiResult,
   deleteMappingDefinition,
   getFlowRun,
+  getFlows,
   getMappingDefinitions,
   linkMappingToFlow,
   runFlow,
@@ -129,10 +130,10 @@ export function IntegrationManagementConsole({
   );
   const [showCreatedBanner, setShowCreatedBanner] = useState(!!createdFlowId);
   const [filter, setFilter] = useState<Filter>("all");
-  const [message, setMessage] = useState<string | undefined>(
-    initialFlows.isFallback ? initialFlows.error : undefined
-  );
-  const [messageIsError, setMessageIsError] = useState(initialFlows.isFallback);
+  // Don't surface SSR fallback errors — they're expected (no auth cookie server-side).
+  // The client-side refresh useEffect below re-fetches with the real auth token.
+  const [message, setMessage] = useState<string | undefined>(undefined);
+  const [messageIsError, setMessageIsError] = useState(false);
   const [busyKey, setBusyKey] = useState<string | undefined>();
   const [lastRuns, setLastRuns] = useState<Record<string, FlowRunResponse>>({});
   const [mappings, setMappings] = useState<MappingDefinition[]>([]);
@@ -163,6 +164,25 @@ export function IntegrationManagementConsole({
       ),
     [flows]
   );
+
+  // Client-side refresh: SSR fetches /api/v1/flows without auth (no cookie server-side)
+  // → returns 401 fallback. After hydration, re-fetch with the user's token from localStorage.
+  useEffect(() => {
+    async function refreshFlows() {
+      const result = await getFlows();
+      if (!result.isFallback && result.data.items.length > 0) {
+        setFlows(result.data.items);
+        setMessage(undefined);
+        setMessageIsError(false);
+        // Keep the first flow selected (or the created one from URL param)
+        if (!createdFlowId) {
+          setSelectedFlowId((prev) => prev ?? result.data.items[0]?.flowId);
+        }
+      }
+    }
+    void refreshFlows();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     refreshMappings();
