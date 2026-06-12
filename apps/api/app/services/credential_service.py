@@ -185,8 +185,17 @@ class ConnectorCredentialService:
     def get_oauth_token(
         self, connector_id: str, tenant_id: int | None = None
     ) -> dict[str, Any] | None:
-        """Return the decrypted token data dict, or *None* if not configured."""
+        """Return the decrypted token data dict, or *None* if not configured.
+
+        Falls back to the global NULL-tenant record when no tenant-specific
+        record exists.  This handles the OAuth callback case where the token
+        is stored under tenant_id=None (no authenticated user during the
+        redirect) but later looked up with a real tenant_id.
+        """
         record = self._fetch_config(connector_id, tenant_id)
+        # Fall back to the global (NULL-tenant) record if nothing found for this tenant
+        if (not record or record["mode"] != "live") and tenant_id is not None:
+            record = self._fetch_config(connector_id, None)
         if not record or record["mode"] != "live":
             return None
         config = record["config"]
@@ -243,8 +252,15 @@ class ConnectorCredentialService:
     def get_credentials(
         self, connector_id: str, tenant_id: int | None = None
     ) -> dict[str, Any] | None:
-        """Return the decrypted credentials dict, or *None* if not configured."""
+        """Return the decrypted credentials dict, or *None* if not configured.
+
+        Falls back to the global NULL-tenant record when no tenant-specific
+        record exists — mirrors get_oauth_token fallback behaviour.
+        """
         record = self._fetch_config(connector_id, tenant_id)
+        # Fall back to the global (NULL-tenant) record if nothing found for this tenant
+        if (not record or record["mode"] != "live") and tenant_id is not None:
+            record = self._fetch_config(connector_id, None)
         if not record or record["mode"] != "live":
             return None
         config = record["config"]
