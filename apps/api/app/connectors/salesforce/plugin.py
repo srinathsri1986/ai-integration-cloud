@@ -480,21 +480,46 @@ class SalesforcePlugin:
         return _MOCK_SCHEMA
 
 
-_STANDARD_OBJECTS = ("Opportunity", "Account", "Contact", "Lead", "Case")
+# Standard objects shown FIRST in schema discovery, in priority order.
+# These are the most common objects used in CRM ↔ ERP integrations.
+# All other queryable standard objects in the org are appended automatically
+# after these (sorted alphabetically) up to _MAX_STANDARD_OBJECTS total.
+_PRIORITY_STANDARD_OBJECTS: tuple[str, ...] = (
+    "Opportunity", "Account", "Contact", "Lead", "Case",
+    "Campaign", "CampaignMember",
+    "Order", "OrderItem",
+    "Contract",
+    "Product2", "Pricebook2", "PricebookEntry",
+    "Quote", "QuoteLineItem",
+    "Task", "Event",
+    "User",
+)
 
-# Safety cap on total objects described per discovery run — keeps the UI
-# manageable and avoids excessive describe-call volume against the org.
-_MAX_CUSTOM_OBJECTS = 25
+# Caps on per-schema-fetch describe calls — keeps API usage predictable on
+# large orgs and keeps the Fields UI manageable.
+_MAX_STANDARD_OBJECTS = 50   # priority objects + auto-discovered standard objects
+_MAX_CUSTOM_OBJECTS    = 25  # __c objects auto-discovered from the org
 
 
 def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
     """Describe Salesforce objects via simple-salesforce.
 
-    Always includes the curated standard objects (Opportunity, Account,
-    Contact, Lead, Case) and additionally auto-discovers any *custom*
-    objects (API names ending in "__c") defined in the connected org —
-    so user-created objects show up in schema discovery / field mapping
-    without any code changes on our side.
+    Auto-discovers BOTH standard and custom objects from the connected org:
+
+    Standard objects
+    ----------------
+    Uses the global describe() to enumerate every queryable, non-deprecated
+    standard object (not ending in "__c"). Priority objects from
+    _PRIORITY_STANDARD_OBJECTS are listed first; remaining standard objects
+    are appended alphabetically up to _MAX_STANDARD_OBJECTS total.
+    This means objects like Campaign, Order, Product2, Contract, Quote, Task,
+    Event, User, etc. appear automatically — no code change needed when SAP or
+    a Salesforce admin adds/enables new standard objects.
+
+    Custom objects
+    --------------
+    Any object whose API name ends in "__c" is auto-discovered from the org
+    and appended after all standard objects, up to _MAX_CUSTOM_OBJECTS.
     """
     from simple_salesforce import Salesforce  # type: ignore[import]
 
@@ -513,21 +538,43 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
         "date": "date", "datetime": "date",
     }
 
-    # ── Discover custom objects (API names ending in "__c") ──────────────────
+    # ── Discover all queryable objects from the org in one API call ───────────
+    standard_object_names: list[str] = []
     custom_object_names: list[str] = []
     try:
         global_desc = sf.describe()
-        custom_object_names = sorted(
+        all_sobjects = [
             sobj["name"]
             for sobj in global_desc.get("sobjects", [])
-            if sobj.get("name", "").endswith("__c")
-            and sobj.get("queryable", True)
+            if sobj.get("queryable", True)
             and not sobj.get("deprecatedAndHidden", False)
-        )[:_MAX_CUSTOM_OBJECTS]
-    except Exception as exc:
-        logger.warning("Could not list Salesforce custom objects: %s", exc)
+        ]
 
-    object_names = list(_STANDARD_OBJECTS) + custom_object_names
+        # Split: custom (__c) vs standard (everything else)
+        custom_object_names = sorted(
+            n for n in all_sobjects if n.endswith("__c")
+        )[:_MAX_CUSTOM_OBJECTS]
+
+        # Standard: priority objects first (in order), then alphabetical remainder
+        priority_set = set(_PRIORITY_STANDARD_OBJECTS)
+        priority_present = [n for n in _PRIORITY_STANDARD_OBJECTS if n in set(all_sobjects)]
+        remaining_standard = sorted(
+            n for n in all_sobjects
+            if not n.endswith("__c") and n not in priority_set
+        )
+        standard_object_names = (priority_present + remaining_standard)[:_MAX_STANDARD_OBJECTS]
+
+    except Exception as exc:
+        # Global describe failed (e.g. session expired before the first call) —
+        # fall back to priority list so the UI is never completely empty.
+        logger.warning("Could not list Salesforce objects via global describe: %s", exc)
+        standard_object_names = list(_PRIORITY_STANDARD_OBJECTS)
+
+    object_names = standard_object_names + custom_object_names
+    logger.info(
+        "Salesforce schema discovery: %d standard + %d custom objects to describe.",
+        len(standard_object_names), len(custom_object_names),
+    )
 
     objects: list[SchemaObject] = []
     session_expired_seen = False
