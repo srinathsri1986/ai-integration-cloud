@@ -203,10 +203,8 @@ class SAPPlugin:
 
         return {"connector": "sap", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
 
-    def test_connection(self) -> dict:
-        # NOTE: matches the NetSuite/Salesforce plugin signature — the registry
-        # calls test_connection() without tenant context (see api/connectors.py).
-        creds = _get_live_creds()
+    def test_connection(self, tenant_id: int | None = None) -> dict:
+        creds = _get_live_creds(tenant_id)
         if creds:
             try:
                 connector = _build_live_connector(creds)

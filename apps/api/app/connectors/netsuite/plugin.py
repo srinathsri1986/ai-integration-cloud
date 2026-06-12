@@ -405,8 +405,8 @@ class NetSuitePlugin:
 
         raise KeyError(f"Unhandled NetSuite tool: {tool_id!r}")
 
-    def test_connection(self) -> dict:
-        creds = _get_live_creds()
+    def test_connection(self, tenant_id: int | None = None) -> dict:
+        creds = _get_live_creds(tenant_id)
         if creds:
             try:
                 connector = _build_live_connector(creds)

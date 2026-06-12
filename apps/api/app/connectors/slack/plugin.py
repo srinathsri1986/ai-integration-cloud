@@ -164,8 +164,8 @@ class SlackPlugin:
 
         return {"connector": "slack", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
 
-    def test_connection(self) -> dict:
-        token = _get_live_token()
+    def test_connection(self, tenant_id: int | None = None) -> dict:
+        token = _get_live_token(tenant_id)
         if token:
             try:
                 from slack_sdk import WebClient  # type: ignore[import]

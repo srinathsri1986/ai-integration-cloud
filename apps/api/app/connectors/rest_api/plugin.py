@@ -231,8 +231,8 @@ class RESTAPIPlugin:
 
         return {"connector": "rest-api", "tool": tool_id, "mode": "mock", "result": _MOCK.get(tool_id, {})}
 
-    def test_connection(self) -> dict:
-        creds = _get_live_creds()
+    def test_connection(self, tenant_id: int | None = None) -> dict:
+        creds = _get_live_creds(tenant_id)
         if creds:
             base_url = creds.get("base_url", "")
             try:
