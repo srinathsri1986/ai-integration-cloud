@@ -122,6 +122,144 @@ class SAPLiveConfig:
         return f"{self.base_url}{prefix}/sap/opu/odata/sap/{path}"
 
 
+def _parse_odata_metadata(xml_text: str) -> list:
+    """Parse an OData CSDL $metadata document and return SchemaObject instances.
+
+    Design notes
+    ------------
+    - Namespace-agnostic: uses ``{*}`` wildcard so the parser works with any
+      edmx prefix version (OData v2 and v4 both in the wild on SAP systems).
+    - EDM property types are mapped to the platform's three-value vocabulary:
+      "string" / "number" / "date" / "boolean".
+    - EntitySet declarations are used as object IDs (the actual queryable
+      collection names, e.g. ``A_AddressEmailAddress``); the matching
+      EntityType provides the field definitions.
+    - If no EntitySet declarations exist (unusual but possible in sub-schemas),
+      falls back to deriving the set name by stripping the "Type" suffix from
+      the EntityType name (SAP's standard convention:
+      ``A_AddressEmailAddressType`` → ``A_AddressEmailAddress``).
+    - Returns objects sorted by their entity-set name for stable UI ordering.
+    """
+    import xml.etree.ElementTree as ET
+
+    _EDM: dict[str, str] = {
+        # Text / identifier types
+        "Edm.String": "string", "Edm.Guid": "string",
+        "Edm.Binary": "string", "Edm.Time": "string", "Edm.TimeOfDay": "string",
+        # Boolean
+        "Edm.Boolean": "boolean",
+        # Numeric types
+        "Edm.Decimal": "number", "Edm.Double": "number", "Edm.Single": "number",
+        "Edm.Int16": "number", "Edm.Int32": "number", "Edm.Int64": "number",
+        "Edm.Byte": "number", "Edm.SByte": "number",
+        # Temporal types
+        "Edm.DateTime": "date", "Edm.DateTimeOffset": "date", "Edm.Date": "date",
+    }
+
+    def _camel_label(name: str) -> str:
+        """Turn an OData name into a readable label.
+
+        ``A_AddressEmailAddress`` → ``Address Email Address``
+        ``BusinessPartnerFullName`` → ``Business Partner Full Name``
+        """
+        # Strip common SAP prefixes: A_ or A_Bla → Bla
+        clean = re.sub(r"^A_", "", name)
+        # Insert spaces before each run of capitals that follows a lowercase char
+        spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", clean)
+        # Insert spaces between consecutive capitals followed by lowercase (e.g. VATNo → VAT No)
+        spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
+        return spaced.strip()
+
+    from ..base import SchemaField, SchemaObject  # local import — avoids circular dep at module load
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        logger.warning("SAP $metadata XML parse error: %s", exc)
+        return []
+
+    # ── Step 1: collect EntityType → fields map ────────────────────────────
+    entity_type_fields: dict[str, list] = {}  # EntityType.Name → [SchemaField, ...]
+
+    for et_elem in root.findall(".//{*}EntityType"):
+        et_name = et_elem.get("Name", "")
+        if not et_name:
+            continue
+
+        # Key properties — required=True for key fields regardless of Nullable attr
+        key_props: set[str] = {
+            pr.get("Name", "")
+            for pr in et_elem.findall(".//{*}PropertyRef")
+        }
+
+        fields: list = []
+        for prop in et_elem.findall("{*}Property"):
+            pname = prop.get("Name", "")
+            edm_type = prop.get("Type", "Edm.String")
+            nullable = prop.get("Nullable", "true").lower()
+            max_length = prop.get("MaxLength")
+            precision = prop.get("Precision")
+
+            is_key = pname in key_props
+            required = is_key or nullable == "false"
+            platform_type = _EDM.get(edm_type, "string")
+
+            # Build a lightweight sample hint from MaxLength / Precision if present
+            sample: str | None = None
+            if platform_type == "string" and max_length:
+                sample = f"max {max_length} chars"
+            elif platform_type == "number" and precision:
+                sample = f"precision {precision}"
+
+            fields.append(SchemaField(
+                name=pname,
+                label=_camel_label(pname),
+                type=platform_type,
+                required=required,
+                sample=sample,
+            ))
+
+        if fields:
+            entity_type_fields[et_name] = fields
+
+    # ── Step 2: match EntitySets to their EntityType definitions ──────────
+    objects: list = []
+    seen_sets: set[str] = set()
+
+    for es_elem in root.findall(".//{*}EntitySet"):
+        es_name = es_elem.get("Name", "")
+        # EntityType attr may be namespace-qualified: "GWSAMPLE_BASIC.SalesOrder"
+        et_ref = es_elem.get("EntityType", "").split(".")[-1]
+
+        if not es_name or es_name in seen_sets:
+            continue
+        seen_sets.add(es_name)
+
+        fields = entity_type_fields.get(et_ref, [])
+        if not fields:
+            continue  # skip sets whose type definition wasn't parsed
+
+        objects.append(SchemaObject(
+            object_id=es_name,
+            label=_camel_label(es_name),
+            fields=fields,
+        ))
+
+    # ── Step 3: fallback — derive set names from EntityType names ──────────
+    # Used when no EntitySet declarations are present (e.g. in sub-schemas).
+    if not objects and entity_type_fields:
+        for et_name, fields in entity_type_fields.items():
+            # SAP convention: A_AddressEmailAddressType → A_AddressEmailAddress
+            set_name = re.sub(r"Type$", "", et_name)
+            objects.append(SchemaObject(
+                object_id=set_name,
+                label=_camel_label(set_name),
+                fields=fields,
+            ))
+
+    return sorted(objects, key=lambda o: o.object_id)
+
+
 class SAPLiveConnector:
     """Live connector against SAP OData Gateway services (Basic Auth + CSRF handshake)."""
 
@@ -169,16 +307,23 @@ class SAPLiveConnector:
         except SAPLiveConnectorError as exc:
             return {"ok": False, "mode": "live", "message": str(exc)}
 
-    def fetch_schema_objects(self, service_path: str) -> list[str]:
-        """Parse an OData service's $metadata document and return EntityType names."""
+    def fetch_schema_objects(self, service_path: str) -> list:
+        """Fetch the OData $metadata document and return a list of SchemaObject instances.
+
+        Calls $metadata at the **service root** (not under an entity set — see
+        test_connection for why entity-set-level $metadata returns HTTP 400).
+        Parses EntitySet + EntityType declarations from the CSDL XML and maps
+        EDM property types to the platform's SchemaField vocabulary.
+
+        Returns an empty list (triggering static-schema fallback in the plugin)
+        if the metadata document cannot be fetched or parsed.
+        """
         try:
             url = f"{self._config.service_url(service_path)}/$metadata"
-            # See _get_text docstring — $metadata is XML-only; Accept: application/json
-            # gets rejected by SAP's gateway as an invalid $format system query option.
             xml_text = self._get_text(url, accept="application/xml")
-            return sorted(set(re.findall(r'<EntityType\s+Name="([^"]+)"', xml_text)))
+            return _parse_odata_metadata(xml_text)
         except SAPLiveConnectorError:
-            logger.warning("Could not fetch live SAP $metadata for %s; using static catalog.", service_path)
+            logger.warning("Could not fetch live SAP $metadata for %s; falling back to static catalog.", service_path)
             return []
 
     def list_entities(

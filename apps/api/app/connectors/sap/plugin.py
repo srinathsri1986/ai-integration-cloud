@@ -218,24 +218,31 @@ class SAPPlugin:
     def fetch_schema(self, tenant_id: int | None = None) -> list[SchemaObject]:
         """Return SAP entity types with field definitions.
 
-        The curated catalog below always powers the mapping UI's field-level
-        metadata — SAP's $metadata documents describe entity *types* richly,
-        but mapping them faithfully into the platform's SchemaField shape
-        (including label translation and association-aware type inference)
-        is a larger follow-up. When live credentials are present we ping the
-        live $metadata catalog purely to confirm connectivity and log which
-        entity types the connected system actually exposes.
+        When live credentials are present, parse the real API_BUSINESS_PARTNER
+        $metadata document and return the actual entity sets (A_BusinessPartner,
+        A_AddressEmailAddress, A_BusinessPartnerContact, etc.) so the mapping
+        UI shows the connector's true schema — not a static mock catalog.
+
+        Falls back to the curated _STATIC_SCHEMA only when no credentials are
+        stored (mock mode), or when the $metadata endpoint cannot be reached.
         """
         creds = _get_live_creds(tenant_id)
         if creds:
             try:
                 connector = _build_live_connector(creds)
-                live_entity_types = connector.fetch_schema_objects("API_BUSINESS_PARTNER/A_BusinessPartner")
-                if live_entity_types:
+                # Pass only the service path — NOT an entity set; $metadata is a
+                # service-root document (see live_connector.py test_connection for
+                # the exact reason appending an entity set here causes HTTP 400).
+                live_objects = connector.fetch_schema_objects("API_BUSINESS_PARTNER")
+                if live_objects:
                     logger.info(
-                        "SAP live system exposes %d entity types (using curated field catalog for mapping).",
-                        len(live_entity_types),
+                        "SAP live schema: %d entity sets returned from API_BUSINESS_PARTNER $metadata.",
+                        len(live_objects),
                     )
+                    return live_objects
+                # $metadata fetch succeeded but returned nothing (shouldn't happen
+                # with a real SAP system; treat as a connectivity issue and fall back)
+                logger.warning("SAP live $metadata returned no entity sets — using static catalog.")
             except Exception as exc:
                 logger.warning("Could not reach SAP live $metadata catalog: %s", exc)
 
