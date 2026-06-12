@@ -307,6 +307,24 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
 
   const isSalesforce = connectorId === "salesforce";
   const isSlack      = connectorId === "slack";
+
+  // ── Auto-detect OAuth app configured state ─────────────────────────────
+  // When the dialog opens for an OAuth2 app connector (Salesforce/Slack) that
+  // already has app credentials saved, skip straight to the Authorize step.
+  useEffect(() => {
+    if (!isSalesforce && !isSlack) return;
+    const token = _getToken();
+    if (!token) return;
+    fetch(`${API_BASE}/api/v1/connectors/${connectorId}/oauth-app-config`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.configured) setOauthAppSaved(true);
+      })
+      .catch(() => { /* ignore — dialog still usable */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const isOAuth2App  = isSalesforce || isSlack;   // two-step: save app creds → then OAuth
   const isNetSuite   = connectorId === "netsuite";
   const isSAP        = connectorId === "sap";

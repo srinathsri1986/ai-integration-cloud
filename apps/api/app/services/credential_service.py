@@ -285,22 +285,9 @@ class ConnectorCredentialService:
         override with their own credentials.
         """
         with SessionLocal() as session:
-            # Fetch both global defaults and tenant-specific overrides in one query.
-            # COALESCE priority: tenant row wins over global row.
+            # Tenant-first resolution: global defaults first, tenant row overrides.
+            # Two queries (still O(n) on a tiny table of 8 connectors).
             if tenant_id is not None:
-                rows = session.execute(
-                    text(
-                        "SELECT connector_id, mode FROM connector_config_records "
-                        "WHERE tenant_id = :tid OR tenant_id IS NULL"
-                    ),
-                    {"tid": tenant_id},
-                ).fetchall()
-                # Build result: process global rows first, then tenant rows override them.
-                result: dict[str, str] = {}
-                for row in rows:
-                    # We need to distinguish global vs tenant rows — re-query with flag
-                    pass
-                # Simpler: two queries (still O(n) on a tiny table of 8 connectors)
                 global_result = session.execute(
                     text(
                         "SELECT connector_id, mode FROM connector_config_records "
