@@ -550,17 +550,40 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
             and not sobj.get("deprecatedAndHidden", False)
         ]
 
+        all_sobjects_map = {
+            sobj["name"]: sobj
+            for sobj in global_desc.get("sobjects", [])
+            if sobj.get("queryable", True) and not sobj.get("deprecatedAndHidden", False)
+        }
+
         # Split: custom (__c) vs standard (everything else)
         custom_object_names = sorted(
-            n for n in all_sobjects if n.endswith("__c")
+            n for n in all_sobjects_map if n.endswith("__c")
         )[:_MAX_CUSTOM_OBJECTS]
 
-        # Standard: priority objects first (in order), then alphabetical remainder
+        # Standard: priority objects first (those present in the org), then
+        # auto-discovered business objects filtered for integration relevance.
+        #
+        # Filter criteria for "integration-relevant" standard objects:
+        #   triggerable=True  — real objects you can write triggers on; audit/
+        #                        feed/history/share tables are NOT triggerable
+        #   not endswith(...) — belt-and-suspenders for common internal suffixes
+        #                        (Feed=Chatter, History=field audit, Share=sharing
+        #                        rules, ChangeEvent=CDC, CleanInfo=Data.com, Tag=tags)
         priority_set = set(_PRIORITY_STANDARD_OBJECTS)
-        priority_present = [n for n in _PRIORITY_STANDARD_OBJECTS if n in set(all_sobjects)]
+        priority_present = [
+            n for n in _PRIORITY_STANDARD_OBJECTS if n in all_sobjects_map
+        ]
+        _INTERNAL_SUFFIXES = (
+            "Feed", "History", "Share", "ChangeEvent",
+            "CleanInfo", "Tag", "TeamMember", "Partner",
+        )
         remaining_standard = sorted(
-            n for n in all_sobjects
-            if not n.endswith("__c") and n not in priority_set
+            n for n, sobj in all_sobjects_map.items()
+            if not n.endswith("__c")
+            and n not in priority_set
+            and sobj.get("triggerable", False)
+            and not n.endswith(_INTERNAL_SUFFIXES)
         )
         standard_object_names = (priority_present + remaining_standard)[:_MAX_STANDARD_OBJECTS]
 
