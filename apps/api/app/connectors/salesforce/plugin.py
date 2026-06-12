@@ -574,15 +574,21 @@ def _fetch_live_schema(creds: dict) -> list[SchemaObject]:
         priority_present = [
             n for n in _PRIORITY_STANDARD_OBJECTS if n in all_sobjects_map
         ]
+        # Filter criteria for integration-relevant standard objects:
+        #   replicateable=True  — Bulk API can export it; genuine business data
+        #                          (CDP/Industry-cloud platform objects are NOT
+        #                          replicateable; neither are audit/feed/share tables)
+        #   not endswith(...)   — belt-and-suspenders for change-event and feed
+        #                          objects which may have inconsistent flags
         _INTERNAL_SUFFIXES = (
-            "Feed", "History", "Share", "ChangeEvent",
-            "CleanInfo", "Tag", "TeamMember", "Partner",
+            "Feed", "History", "Share", "ChangeEvent", "CleanInfo",
+            "Tag", "TeamMember", "Partner",
         )
         remaining_standard = sorted(
             n for n, sobj in all_sobjects_map.items()
             if not n.endswith("__c")
             and n not in priority_set
-            and sobj.get("triggerable", False)
+            and sobj.get("replicateable", False)
             and not n.endswith(_INTERNAL_SUFFIXES)
         )
         standard_object_names = (priority_present + remaining_standard)[:_MAX_STANDARD_OBJECTS]
