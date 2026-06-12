@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ConnectorDefinition, ConnectorTool } from "@ai-integration-cloud/shared";
 import type { ApiResult, ConnectorSchema } from "@/lib/api";
-import { LOCAL_AUTH_TOKEN_KEY, testConnector, getConnectorTools, getConnectorSchema } from "@/lib/api";
+import { LOCAL_AUTH_TOKEN_KEY, testConnector, getConnectorTools, getConnectorSchema, getConnectors } from "@/lib/api";
 import {
   CheckCircle2,
   ChevronDown,
@@ -873,6 +873,19 @@ export function ConnectorCatalog({ initialConnectors }: ConnectorCatalogProps) {
       setBanner({ type: "error", message: `Salesforce OAuth error: ${sfError}` });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Client-side refresh: SSR fetches connectors without auth (no cookie available
+  // server-side), so badges always start as "mock". After hydration we re-fetch
+  // with the user's auth token so live connectors show the correct Live badge.
+  useEffect(() => {
+    async function refreshConnectorModes() {
+      const result = await getConnectors();
+      if (result.data && result.data.length > 0) {
+        setConnectors(result.data);
+      }
+    }
+    void refreshConnectorModes();
   }, []);
 
   // -------------------------------------------------------------------------
