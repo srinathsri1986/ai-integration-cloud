@@ -193,6 +193,11 @@ class SAPLiveConfig(BaseModel):
     system_number: str = "00"
     api_key: str = ""
     api_base_path: str = ""
+    # The SAP OData service the user wants to connect to — any API registered on
+    # the Gateway, e.g. API_BUSINESS_PARTNER, API_SALES_ORDER_SRV, etc.
+    # Determines which $metadata is fetched for the schema view AND which service
+    # the test-connection probe hits — so if you change this, both update together.
+    odata_service: str = "API_BUSINESS_PARTNER"
 
     @field_validator("host")
     @classmethod
@@ -232,16 +237,18 @@ def configure_sap(
             "system_number": config.system_number,
             "api_key":       config.api_key,
             "api_base_path": config.api_base_path,
+            "odata_service": config.odata_service,
         },
         tenant_id=user.tenant_id,
         extra_meta={
-            "host_display": config.host,
-            "client_display": "sandbox (APIKey)" if sandbox_mode else config.client,
+            "host_display":    config.host,
+            "client_display":  "sandbox (APIKey)" if sandbox_mode else config.client,
+            "service_display": config.odata_service,
         },
     )
     schema_cache.invalidate("sap", tenant_id=user.tenant_id)
     mode_msg = "API key (sandbox mode)" if sandbox_mode else f"client {config.client}"
-    return {"ok": True, "message": f"SAP credentials saved for host {config.host} ({mode_msg})."}
+    return {"ok": True, "message": f"SAP credentials saved for host {config.host}, service {config.odata_service} ({mode_msg})."}
 
 
 @router.delete("/sap/live-config/disconnect")

@@ -128,6 +128,10 @@ def _build_live_connector(creds: dict):
         # in the credential UI rather than a production Basic-Auth system.
         api_key=creds.get("api_key", ""),
         api_base_path=creds.get("api_base_path", ""),
+        # The OData service the user configured — used for test probe + schema fetch.
+        # Defaults to API_BUSINESS_PARTNER for backwards compatibility with credentials
+        # stored before this field was introduced.
+        odata_service=creds.get("odata_service", "API_BUSINESS_PARTNER"),
     )
     return SAPLiveConnector(config)
 
@@ -230,19 +234,22 @@ class SAPPlugin:
         if creds:
             try:
                 connector = _build_live_connector(creds)
+                # Use the OData service the user configured — not a hardcoded default.
+                # This allows any SAP API (API_BUSINESS_PARTNER, API_SALES_ORDER_SRV,
+                # API_PURCHASEORDER_PROCESS_SRV, etc.) to drive the schema.
                 # Pass only the service path — NOT an entity set; $metadata is a
-                # service-root document (see live_connector.py test_connection for
-                # the exact reason appending an entity set here causes HTTP 400).
-                live_objects = connector.fetch_schema_objects("API_BUSINESS_PARTNER")
+                # service-root document (appending an entity set causes HTTP 400 on SAP).
+                service = connector._config.odata_service
+                live_objects = connector.fetch_schema_objects(service)
                 if live_objects:
                     logger.info(
-                        "SAP live schema: %d entity sets returned from API_BUSINESS_PARTNER $metadata.",
-                        len(live_objects),
+                        "SAP live schema: %d entity sets from %s $metadata.",
+                        len(live_objects), service,
                     )
                     return live_objects
                 # $metadata fetch succeeded but returned nothing (shouldn't happen
                 # with a real SAP system; treat as a connectivity issue and fall back)
-                logger.warning("SAP live $metadata returned no entity sets — using static catalog.")
+                logger.warning("SAP live $metadata (%s) returned no entity sets — using static catalog.", service)
             except Exception as exc:
                 logger.warning("Could not reach SAP live $metadata catalog: %s", exc)
 

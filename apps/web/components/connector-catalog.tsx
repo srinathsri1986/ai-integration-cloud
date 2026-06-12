@@ -276,6 +276,11 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
   const [sapSystemNumber, setSapSystemNumber] = useState("00");
   const [sapApiKey,       setSapApiKey]       = useState("");
   const [sapApiBasePath,  setSapApiBasePath]  = useState("s4hanacloud");
+  // The OData service the user wants to connect to — any SAP API ID, e.g.
+  // API_BUSINESS_PARTNER, API_SALES_ORDER_SRV, API_PURCHASEORDER_PROCESS_SRV.
+  // This determines both the test-connection probe target and the schema shown
+  // in the Fields tab — not hardcoded to any single SAP service.
+  const [sapOdataService, setSapOdataService] = useState("API_BUSINESS_PARTNER");
 
   // ── Oracle ────────────────────────────────────────────────────────────────
   const [oraHost,        setOraHost]        = useState("");
@@ -405,12 +410,14 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
         });
       } else if (isSAP) {
         if (!require(sapHost, "Host")) return;
+        if (!require(sapOdataService, "OData Service")) return;
         if (sapMode === "sandbox") {
           if (!require(sapApiKey, "API Key")) return;
           await apiCall("PUT", "sap/live-config", {
             host:           sapHost,
             api_key:        sapApiKey,
             api_base_path:  sapApiBasePath,
+            odata_service:  sapOdataService,
           });
         } else {
           if (!require(sapUsername, "Username")) return;
@@ -421,6 +428,7 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
             username:      sapUsername,
             password:      sapPassword,
             system_number: sapSystemNumber,
+            odata_service: sapOdataService,
           });
         }
       } else if (isOracle) {
@@ -682,6 +690,28 @@ function ConfigModal({ connectorId, connectorName, authScheme, onClose, onSucces
                   </div>
                 </>
               )}
+
+              {/* OData Service — shared by both sandbox and production modes */}
+              <Field
+                label="OData Service"
+                required
+                hint="The SAP API service ID from api.sap.com or your Gateway. This drives both the connection test and the Fields schema — change it to work with any SAP API."
+              >
+                <input
+                  type="text"
+                  value={sapOdataService}
+                  onChange={e => setSapOdataService(e.target.value.trim().toUpperCase())}
+                  placeholder="API_BUSINESS_PARTNER"
+                  className={inputCls}
+                />
+              </Field>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-600">
+                <span className="font-medium">Any SAP OData API works here</span> — e.g.{" "}
+                <code className="font-mono">API_BUSINESS_PARTNER</code>,{" "}
+                <code className="font-mono">API_SALES_ORDER_SRV</code>,{" "}
+                <code className="font-mono">API_PURCHASEORDER_PROCESS_SRV</code>.
+                Find the service ID on <span className="underline">api.sap.com</span> under the API's Details tab.
+              </div>
             </>
           )}
 

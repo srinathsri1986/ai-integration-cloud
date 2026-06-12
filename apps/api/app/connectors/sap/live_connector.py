@@ -85,6 +85,11 @@ class SAPLiveConfig:
     system_number: str = "00"   # retained for RFC-fallback readiness; unused by OData
     api_key: str = ""           # sandbox-mode auth — see class docstring
     api_base_path: str = ""     # sandbox proxy prefix, e.g. "s4hanacloud" (blank for production systems)
+    # The OData service path configured by the user — any SAP API registered on
+    # the Gateway (e.g. API_BUSINESS_PARTNER, API_SALES_ORDER_SRV, API_PURCHASEORDER_PROCESS_SRV).
+    # Used for test_connection probe and schema fetch so those operations target
+    # the same API the user actually configured, not a hardcoded default.
+    odata_service: str = "API_BUSINESS_PARTNER"
     timeout_seconds: int = 15
 
     @property
@@ -285,16 +290,14 @@ class SAPLiveConnector:
         """
         try:
             if self._config.is_sandbox_mode:
-                # $metadata lives at the service root — NOT under an entity set.
-                # Correct:   .../sap/opu/odata/sap/API_BUSINESS_PARTNER/$metadata
-                # Wrong:     .../sap/opu/odata/sap/API_BUSINESS_PARTNER/A_BusinessPartner/$metadata
-                # (the latter path folds the entity set into the service path and
-                # causes SAP's Apigee gateway to return HTTP 400.)
-                # $metadata is XML/CSDL by spec — requesting JSON causes SAP to
-                # reject with "Invalid system query options value".
-                url = f"{self._config.service_url('API_BUSINESS_PARTNER')}/$metadata"
+                # Probe the user-configured OData service (not a hardcoded default).
+                # $metadata lives at the SERVICE ROOT — not under an entity set.
+                # Appending an entity set (e.g. .../API_BUSINESS_PARTNER/A_BusinessPartner/$metadata)
+                # causes SAP's Apigee gateway to return HTTP 400.
+                # $metadata is XML/CSDL by spec — Accept: application/json is rejected.
+                url = f"{self._config.service_url(self._config.odata_service)}/$metadata"
                 self._get_text(url, accept="application/xml")
-                detail = "SAP Business Accelerator Hub Sandbox"
+                detail = f"SAP Business Accelerator Hub Sandbox ({self._config.odata_service})"
             else:
                 url = f"{self._config.base_url}/sap/opu/odata/iwfnd/catalogservice;v=2/ServiceCollection"
                 self._get(url)
