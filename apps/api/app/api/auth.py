@@ -198,12 +198,47 @@ def me(user: AuthUser = Depends(get_current_user)) -> AuthUser:
 
 # --- Legacy placeholder login (dev/test only) ---
 
+_PLACEHOLDER_EMAIL = "demo@placeholder.local"
+
 @router.post("/login/placeholder", response_model=LoginResponse, include_in_schema=False)
-def login_placeholder(request: LegacyLoginRequest, response: Response) -> LoginResponse:
-    """Local dev / test endpoint. Not for production use."""
+def login_placeholder(
+    request: LegacyLoginRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> LoginResponse:
+    """Persona login for demo/staging — auto-provisions a tenant so all endpoints work."""
+    import secrets as _secrets
+
     settings = get_settings()
-    user = AuthUser(userId="local-dev-user", email=request.email, role=request.role)
-    token = create_placeholder_token(user)
+
+    # Ensure a placeholder user + tenant exist in the DB so require_tenant passes.
+    user_repo = UserRepository(session)
+    tenant_repo = TenantRepository(session)
+
+    db_user = user_repo.get_by_email(_PLACEHOLDER_EMAIL)
+    if not db_user:
+        db_user = user_repo.create(
+            email=_PLACEHOLDER_EMAIL,
+            hashed_password=hash_password(_secrets.token_hex(32)),
+            role=request.role,
+        )
+        user_repo.verify_email(db_user)
+
+    members = tenant_repo.list_members_for_user(user_id=db_user.id)
+    if members:
+        tenant_id: int = members[0].tenant_id
+    else:
+        tenant = tenant_repo.create_tenant(name="Demo Workspace")
+        tenant_repo.add_member(tenant_id=tenant.id, user_id=db_user.id, role=request.role)
+        tenant_id = tenant.id
+
+    auth_user = AuthUser(
+        userId=str(db_user.id),
+        email=request.email,
+        role=request.role,
+        tenantId=tenant_id,
+    )
+    token = create_placeholder_token(auth_user)
     response.set_cookie(
         key="access_token",
         value=token,
@@ -212,4 +247,4 @@ def login_placeholder(request: LegacyLoginRequest, response: Response) -> LoginR
         samesite="lax",
         max_age=settings.access_token_expire_minutes * 60,
     )
-    return LoginResponse(accessToken=token, user=user)
+    return LoginResponse(accessToken=token, user=auth_user)
