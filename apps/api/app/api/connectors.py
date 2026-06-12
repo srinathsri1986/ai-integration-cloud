@@ -722,7 +722,12 @@ def test_connector(
         plugin = connector_registry.get(connector_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Connector '{connector_id}' not found.")
-    raw = plugin.test_connection()
+    # Pass tenant_id to plugins that support it (oauth2 connectors like Salesforce/Slack)
+    import inspect as _inspect
+    if "tenant_id" in _inspect.signature(plugin.test_connection).parameters:
+        raw = plugin.test_connection(tenant_id=user.tenant_id)
+    else:
+        raw = plugin.test_connection()
     return ConnectorTestResult(
         ok=raw.get("ok", False),
         mode=raw.get("mode", "mock"),
@@ -778,7 +783,12 @@ def get_connector_schema(
             detail="Schema fetch failed. Check connector credentials and try again.",
         )
 
-    test_result = plugin.test_connection()
+    # Pass tenant_id to plugins that support it so live mode is detected correctly
+    import inspect as _inspect
+    if "tenant_id" in _inspect.signature(plugin.test_connection).parameters:
+        test_result = plugin.test_connection(tenant_id=tenant_id)
+    else:
+        test_result = plugin.test_connection()
     mode = test_result.get("mode", "mock")
     is_mock = (mode == "mock")
 

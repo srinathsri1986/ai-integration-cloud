@@ -438,8 +438,8 @@ class SalesforcePlugin:
             "result": _MOCK_DATA.get(tool_id, {}),
         }
 
-    def test_connection(self) -> dict:
-        creds = _get_live_creds()
+    def test_connection(self, tenant_id: int | None = None) -> dict:
+        creds = _get_live_creds(tenant_id)
         if creds:
             def _ping(c: dict) -> dict:
                 from simple_salesforce import Salesforce  # type: ignore[import]
@@ -460,7 +460,7 @@ class SalesforcePlugin:
                 }
 
             try:
-                return _with_session_refresh(creds, None, _ping)
+                return _with_session_refresh(creds, tenant_id, _ping)
             except Exception as exc:
                 return {"ok": False, "mode": "live", "message": f"Salesforce connection test failed: {exc}"}
 
