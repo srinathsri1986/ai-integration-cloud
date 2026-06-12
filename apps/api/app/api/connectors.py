@@ -572,6 +572,13 @@ def salesforce_oauth_callback(
     # Store encrypted OAuth token under the tenant that initiated the flow.
     credential_service.store_oauth_token("salesforce", token_data, tenant_id=tenant_id)
 
+    # Bust the schema cache so the next Fields/schema request fetches live data.
+    try:
+        from app.services.schema_cache import schema_cache
+        schema_cache.invalidate("salesforce", tenant_id=tenant_id)
+    except Exception:
+        pass  # Cache invalidation is best-effort — don't fail the OAuth flow
+
     instance_url = token_data.get("instance_url", "your Salesforce org")
     return RedirectResponse(
         f"{frontend_base}/connectors?salesforce_connected=1&instance_url={urllib.parse.quote(instance_url)}"
