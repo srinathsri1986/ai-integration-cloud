@@ -31,6 +31,8 @@ x-api-env: &api-env
     # AWS Bedrock
     BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-amazon.nova-micro-v1:0}
     BEDROCK_REGION: ${BEDROCK_REGION:-ap-southeast-2}
+    # Base URL for OAuth redirects back to the frontend after callback
+    APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
 
 services:
   # ── Database ──────────────────────────────────────────────────────────────
