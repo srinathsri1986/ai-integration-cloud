@@ -6,7 +6,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.connectors import connector_registry
-from app.core.auth import require_permissions, require_tenant
+from fastapi import Request
+from app.core.auth import get_current_user, require_permissions, require_tenant
 from app.core.config import get_settings
 from app.services.credential_service import credential_service
 from app.models.connectors import (
@@ -34,9 +35,19 @@ router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 
 @router.get("", response_model=list[dict])
-def list_connectors(user=Depends(require_permissions("connector:admin"))) -> list[dict]:
-    """List all registered connectors with per-tenant live status from DB."""
-    return connector_registry.list_connectors(tenant_id=user.tenant_id)
+def list_connectors(request: Request) -> list[dict]:
+    """List all registered connectors. Public for SSR; includes live status when authenticated."""
+    tenant_id = None
+    try:
+        from app.core.auth import get_current_user
+        from fastapi import Header, Cookie
+        authorization = request.headers.get("authorization")
+        access_token = request.cookies.get("access_token")
+        user = get_current_user(authorization=authorization, access_token=access_token)
+        tenant_id = user.tenant_id
+    except Exception:
+        pass
+    return connector_registry.list_connectors(tenant_id=tenant_id)
 
 
 # ---------------------------------------------------------------------------
